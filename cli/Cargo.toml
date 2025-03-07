@@ -1,0 +1,14 @@
+[package]
+name = "openai-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eyre.workspace = true
+ratatui.workspace = true
+tokio.workspace = true
+
+
+openai-app = { path = "../app" }
+openai-backend = { path = "../backend" }
+openai-models = { path = "../models" }
