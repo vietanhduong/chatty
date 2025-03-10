@@ -1,7 +1,7 @@
 use openai_models::{BackendResponse, Message};
 use ratatui::layout::Rect;
 
-use crate::{bubble_list::BubbleList, code_blocks::CodeBlocks, scroll::Scroll};
+use crate::{ui::BubbleList, ui::CodeBlocks, ui::Scroll};
 
 pub struct AppState<'a> {
     pub backend_context: String,

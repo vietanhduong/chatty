@@ -1,12 +1,4 @@
-pub mod action;
 pub mod app;
 pub mod app_state;
-pub mod bubble;
-pub mod bubble_list;
-pub mod clipboard;
-pub mod code_blocks;
-pub mod events;
-pub mod instructions;
-pub mod scroll;
-pub mod syntaxes;
-pub mod textarea;
+pub mod services;
+pub mod ui;

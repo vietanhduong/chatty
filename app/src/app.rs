@@ -22,10 +22,7 @@ use ratatui::{
 };
 use tokio::sync::mpsc;
 
-use crate::{
-    app_state::AppState, events::EventsService, instructions::render_instruction,
-    textarea::TextArea,
-};
+use crate::{app_state::AppState, services::EventsService, ui::TextArea, ui::render_instruction};
 
 pub async fn start(
     action_tx: mpsc::UnboundedSender<Action>,

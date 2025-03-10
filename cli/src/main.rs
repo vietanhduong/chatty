@@ -4,7 +4,7 @@ use chrono::Local;
 use env_logger::Builder;
 use eyre::Result;
 use log::LevelFilter;
-use openai_app::{action::ActionService, app::start};
+use openai_app::{app::start, services::ActionService};
 use openai_backend::{BoxedBackend, OpenAI};
 use openai_models::{Action, Event};
 use tokio::{sync::mpsc, task};

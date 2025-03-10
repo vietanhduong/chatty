@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use openai_models::Message;
 use ratatui::{buffer::Buffer, layout::Rect, text::Line};
 
-use crate::bubble::Bubble;
+use super::bubble::Bubble;
 
 struct CacheEntry<'a> {
     codeblocks_count: usize,

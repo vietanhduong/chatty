@@ -6,7 +6,7 @@ use ratatui::{
 use syntect::{easy::HighlightLines, highlighting::ThemeSet};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::syntaxes::{SYNTAX_SET, Syntaxes};
+use super::syntaxes::{SYNTAX_SET, Syntaxes};
 
 pub struct Bubble<'a> {
     message: &'a Message,
