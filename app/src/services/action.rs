@@ -59,6 +59,10 @@ impl ActionService<'_> {
             match event.unwrap() {
                 Action::BackendAbort => {
                     worker.abort();
+                    worker_tx.send(Event::BackendMessage(Message::new_system(
+                        "system",
+                        "Aborted request".to_string(),
+                    )))?;
                 }
                 Action::BackendRequest(prompt) => {
                     let backend = Arc::clone(&self.backend);

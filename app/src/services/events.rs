@@ -6,13 +6,13 @@ use tokio::sync::mpsc;
 use tokio::time;
 use tui_textarea::{Input, Key};
 
-pub struct EventsService {
+pub struct EventsService<'a> {
     crossterm_events: EventStream,
-    events: mpsc::UnboundedReceiver<Event>,
+    events: &'a mut mpsc::UnboundedReceiver<Event>,
 }
 
-impl EventsService {
-    pub fn new(events: mpsc::UnboundedReceiver<Event>) -> Self {
+impl<'a> EventsService<'_> {
+    pub fn new(events: &'a mut mpsc::UnboundedReceiver<Event>) -> EventsService<'a> {
         EventsService {
             crossterm_events: EventStream::new(),
             events,
@@ -43,12 +43,12 @@ impl EventsService {
                         Key::Char('c') => return Some(Event::KeyboardCtrlC),
                         Key::Char('r') => return Some(Event::KeyboardCtrlR),
                         Key::Char('h') => return Some(Event::KeyboardCtrlH),
-                        Key::Char('o') => return Some(Event::KeyboardAltEnter),
                         _ => return None,
                     }
                 }
 
                 match input.key {
+                    Key::F(1) => Some(Event::KeyboardF1),
                     Key::Enter => Some(Event::KeyboardEnter),
                     Key::Up => Some(Event::UiScrollUp),
                     Key::Down => Some(Event::UiScrollDown),

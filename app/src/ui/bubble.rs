@@ -8,6 +8,10 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::syntaxes::{SYNTAX_SET, Syntaxes};
 
+pub const DEFAULT_PADDING: usize = 8;
+pub const DEFAULT_BORDER_ELEMENTS_LEN: usize = 5;
+pub const DEFAULT_OUTER_PADDING_PERCENTAGE: f32 = 0.04;
+
 pub struct Bubble<'a> {
     message: &'a Message,
     max_width: usize,
@@ -28,12 +32,12 @@ impl<'a> Bubble<'_> {
 
             // Settings
             // Unicode character border + padding
-            padding: 8,
+            padding: DEFAULT_PADDING,
 
             // left boder + left padding + (text, not counted) + right padding
             // + right border + scrollbar
-            boder_elements_length: 5,
-            outer_padding_percentage: 0.04,
+            boder_elements_length: DEFAULT_BORDER_ELEMENTS_LEN,
+            outer_padding_percentage: DEFAULT_OUTER_PADDING_PERCENTAGE,
         }
     }
 

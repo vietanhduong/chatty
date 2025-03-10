@@ -15,6 +15,7 @@ tokio.workspace = true
 tui-textarea.workspace = true
 futures.workspace = true
 arboard.workspace = true
+log.workspace = true
 
 openai-backend = { path = "../backend" }
 openai-models = { path = "../models" }

@@ -15,7 +15,7 @@ pub struct AppState<'a> {
 }
 
 impl<'a> AppState<'_> {
-    pub async fn new() -> Self {
+    pub fn new() -> Self {
         let mut app_state = AppState {
             backend_context: String::new(),
             bubble_list: BubbleList::new(),

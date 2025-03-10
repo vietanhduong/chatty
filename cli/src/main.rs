@@ -4,7 +4,7 @@ use chrono::Local;
 use env_logger::Builder;
 use eyre::Result;
 use log::LevelFilter;
-use openai_app::{app::start, services::ActionService};
+use openai_app::{App, services::ActionService};
 use openai_backend::{BoxedBackend, OpenAI};
 use openai_models::{Action, Event};
 use tokio::{sync::mpsc, task};
@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     let backend = Arc::new(backend);
 
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
-    let (event_tx, event_rx) = mpsc::unbounded_channel::<Event>();
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
 
     let mut bg_futures = task::JoinSet::new();
 
@@ -51,5 +51,8 @@ async fn main() -> Result<()> {
             .await
     });
 
-    Ok(start(action_tx, event_rx).await?)
+    let mut app = App::new(action_tx.clone(), &mut event_rx);
+
+    app.run().await?;
+    Ok(())
 }

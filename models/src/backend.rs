@@ -4,6 +4,7 @@ pub struct CodeContext {
     pub code: String,
 }
 
+#[derive(Debug)]
 pub struct BackendResponse {
     pub model: String,
     pub text: String,

@@ -1448,6 +1448,7 @@ dependencies = [
  "crossterm",
  "eyre",
  "futures",
+ "log",
  "once_cell",
  "openai-backend",
  "openai-models",

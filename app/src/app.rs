@@ -5,143 +5,123 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use eyre::Result;
+use log::debug;
 use openai_models::{Action, BackendPrompt, Event, Message};
-use ratatui::{
-    Frame, Terminal,
-    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
-    prelude::{Backend, CrosstermBackend},
-    style::Modifier,
-    widgets::{Block, BorderType, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation},
+use ratatui::crossterm::{
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
-    crossterm::{
-        execute,
-        terminal::{disable_raw_mode, enable_raw_mode},
-    },
-    style::Style,
+    Terminal,
+    layout::{Alignment, Constraint, Direction, Layout, Margin},
+    prelude::{Backend, CrosstermBackend},
+    widgets::{Paragraph, Scrollbar, ScrollbarOrientation},
 };
 use tokio::sync::mpsc;
 
-use crate::{app_state::AppState, services::EventsService, ui::TextArea, ui::render_instruction};
+use crate::{
+    app_state::AppState,
+    services::EventsService,
+    ui::{Help, Loading, TextArea, bubble},
+};
 
-pub async fn start(
+pub struct App<'a> {
     action_tx: mpsc::UnboundedSender<Action>,
-    event_rx: mpsc::UnboundedReceiver<Event>,
-) -> Result<()> {
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
+    events: EventsService<'a>,
+    app_state: AppState<'a>,
+    input: tui_textarea::TextArea<'a>,
+    help: Help<'a>,
 
-    enable_raw_mode()?;
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        EnableBracketedPaste
-    )?;
-
-    let term_backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(term_backend)?;
-    start_loop(&mut terminal, action_tx, event_rx).await?;
-
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-        DisableBracketedPaste
-    )?;
-
-    terminal.show_cursor()?;
-
-    Ok(())
+    loading: Loading,
 }
 
-async fn start_loop<B: Backend>(
-    terminal: &mut Terminal<B>,
-    action_tx: mpsc::UnboundedSender<Action>,
-    event_rx: mpsc::UnboundedReceiver<Event>,
-) -> Result<()> {
-    let mut events = EventsService::new(event_rx);
-    let mut textarea = TextArea::default().build();
+impl<'a> App<'_> {
+    pub fn new(
+        action_tx: mpsc::UnboundedSender<Action>,
+        event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
+    ) -> App<'a> {
+        App {
+            action_tx,
+            events: EventsService::new(event_rx),
+            app_state: AppState::new(),
+            input: TextArea::default().build(),
+            loading: Loading::new("Thinking..."),
+            help: Help::new(),
+        }
+    }
 
-    let mut app_state = AppState::new().await;
+    pub async fn run(&mut self) -> Result<()> {
+        let stdout = io::stdout();
+        let mut stdout = stdout.lock();
 
-    let loading = Loading::new("Thinking...");
+        enable_raw_mode()?;
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            EnableBracketedPaste
+        )?;
 
-    loop {
-        terminal.draw(|frame| {
-            if !is_line_width_sufficient(frame.area().width) {
-                frame.render_widget(
-                    Paragraph::new("I'm too small, make me bigger!").alignment(Alignment::Left),
-                    frame.area(),
-                );
-                return;
+        let term_backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(term_backend)?;
+        self.start_loop(&mut terminal).await?;
+
+        disable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture,
+            DisableBracketedPaste
+        )?;
+
+        terminal.show_cursor()?;
+
+        Ok(())
+    }
+
+    async fn handle_key_event(&mut self) -> Result<bool> {
+        let event = self.events.next().await?;
+
+        if self.help.showing() {
+            if self.help.handle_key_event(event) {
+                // If true, stop the process
+                return Ok(true);
             }
+            return Ok(false);
+        }
 
-            let textarea_len = (textarea.lines().len() + 2).try_into().unwrap();
-            let layout = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(vec![
-                    Constraint::Min(1),
-                    Constraint::Max(textarea_len),
-                    Constraint::Length(1),
-                ])
-                .split(frame.area());
-
-            if layout[0].width as usize != app_state.last_known_width
-                || layout[0].height as usize != app_state.last_known_height
-            {
-                app_state.set_rect(layout[0]);
-            }
-
-            app_state.bubble_list.render(
-                layout[0],
-                frame.buffer_mut(),
-                app_state.scroll.position.try_into().unwrap(),
-            );
-
-            frame.render_stateful_widget(
-                Scrollbar::new(ScrollbarOrientation::VerticalRight),
-                layout[0].inner(Margin {
-                    vertical: 1,
-                    horizontal: 0,
-                }),
-                &mut app_state.scroll.scrollbar_state,
-            );
-
-            render_instruction(frame, layout[2]);
-            if app_state.waiting_for_backend {
-                loading.render(frame, layout[1]);
-            } else {
-                frame.render_widget(&textarea, layout[1]);
-            }
-        })?;
-
-        match events.next().await? {
+        match event {
             Event::BackendMessage(msg) => {
-                app_state.add_message(msg);
-                app_state.waiting_for_backend = false;
+                self.app_state.add_message(msg);
+                self.app_state.waiting_for_backend = false;
             }
             Event::BackendPromptResponse(msg) => {
-                app_state.handle_backend_response(msg);
+                self.app_state.handle_backend_response(msg);
             }
             Event::KeyboardCharInput(c) => {
-                if app_state.waiting_for_backend {
-                    continue;
+                if !self.app_state.waiting_for_backend {
+                    self.input.input(c);
                 }
-                textarea.input(c);
             }
             Event::KeyboardCtrlC => {
-                // TODO: handle abort backend
+                if self.app_state.waiting_for_backend {
+                    self.app_state.waiting_for_backend = false;
+                    self.action_tx.send(Action::BackendAbort)?;
+                }
             }
             Event::KeyboardCtrlQ => {
-                if app_state.waiting_for_backend {
-                    app_state.waiting_for_backend = false;
-                    action_tx.send(Action::BackendAbort)?;
+                if self.app_state.waiting_for_backend {
+                    self.app_state.waiting_for_backend = false;
+                    self.action_tx.send(Action::BackendAbort)?;
                 }
-                return Ok(());
+                return Ok(true);
             }
 
+            Event::KeyboardF1 => {
+                debug!("Showing: {}", self.help.showing());
+                // TODO: Handle toggle open Help
+                self.help.toggle_showing();
+            }
             Event::KeyboardCtrlH => {
                 // TODO: Handle toggle open History
             }
@@ -151,87 +131,119 @@ async fn start_loop<B: Backend>(
             }
 
             Event::KeyboardPaste(text) => {
-                textarea.set_yank_text(text.replace('\r', "\n"));
-                textarea.paste();
+                self.input.set_yank_text(text.replace('\r', "\n"));
+                self.input.paste();
             }
 
             Event::KeyboardAltEnter => {
-                if app_state.waiting_for_backend {
-                    continue;
-                }
-                textarea.insert_newline();
+                if self.app_state.waiting_for_backend {}
+                self.input.insert_newline();
             }
 
             Event::KeyboardEnter => {
-                if app_state.waiting_for_backend {
-                    continue;
+                if self.app_state.waiting_for_backend {
+                    return Ok(false);
                 }
-                let input_str = &textarea.lines().join("\n");
+                let input_str = &self.input.lines().join("\n");
                 if input_str.is_empty() {
-                    continue;
+                    return Ok(false);
                 }
 
                 let msg = Message::new_user("user", input_str);
-                textarea = TextArea::default().build();
-                app_state.add_message(msg);
+                self.input = TextArea::default().build();
+                self.app_state.add_message(msg);
 
-                app_state.waiting_for_backend = true;
+                self.app_state.waiting_for_backend = true;
 
                 let mut prompt = BackendPrompt::new(input_str);
 
-                if !app_state.backend_context.is_empty() {
-                    prompt = prompt.with_context(&app_state.backend_context);
+                if !self.app_state.backend_context.is_empty() {
+                    prompt = prompt.with_context(&self.app_state.backend_context);
                 }
-                action_tx.send(Action::BackendRequest(prompt))?;
+                self.action_tx.send(Action::BackendRequest(prompt))?;
             }
 
             Event::UiTick => {
-                continue;
+                return Ok(false);
             }
-            Event::UiScrollDown => app_state.scroll.down(),
-            Event::UiScrollUp => app_state.scroll.up(),
-            Event::UiScrollPageDown => app_state.scroll.page_down(),
-            Event::UiScrollPageUp => app_state.scroll.page_up(),
+            Event::UiScrollDown => self.app_state.scroll.down(),
+            Event::UiScrollUp => self.app_state.scroll.up(),
+            Event::UiScrollPageDown => self.app_state.scroll.page_down(),
+            Event::UiScrollPageUp => self.app_state.scroll.page_up(),
+            _ => {}
+        }
+        Ok(false)
+    }
+
+    fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
+        terminal.draw(|frame| {
+            if !is_line_width_sufficient(frame.area().width) {
+                frame.render_widget(
+                    Paragraph::new("I'm too small, make me bigger!").alignment(Alignment::Left),
+                    frame.area(),
+                );
+                return;
+            }
+
+            let textarea_len = (self.input.lines().len() + 2).try_into().unwrap();
+            let layout = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(vec![
+                    Constraint::Min(1),
+                    Constraint::Max(textarea_len),
+                    Constraint::Length(1),
+                ])
+                .split(frame.area());
+
+            if layout[0].width as usize != self.app_state.last_known_width
+                || layout[0].height as usize != self.app_state.last_known_height
+            {
+                self.app_state.set_rect(layout[0]);
+            }
+
+            self.app_state.bubble_list.render(
+                layout[0],
+                frame.buffer_mut(),
+                self.app_state.scroll.position.try_into().unwrap(),
+            );
+
+            frame.render_stateful_widget(
+                Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                    .end_symbol(None)
+                    .begin_symbol(None),
+                layout[0].inner(Margin {
+                    vertical: 1,
+                    horizontal: 1,
+                }),
+                &mut self.app_state.scroll.scrollbar_state,
+            );
+
+            self.help.render_help_line(frame, layout[2]);
+            if self.app_state.waiting_for_backend {
+                self.loading.render(frame, layout[1]);
+            } else {
+                frame.render_widget(&self.input, layout[1]);
+            }
+            if self.help.showing() {
+                self.help.render(frame, frame.area())
+            }
+        })?;
+        Ok(())
+    }
+
+    async fn start_loop<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
+        loop {
+            self.render(terminal)?;
+            if self.handle_key_event().await? {
+                return Ok(());
+            }
         }
     }
 }
 
 fn is_line_width_sufficient(line_width: u16) -> bool {
-    let min_width = (8 + 5) as i32;
-    let trimmed_line_width = ((line_width as f32 * (1.0 - 0.04)).ceil()) as i32;
+    let min_width = (bubble::DEFAULT_PADDING + bubble::DEFAULT_BORDER_ELEMENTS_LEN) as i32;
+    let trimmed_line_width =
+        ((line_width as f32 * (1.0 - bubble::DEFAULT_OUTER_PADDING_PERCENTAGE)).ceil()) as i32;
     return trimmed_line_width >= min_width;
-}
-
-#[derive(Default)]
-pub struct Loading(String);
-
-impl Loading {
-    pub fn new(text: &str) -> Self {
-        Self(text.to_string())
-    }
-
-    fn text(&self) -> &str {
-        if self.0.is_empty() {
-            "Loading..."
-        } else {
-            &self.0
-        }
-    }
-
-    pub fn render(&self, frame: &mut Frame, rect: Rect) {
-        frame.render_widget(
-            Paragraph::new(self.text())
-                .style(Style {
-                    add_modifier: Modifier::ITALIC,
-                    ..Default::default()
-                })
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_type(BorderType::Rounded)
-                        .padding(Padding::new(1, 1, 0, 0)),
-                ),
-            rect,
-        );
-    }
 }
