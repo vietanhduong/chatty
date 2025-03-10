@@ -1,12 +1,10 @@
-use openai_models::{BackendResponse, Message};
+use openai_models::{BackendResponse, Message, message::Issuer};
 use ratatui::layout::Rect;
 
-use crate::{ui::BubbleList, ui::CodeBlocks, ui::Scroll};
+use crate::{ui::BubbleList, ui::Scroll};
 
 pub struct AppState<'a> {
-    pub backend_context: String,
     pub bubble_list: BubbleList<'a>,
-    pub codeblocks: CodeBlocks,
     pub last_known_height: usize,
     pub last_known_width: usize,
     pub messages: Vec<Message>,
@@ -17,9 +15,7 @@ pub struct AppState<'a> {
 impl<'a> AppState<'_> {
     pub fn new() -> Self {
         let mut app_state = AppState {
-            backend_context: String::new(),
             bubble_list: BubbleList::new(),
-            codeblocks: CodeBlocks::default(),
             last_known_height: 0,
             last_known_width: 0,
             messages: Vec::new(),
@@ -46,32 +42,52 @@ impl<'a> AppState<'_> {
         self.scroll.last();
     }
 
+    pub fn last_message(&self, is_system: Option<bool>) -> Option<&Message> {
+        if let Some(msg) = self.messages.last() {
+            if is_system.is_none() || is_system.unwrap() == msg.is_system() {
+                return Some(msg);
+            }
+        }
+        None
+    }
+
+    pub fn pop_last_message(&mut self, is_system: Option<bool>) -> Option<Message> {
+        if self.last_message(is_system).is_some() {
+            let ret = self.messages.pop();
+            if let Some(ref msg) = ret {
+                self.bubble_list.remove_message(msg.id());
+                self.sync_state();
+            }
+            return ret;
+        }
+        None
+    }
+
     pub fn handle_backend_response(&mut self, msg: BackendResponse) {
         let last_message = self.messages.last_mut().unwrap();
         if last_message.is_system() {
             last_message.append(&msg.text);
         } else {
             self.messages
-                .push(Message::new_system(msg.model.as_str(), &msg.text));
+                .push(Message::new_system(msg.model.as_str(), &msg.text).with_id(msg.id));
         }
 
         self.sync_state();
 
         if msg.done {
             self.waiting_for_backend = false;
-            if let Some(ctx) = msg.context {
-                self.backend_context = ctx;
-            }
-            if self.backend_context.is_empty() {
-                self.add_message(Message::new_system(
-                    "system",
-                    "No context available. Please provide a context.",
-                ));
-                self.sync_state();
-            }
-
-            self.codeblocks.replace_from_messages(&self.messages);
         }
+    }
+
+    pub fn chat_context(&self) -> Vec<&Message> {
+        // Filter all message except system ("system") messages
+        self.messages
+            .iter()
+            .filter(|msg| match msg.issuer() {
+                Issuer::System(sys) => sys != "system",
+                _ => true,
+            })
+            .collect::<Vec<_>>()
     }
 
     fn sync_state(&mut self) {

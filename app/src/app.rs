@@ -5,7 +5,6 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use eyre::Result;
-use log::debug;
 use openai_models::{Action, BackendPrompt, Event, Message};
 use ratatui::crossterm::{
     execute,
@@ -45,7 +44,7 @@ impl<'a> App<'_> {
             events: EventsService::new(event_rx),
             app_state: AppState::new(),
             input: TextArea::default().build(),
-            loading: Loading::new("Thinking..."),
+            loading: Loading::new("Thinking... Press <Ctrl+c> to abort"),
             help: Help::new(),
         }
     }
@@ -117,17 +116,40 @@ impl<'a> App<'_> {
                 return Ok(true);
             }
 
-            Event::KeyboardF1 => {
-                debug!("Showing: {}", self.help.showing());
-                // TODO: Handle toggle open Help
-                self.help.toggle_showing();
-            }
+            Event::KeyboardF1 => self.help.toggle_showing(),
             Event::KeyboardCtrlH => {
                 // TODO: Handle toggle open History
             }
 
             Event::KeyboardCtrlR => {
                 // TODO: Handle regenerate message
+                if self.app_state.waiting_for_backend {
+                    return Ok(false);
+                }
+                let last = self.app_state.pop_last_message(Some(true));
+                if last.is_none() {
+                    return Ok(false);
+                }
+
+                // Resubmit the last message from user
+                let last_user_msg = self.app_state.last_message(Some(false));
+
+                let input_str = if let Some(msg) = last_user_msg {
+                    msg.text().to_string()
+                } else {
+                    return Ok(false);
+                };
+
+                self.app_state.waiting_for_backend = true;
+                let mut prompt = BackendPrompt::new(input_str);
+
+                let context: Vec<Message> =
+                    self.app_state.chat_context().into_iter().cloned().collect();
+
+                if !context.is_empty() {
+                    prompt = prompt.with_context(context);
+                }
+                self.action_tx.send(Action::BackendRequest(prompt))?;
             }
 
             Event::KeyboardPaste(text) => {
@@ -157,8 +179,11 @@ impl<'a> App<'_> {
 
                 let mut prompt = BackendPrompt::new(input_str);
 
-                if !self.app_state.backend_context.is_empty() {
-                    prompt = prompt.with_context(&self.app_state.backend_context);
+                let context: Vec<Message> =
+                    self.app_state.chat_context().into_iter().cloned().collect();
+
+                if !context.is_empty() {
+                    prompt = prompt.with_context(context);
                 }
                 self.action_tx.send(Action::BackendRequest(prompt))?;
             }

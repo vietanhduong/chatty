@@ -5,8 +5,9 @@ use crate::Backend;
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::stream::StreamExt;
-use log::{debug, error, warn};
-use openai_models::{BackendPrompt, BackendResponse, Event};
+use log::{debug, error, trace};
+use openai_models::message::Issuer;
+use openai_models::{BackendPrompt, BackendResponse, Event, Message};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -101,7 +102,7 @@ impl Backend for OpenAI {
         let mut messages: Vec<MessageRequest> = vec![];
         if !prompt.context().is_empty() {
             // FIXME: This approach might not be optimized for large contexts
-            messages = serde_json::from_str(&prompt.context()).wrap_err("parsing context")?;
+            messages = prompt.context().iter().map(MessageRequest::from).collect();
         }
 
         messages.push(MessageRequest {
@@ -146,6 +147,7 @@ impl Backend for OpenAI {
         let mut stream = res.bytes_stream();
 
         let mut last_message = String::new();
+        let mut message_id = String::new();
         while let Some(item) = stream.next().await {
             let item = item?;
             let s = match std::str::from_utf8(&item) {
@@ -163,17 +165,18 @@ impl Backend for OpenAI {
                             break;
                         }
 
-                        debug!("streaming response: body: {}", p);
+                        trace!("streaming response: body: {}", p);
                         let data = serde_json::from_str::<CompletionResponse>(p)
                             .wrap_err("parsing completion response")?;
 
                         let c = match data.choices.get(0) {
                             Some(c) => c,
-                            None => {
-                                warn!("no choices in response");
-                                continue;
-                            }
+                            None => continue,
                         };
+
+                        if message_id.is_empty() {
+                            message_id = data.id;
+                        }
 
                         if c.finish_reason.is_some() {
                             break;
@@ -181,17 +184,15 @@ impl Backend for OpenAI {
 
                         let text = match c.delta.content {
                             Some(ref text) => text.deref().to_string(),
-                            None => {
-                                warn!("no content in delta");
-                                continue;
-                            }
+                            None => continue,
                         };
 
                         last_message += &text;
                         let msg = BackendResponse {
+                            id: message_id.clone(),
                             model: self.current_model().to_string(),
                             text,
-                            context: None,
+                            context: vec![],
                             done: false,
                         };
 
@@ -207,10 +208,14 @@ impl Backend for OpenAI {
             content: last_message.clone(),
         });
 
+        let mut context = prompt.context().to_vec();
+        context.push(Message::new_system(&self.current_model, last_message).with_id(&message_id));
+
         let msg = BackendResponse {
+            id: message_id,
             model: self.current_model().to_string(),
             text: String::new(),
-            context: Some(serde_json::to_string(&messages).wrap_err("serializing context")?),
+            context,
             done: true,
         };
         event_tx.send(Event::BackendPromptResponse(msg))?;
@@ -303,6 +308,7 @@ struct CompletionChoiceResponse {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct CompletionResponse {
+    id: String,
     choices: Vec<CompletionChoiceResponse>,
 }
 
@@ -320,5 +326,29 @@ pub struct OpenAIError {
 impl Display for OpenAIError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "OpenAI error ({}): {}", self.http_code, self.message)
+    }
+}
+
+impl From<Message> for MessageRequest {
+    fn from(value: Message) -> Self {
+        Self {
+            role: match value.issuer() {
+                Issuer::System(_) => "assistant".to_string(),
+                Issuer::User(_) => "user".to_string(),
+            },
+            content: value.text().to_string(),
+        }
+    }
+}
+
+impl From<&Message> for MessageRequest {
+    fn from(value: &Message) -> Self {
+        Self {
+            role: match value.issuer() {
+                Issuer::System(_) => "assistant".to_string(),
+                Issuer::User(_) => "user".to_string(),
+            },
+            content: value.text().to_string(),
+        }
     }
 }

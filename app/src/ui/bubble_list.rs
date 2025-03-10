@@ -6,6 +6,7 @@ use ratatui::{buffer::Buffer, layout::Rect, text::Line};
 use super::bubble::Bubble;
 
 struct CacheEntry<'a> {
+    message_id: String,
     codeblocks_count: usize,
     text_len: usize,
     lines: Vec<Line<'a>>,
@@ -24,6 +25,12 @@ impl<'a> BubbleList<'a> {
             line_len: 0,
             line_width: 0,
         }
+    }
+
+    pub fn remove_message(&mut self, id: impl Into<String>) {
+        let id = id.into();
+        self.cache.retain(|_, entry| entry.message_id != id);
+        self.line_len = self.cache.iter().map(|(_, entry)| entry.lines.len()).sum();
     }
 
     pub fn set_messages(&mut self, messages: &[Message], line_width: usize) {
@@ -55,6 +62,7 @@ impl<'a> BubbleList<'a> {
                 self.cache.insert(
                     i,
                     CacheEntry {
+                        message_id: message.id().to_string(),
                         codeblocks_count,
                         text_len: message.text().len(),
                         lines: bubble_lines,

@@ -61,9 +61,10 @@ impl ActionService<'_> {
                     worker.abort();
                     worker_tx.send(Event::BackendMessage(Message::new_system(
                         "system",
-                        "Aborted request".to_string(),
+                        "Aborted Request".to_string(),
                     )))?;
                 }
+
                 Action::BackendRequest(prompt) => {
                     let backend = Arc::clone(&self.backend);
                     worker = tokio::spawn(async move {

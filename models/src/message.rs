@@ -6,6 +6,7 @@ pub enum Issuer {
 
 #[derive(Debug, Clone)]
 pub struct Message {
+    id: String,
     issuer: Issuer,
     text: String,
     timestamp: chrono::DateTime<chrono::Utc>,
@@ -14,6 +15,7 @@ pub struct Message {
 impl Message {
     pub fn new(issuer: Issuer, text: impl Into<String>) -> Self {
         Self {
+            id: chrono::Utc::now().timestamp().to_string(),
             issuer,
             text: text.into(),
             timestamp: chrono::Utc::now(),
@@ -22,6 +24,7 @@ impl Message {
 
     pub fn new_system(system: &str, text: impl Into<String>) -> Self {
         Self {
+            id: chrono::Utc::now().timestamp().to_string(),
             issuer: Issuer::System(system.to_string()),
             text: text.into(),
             timestamp: chrono::Utc::now(),
@@ -30,10 +33,20 @@ impl Message {
 
     pub fn new_user(user: &str, text: impl Into<String>) -> Self {
         Self {
+            id: chrono::Utc::now().timestamp().to_string(),
             issuer: Issuer::User(user.to_string()),
             text: text.into(),
             timestamp: chrono::Utc::now(),
         }
+    }
+
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     pub fn is_system(&self) -> bool {
