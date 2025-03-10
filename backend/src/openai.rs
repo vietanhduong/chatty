@@ -1,21 +1,21 @@
+use std::ops::Deref;
 use std::{fmt::Display, time};
 
 use crate::Backend;
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
-use futures::stream::TryStreamExt;
+use futures::stream::StreamExt;
+use log::{debug, error, warn};
 use openai_models::{BackendPrompt, BackendResponse, Event};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::io::AsyncBufReadExt;
 use tokio::sync::mpsc;
-use tokio_util::io::StreamReader;
 
 #[derive(Debug)]
 pub struct OpenAI {
     endpoint: String,
     token: Option<String>,
-    timeout: time::Duration,
+    timeout: Option<time::Duration>,
 
     current_model: String,
 }
@@ -31,12 +31,14 @@ impl Backend for OpenAI {
     }
 
     async fn list_models(&self) -> Result<Vec<String>> {
-        let mut req = reqwest::Client::new()
-            .get(format!("{}/v1/models", self.endpoint))
-            .timeout(self.timeout);
+        let mut req = reqwest::Client::new().get(format!("{}/v1/models", self.endpoint));
+
+        if let Some(timeout) = self.timeout {
+            req = req.timeout(timeout);
+        }
 
         if let Some(token) = &self.token {
-            req = req.header("Authorization", format!("Bearer {}", token));
+            req = req.bearer_auth(token);
         }
 
         let res = req.send().await.wrap_err("listing models")?;
@@ -98,6 +100,7 @@ impl Backend for OpenAI {
 
         let mut messages: Vec<MessageRequest> = vec![];
         if !prompt.context().is_empty() {
+            // FIXME: This approach might not be optimized for large contexts
             messages = serde_json::from_str(&prompt.context()).wrap_err("parsing context")?;
         }
 
@@ -114,12 +117,17 @@ impl Backend for OpenAI {
 
         let mut req = reqwest::Client::new()
             .post(format!("{}/v1/chat/completions", self.endpoint))
-            .header("Content-Type", "application/json")
-            .timeout(self.timeout);
+            .header("Content-Type", "application/json");
+
+        if let Some(timeout) = self.timeout {
+            req = req.timeout(timeout);
+        }
 
         if let Some(token) = &self.token {
-            req = req.header("Authorization", format!("Bearer {}", token));
+            req = req.bearer_auth(token);
         }
+
+        debug!("sending completion request: {:?}", completion_req);
 
         let res = req
             .json(&completion_req)
@@ -135,49 +143,63 @@ impl Backend for OpenAI {
             return Err(err.into());
         }
 
-        let stream = res.bytes_stream().map_err(|e| -> std::io::Error {
-            std::io::Error::new(std::io::ErrorKind::Interrupted, e.to_string())
-        });
-        let mut lines_reader = StreamReader::new(stream).lines();
+        let mut stream = res.bytes_stream();
+
         let mut last_message = String::new();
-        while let Ok(line) = lines_reader.next_line().await {
-            if line.is_none() {
-                break;
-            }
-
-            let mut cleaned_line = line.unwrap().trim().to_string();
-            if cleaned_line.starts_with("data:") {
-                cleaned_line = cleaned_line[5..].trim().to_string();
-            }
-            if cleaned_line.is_empty() {
-                continue;
-            }
-            let ores: CompletionResponse =
-                serde_json::from_str(&cleaned_line).wrap_err("parsing completion response")?;
-            tracing::debug!(body = ?ores, "streaming response");
-
-            let choice = &ores.choices[0];
-            if choice.finish_reason.is_some() {
-                break;
-            }
-            if choice.delta.content.is_none() {
-                continue;
-            }
-
-            let text = choice.delta.content.clone().unwrap().to_string();
-            if text.is_empty() {
-                continue;
-            }
-
-            last_message += &text;
-            let msg = BackendResponse {
-                model: self.current_model().to_string(),
-                text,
-                context: None,
-                done: false,
+        while let Some(item) = stream.next().await {
+            let item = item?;
+            let s = match std::str::from_utf8(&item) {
+                Ok(s) => s,
+                Err(_) => {
+                    error!("Error parsing stream response");
+                    continue;
+                }
             };
 
-            event_tx.send(Event::BackendPromptResponse(msg))?;
+            for p in s.split("\n\n") {
+                match p.strip_prefix("data: ") {
+                    Some(p) => {
+                        if p == "[DONE]" {
+                            break;
+                        }
+
+                        debug!("streaming response: body: {}", p);
+                        let data = serde_json::from_str::<CompletionResponse>(p)
+                            .wrap_err("parsing completion response")?;
+
+                        let c = match data.choices.get(0) {
+                            Some(c) => c,
+                            None => {
+                                warn!("no choices in response");
+                                continue;
+                            }
+                        };
+
+                        if c.finish_reason.is_some() {
+                            break;
+                        }
+
+                        let text = match c.delta.content {
+                            Some(ref text) => text.deref().to_string(),
+                            None => {
+                                warn!("no content in delta");
+                                continue;
+                            }
+                        };
+
+                        last_message += &text;
+                        let msg = BackendResponse {
+                            model: self.current_model().to_string(),
+                            text,
+                            context: None,
+                            done: false,
+                        };
+
+                        event_tx.send(Event::BackendPromptResponse(msg))?;
+                    }
+                    None => {}
+                }
+            }
         }
 
         messages.push(MessageRequest {
@@ -212,7 +234,7 @@ impl OpenAI {
     }
 
     pub fn with_timeout(mut self, timeout: time::Duration) -> Self {
-        self.timeout = timeout;
+        self.timeout = Some(timeout);
         self
     }
 
@@ -224,7 +246,7 @@ impl OpenAI {
         self.token.as_deref()
     }
 
-    pub fn timeout(&self) -> time::Duration {
+    pub fn timeout(&self) -> Option<time::Duration> {
         self.timeout
     }
 }
@@ -234,7 +256,7 @@ impl Default for OpenAI {
         Self {
             endpoint: "https://api.openai.com".to_string(),
             token: None,
-            timeout: time::Duration::from_secs(30),
+            timeout: None,
             current_model: String::new(),
         }
     }

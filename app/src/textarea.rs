@@ -39,7 +39,7 @@ impl TextArea {
 impl Default for TextArea {
     fn default() -> Self {
         Self {
-            title: "Input".to_string(),
+            title: " Input ".to_string(),
             placeholder: "Type your message here...".to_string(),
         }
     }

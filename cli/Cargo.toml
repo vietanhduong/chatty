@@ -7,7 +7,9 @@ edition = "2024"
 eyre.workspace = true
 ratatui.workspace = true
 tokio.workspace = true
-
+env_logger.workspace = true
+log.workspace = true
+chrono.workspace = true
 
 openai-app = { path = "../app" }
 openai-backend = { path = "../backend" }

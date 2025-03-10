@@ -69,7 +69,7 @@ async fn start_loop<B: Backend>(
 
     let mut app_state = AppState::new().await;
 
-    let loading = Loading::default();
+    let loading = Loading::new("Thinking...");
 
     loop {
         terminal.draw(|frame| {
@@ -174,14 +174,16 @@ async fn start_loop<B: Backend>(
                     continue;
                 }
 
-                let msg = Message::new(false, input_str);
+                let msg = Message::new_user("user", input_str);
                 textarea = TextArea::default().build();
                 app_state.add_message(msg);
 
                 app_state.waiting_for_backend = true;
+
                 let mut prompt = BackendPrompt::new(input_str);
-                if app_state.backend_context.is_empty() {
-                    prompt.append_chat_context(None);
+
+                if !app_state.backend_context.is_empty() {
+                    prompt = prompt.with_context(&app_state.backend_context);
                 }
                 action_tx.send(Action::BackendRequest(prompt))?;
             }
@@ -207,6 +209,10 @@ fn is_line_width_sufficient(line_width: u16) -> bool {
 pub struct Loading(String);
 
 impl Loading {
+    pub fn new(text: &str) -> Self {
+        Self(text.to_string())
+    }
+
     fn text(&self) -> &str {
         if self.0.is_empty() {
             "Loading..."

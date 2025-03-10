@@ -5,7 +5,7 @@ use openai_backend::BoxedBackend;
 use openai_models::{Action, BackendPrompt, Event, Message};
 use tokio::{sync::mpsc, task::JoinHandle};
 
-use crate::clipboard::ClipboardService;
+// use crate::clipboard::ClipboardService;
 
 pub struct ActionService<'a> {
     event_tx: mpsc::UnboundedSender<Event>,
@@ -23,8 +23,8 @@ async fn completions(
 }
 
 fn worker_error(err: eyre::Error, event_tx: &mpsc::UnboundedSender<Event>) -> Result<()> {
-    event_tx.send(Event::BackendMessage(Message::new(
-        true,
+    event_tx.send(Event::BackendMessage(Message::new_system(
+        "system",
         format!("Error: Backend failed with the following error: \n\n {err:?}"),
     )))?;
 
@@ -69,35 +69,35 @@ impl ActionService<'_> {
                         Ok(())
                     })
                 }
-                Action::CopyMessages(messages) => self.copy_messages(messages)?,
+                Action::CopyMessages(_messages) => {}
             }
         }
     }
 
-    fn copy_messages(&self, messages: Vec<Message>) -> Result<()> {
-        let mut payload = messages[0].text().to_string();
-        if messages.len() > 1 {
-            payload = messages
-                .iter()
-                .map(|msg| format!("{}: {}", msg.author(), msg.text()))
-                .collect::<Vec<String>>()
-                .join("\n\n")
-        }
+    // fn copy_messages(&self, messages: Vec<Message>) -> Result<()> {
+    //     let mut payload = messages[0].text().to_string();
+    //     if messages.len() > 1 {
+    //         payload = messages
+    //             .iter()
+    //             .map(|msg| format!("{}: {}", msg.author(), msg.text()))
+    //             .collect::<Vec<String>>()
+    //             .join("\n\n")
+    //     }
 
-        if let Err(err) = ClipboardService::set(payload) {
-            self.event_tx.send(Event::BackendMessage(Message::new(
-                true,
-                format!("Error: Failed to copy to clipboard:\n\n{err}"),
-            )))?;
+    //     if let Err(err) = ClipboardService::set(payload) {
+    //         self.event_tx.send(Event::BackendMessage(Message::new(
+    //             true,
+    //             format!("Error: Failed to copy to clipboard:\n\n{err}"),
+    //         )))?;
 
-            return Ok(());
-        }
+    //         return Ok(());
+    //     }
 
-        self.event_tx.send(Event::BackendMessage(Message::new(
-            true,
-            "Copied to clipboard".to_string(),
-        )))?;
+    //     self.event_tx.send(Event::BackendMessage(Message::new(
+    //         true,
+    //         "Copied to clipboard".to_string(),
+    //     )))?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }

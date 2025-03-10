@@ -1,22 +1,62 @@
+#[derive(Debug, Clone)]
+pub enum Issuer {
+    System(String),
+    User(String),
+}
+
+#[derive(Debug, Clone)]
 pub struct Message {
-    system: bool,
+    issuer: Issuer,
     text: String,
+    timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 impl Message {
-    pub fn new(system: bool, text: impl Into<String>) -> Self {
+    pub fn new(issuer: Issuer, text: impl Into<String>) -> Self {
         Self {
-            system,
+            issuer,
             text: text.into(),
+            timestamp: chrono::Utc::now(),
         }
     }
 
-    pub fn system(&self) -> bool {
-        self.system
+    pub fn new_system(system: &str, text: impl Into<String>) -> Self {
+        Self {
+            issuer: Issuer::System(system.to_string()),
+            text: text.into(),
+            timestamp: chrono::Utc::now(),
+        }
+    }
+
+    pub fn new_user(user: &str, text: impl Into<String>) -> Self {
+        Self {
+            issuer: Issuer::User(user.to_string()),
+            text: text.into(),
+            timestamp: chrono::Utc::now(),
+        }
+    }
+
+    pub fn is_system(&self) -> bool {
+        matches!(self.issuer, Issuer::System(_))
+    }
+
+    pub fn issuer(&self) -> &Issuer {
+        &self.issuer
     }
 
     pub fn text(&self) -> &str {
         &self.text
+    }
+
+    pub fn timestamp(&self) -> chrono::DateTime<chrono::Utc> {
+        self.timestamp
+    }
+
+    pub fn issuer_str(&self) -> &str {
+        match &self.issuer {
+            Issuer::System(s) => s,
+            Issuer::User(u) => u,
+        }
     }
 
     pub fn append(&mut self, text: impl Into<String>) {
@@ -44,13 +84,5 @@ impl Message {
         }
 
         codeblocks
-    }
-
-    pub fn author(&self) -> String {
-        if self.system {
-            "System".to_string()
-        } else {
-            "User".to_string()
-        }
     }
 }

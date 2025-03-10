@@ -1,9 +1,10 @@
 use openai_models::Message;
 use ratatui::{
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
 };
 use syntect::{easy::HighlightLines, highlighting::ThemeSet};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::syntaxes::{SYNTAX_SET, Syntaxes};
 
@@ -64,6 +65,7 @@ impl<'a> Bubble<'_> {
     }
 
     pub fn as_lines(&mut self) -> Vec<Line<'a>> {
+        // FIXME: Optimize this by load the default theme only once
         let ts = ThemeSet::load_defaults();
         let theme = ts.themes.get("base16-ocean.dark").unwrap();
         let mut highlight = HighlightLines::new(Syntaxes::get("text"), &theme);
@@ -81,16 +83,7 @@ impl<'a> Bubble<'_> {
                     highlight = HighlightLines::new(syntax, &theme);
                     in_codeblock = true;
                     self.codeblock_counter += 1;
-                    spans = vec![
-                        Span::from(line.to_owned()),
-                        Span::styled(
-                            format!(" ({})", self.codeblock_counter),
-                            Style {
-                                fg: Some(Color::White),
-                                ..Style::default()
-                            },
-                        ),
-                    ];
+                    spans = vec![Span::from(line.to_owned())];
                 } else {
                     in_codeblock = false
                 }
@@ -126,8 +119,8 @@ impl<'a> Bubble<'_> {
             let mut line_char_count = 0;
 
             for span in spans {
-                if span.content.len() + line_char_count <= max_line_length {
-                    line_char_count += span.content.len();
+                if span.content.graphemes(true).count() + line_char_count <= max_line_length {
+                    line_char_count += span.content.graphemes(true).count();
                     split_spans.push(span);
                     continue;
                 }
@@ -156,13 +149,29 @@ impl<'a> Bubble<'_> {
     }
 
     fn wrap_lines_in_bubble(&self, lines: Vec<Line<'a>>, max_line_len: usize) -> Vec<Line<'a>> {
-        let inner_bar = ["─"].repeat(max_line_len + 2).join("");
-        let top_bar = format!("╭{inner_bar}╮");
-        let bottom_bar = format!("╰{inner_bar}╯");
+        // Replace top bar ─ with the issuer string
+        let issuer = self.message.issuer_str();
+        let top_bar = format!(
+            "╭─ {} {}╮",
+            issuer,
+            ["─"]
+                .repeat(max_line_len - issuer.graphemes(true).count() - 1)
+                .join("")
+        );
+
+        // Replace bottom bar ─ with the date
+        let date = self.message.timestamp().format("%H:%M %m/%d");
+        let bottom_bar = format!(
+            "╰─ {} {}╯",
+            date,
+            ["─"]
+                .repeat(max_line_len - date.to_string().graphemes(true).count() - 1)
+                .join("")
+        );
         let bar_padding =
             repeat_from_substactions(" ", vec![self.max_width, max_line_len, self.padding]);
 
-        if self.message.system() {
+        if self.message.is_system() {
             let mut res = vec![self.highlighted_line(format!("{top_bar}{bar_padding}"))];
             res.extend(lines);
             res.push(self.highlighted_line(format!("{bottom_bar}{bar_padding}")));
@@ -184,22 +193,39 @@ impl<'a> Bubble<'_> {
             .message
             .text()
             .lines()
-            .map(|line| line.len())
+            .map(|line| line.graphemes(true).count())
             .max()
-            .unwrap();
+            .unwrap_or_default();
 
         if max_line_len > (self.max_width - line_boder_width) {
             max_line_len = self.max_width - line_boder_width;
         }
-        if max_line_len as f32 > 0.75 * self.max_width as f32 {
-            max_line_len = (self.max_width as f32 * 0.75).ceil() as usize;
+
+        let issuer = &self.message.issuer_str();
+        // Padding space
+        if issuer.graphemes(true).count() + 2 > max_line_len {
+            max_line_len = issuer.graphemes(true).count() + 2;
+        }
+
+        // date format
+        let date = &self.message.timestamp().format("%H:%M %m/%d");
+        if date.to_string().graphemes(true).count() + 2 > max_line_len {
+            max_line_len = date.to_string().graphemes(true).count() + 2;
+        }
+
+        // Restrict max_line_len to 85% of max_width
+        if max_line_len as f32 > 0.85 * self.max_width as f32 {
+            max_line_len = (self.max_width as f32 * 0.85).ceil() as usize;
         }
 
         max_line_len
     }
 
     fn spans_to_line(&self, mut spans: Vec<Span<'a>>, max_line_len: usize) -> Line<'a> {
-        let line_str_len: usize = spans.iter().map(|e| return e.content.len()).sum();
+        let line_str_len: usize = spans
+            .iter()
+            .map(|e| return e.content.graphemes(true).count())
+            .sum();
         let fill = repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
         let formatted_line_len = line_str_len + fill.len() + self.padding;
 
@@ -209,7 +235,7 @@ impl<'a> Bubble<'_> {
 
         let outer_padding = repeat_from_substactions(" ", vec![self.max_width, formatted_line_len]);
 
-        if self.message.system() {
+        if self.message.is_system() {
             // Left alignment
             wrapped_spans.push(Span::from(outer_padding));
             return Line::from(wrapped_spans);

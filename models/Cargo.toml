@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 tui-textarea.workspace = true
+chrono.workspace = true

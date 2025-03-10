@@ -29,7 +29,7 @@ impl<'a> AppState<'_> {
 
         app_state
             .messages
-            .push(Message::new(true, "Hello! How can I help you?"));
+            .push(Message::new_system("system", "Hello! How can I help you?"));
 
         app_state
     }
@@ -48,10 +48,11 @@ impl<'a> AppState<'_> {
 
     pub fn handle_backend_response(&mut self, msg: BackendResponse) {
         let last_message = self.messages.last_mut().unwrap();
-        if last_message.system() {
+        if last_message.is_system() {
             last_message.append(&msg.text);
         } else {
-            self.messages.push(Message::new(true, &msg.text));
+            self.messages
+                .push(Message::new_system(msg.model.as_str(), &msg.text));
         }
 
         self.sync_state();
@@ -62,8 +63,8 @@ impl<'a> AppState<'_> {
                 self.backend_context = ctx;
             }
             if self.backend_context.is_empty() {
-                self.add_message(Message::new(
-                    true,
+                self.add_message(Message::new_system(
+                    "system",
                     "No context available. Please provide a context.",
                 ));
                 self.sync_state();

@@ -37,20 +37,7 @@ impl BackendPrompt {
         &self.context
     }
 
-    pub fn append_chat_context(&mut self, code_ctx: Option<CodeContext>) {
-        if let Some(ctx) = code_ctx {
-            let system_prompt = format!(
-                "\nThe coding language is {}. Please add language to any code blocks.",
-                ctx.language
-            );
-            self.text += &system_prompt;
-
-            if !ctx.code.is_empty() {
-                let code_prompt = format!("\nThe code is the following:\n```\n{}\n```", ctx.code);
-                self.text += &code_prompt
-            }
-        } else {
-            self.text += "\nPlease add language to any code blocks."
-        }
+    pub fn append_context(&mut self, ctx: impl Into<String>) {
+        self.context.push_str(&ctx.into());
     }
 }
