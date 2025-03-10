@@ -33,6 +33,12 @@ impl<'a> BubbleList<'a> {
         self.line_len = self.cache.iter().map(|(_, entry)| entry.lines.len()).sum();
     }
 
+    pub fn remove_message_by_index(&mut self, index: usize) {
+        if let Some(entry) = self.cache.remove(&index) {
+            self.line_len -= entry.lines.len();
+        }
+    }
+
     pub fn set_messages(&mut self, messages: &[Message], line_width: usize) {
         if self.line_width != line_width {
             self.cache.clear();

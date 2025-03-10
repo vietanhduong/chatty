@@ -59,10 +59,7 @@ impl ActionService<'_> {
             match event.unwrap() {
                 Action::BackendAbort => {
                     worker.abort();
-                    worker_tx.send(Event::BackendMessage(Message::new_system(
-                        "system",
-                        "Aborted Request".to_string(),
-                    )))?;
+                    worker_tx.send(Event::AbortRequest)?;
                 }
 
                 Action::BackendRequest(prompt) => {

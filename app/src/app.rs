@@ -5,7 +5,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use eyre::Result;
-use openai_models::{Action, BackendPrompt, Event, Message};
+use openai_models::{Action, BackendPrompt, Event, Message, message::Issuer};
 use ratatui::crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -90,6 +90,10 @@ impl<'a> App<'_> {
         }
 
         match event {
+            Event::AbortRequest => {
+                self.app_state
+                    .add_message(Message::new_system("system", "Aborted!"));
+            }
             Event::BackendMessage(msg) => {
                 self.app_state.add_message(msg);
                 self.app_state.waiting_for_backend = false;
@@ -122,17 +126,31 @@ impl<'a> App<'_> {
             }
 
             Event::KeyboardCtrlR => {
-                // TODO: Handle regenerate message
                 if self.app_state.waiting_for_backend {
                     return Ok(false);
                 }
-                let last = self.app_state.pop_last_message(Some(true));
-                if last.is_none() {
-                    return Ok(false);
+
+                // We pop all the message from the backend
+                // until we find the last message from user
+                // and resubmit it to the backend
+
+                let mut i = self.app_state.messages.len() as i32 - 1;
+                while i >= 0 {
+                    if !self.app_state.messages[i as usize].is_system() {
+                        break;
+                    }
+                    self.app_state.messages.remove(i as usize);
+                    self.app_state
+                        .bubble_list
+                        .remove_message_by_index(i as usize);
+                    i -= 1;
                 }
+                self.app_state.sync_state();
 
                 // Resubmit the last message from user
-                let last_user_msg = self.app_state.last_message(Some(false));
+                let last_user_msg = self
+                    .app_state
+                    .last_message_of(Some(Issuer::User("".to_string())));
 
                 let input_str = if let Some(msg) = last_user_msg {
                     msg.text().to_string()

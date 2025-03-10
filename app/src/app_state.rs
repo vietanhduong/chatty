@@ -4,12 +4,12 @@ use ratatui::layout::Rect;
 use crate::{ui::BubbleList, ui::Scroll};
 
 pub struct AppState<'a> {
-    pub bubble_list: BubbleList<'a>,
-    pub last_known_height: usize,
-    pub last_known_width: usize,
-    pub messages: Vec<Message>,
-    pub scroll: Scroll,
-    pub waiting_for_backend: bool,
+    pub(crate) bubble_list: BubbleList<'a>,
+    pub(crate) last_known_height: usize,
+    pub(crate) last_known_width: usize,
+    pub(crate) messages: Vec<Message>,
+    pub(crate) scroll: Scroll,
+    pub(crate) waiting_for_backend: bool,
 }
 
 impl<'a> AppState<'_> {
@@ -42,23 +42,34 @@ impl<'a> AppState<'_> {
         self.scroll.last();
     }
 
-    pub fn last_message(&self, is_system: Option<bool>) -> Option<&Message> {
+    pub fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
         if let Some(msg) = self.messages.last() {
-            if is_system.is_none() || is_system.unwrap() == msg.is_system() {
+            if issuer.is_none() {
                 return Some(msg);
             }
-        }
-        None
-    }
 
-    pub fn pop_last_message(&mut self, is_system: Option<bool>) -> Option<Message> {
-        if self.last_message(is_system).is_some() {
-            let ret = self.messages.pop();
-            if let Some(ref msg) = ret {
-                self.bubble_list.remove_message(msg.id());
-                self.sync_state();
+            let value;
+            let is_system = match msg.issuer() {
+                Issuer::System(sys) => {
+                    value = sys.to_string();
+                    true
+                }
+                Issuer::User(val) => {
+                    value = val.to_string();
+                    false
+                }
+            };
+
+            if is_system == msg.is_system() {
+                if value.is_empty() {
+                    return Some(msg);
+                }
+                return if msg.issuer_str() == value {
+                    Some(msg)
+                } else {
+                    None
+                };
             }
-            return ret;
         }
         None
     }
@@ -90,7 +101,7 @@ impl<'a> AppState<'_> {
             .collect::<Vec<_>>()
     }
 
-    fn sync_state(&mut self) {
+    pub fn sync_state(&mut self) {
         self.bubble_list
             .set_messages(&self.messages, self.last_known_width);
         let scrollbar_at_bottom = self.scroll.is_position_at_last();

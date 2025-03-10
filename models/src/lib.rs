@@ -8,6 +8,7 @@ pub use crate::message::Message;
 
 #[derive(Debug)]
 pub enum Event {
+    AbortRequest,
     BackendMessage(crate::Message),
     BackendPromptResponse(BackendResponse),
     KeyboardCharInput(Input),
