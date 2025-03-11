@@ -109,8 +109,7 @@ mod tests {
             Some("https://api.deepseek.com")
         );
 
-        let models = backend.models().unwrap();
-        let expected_models = vec!["deepseek-chat".to_string(), "deepseek-reasoner".to_string()];
-        assert_eq!(models, expected_models);
+        let model = backend.default_model().unwrap();
+        assert_eq!(model, "gpt-3.5-turbo");
     }
 }

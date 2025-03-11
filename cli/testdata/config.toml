@@ -13,7 +13,7 @@ name = "dark"
 folder_path = "/etc/openai-tui/theme"
 
 [backend]
-models = ["deepseek-chat", "deepseek-reasoner"]
+default_model = "gpt-3.5-turbo"
 
 [backend.openai]
 endpoint = "https://api.deepseek.com"

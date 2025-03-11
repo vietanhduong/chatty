@@ -6,8 +6,7 @@ use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::stream::StreamExt;
 use log::{debug, error, trace};
-use openai_models::message::Issuer;
-use openai_models::{BackendPrompt, BackendResponse, Event, Message};
+use openai_models::{BackendPrompt, BackendResponse, Event};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -102,7 +101,22 @@ impl Backend for OpenAI {
         let mut messages: Vec<MessageRequest> = vec![];
         if !prompt.context().is_empty() {
             // FIXME: This approach might not be optimized for large contexts
-            messages = prompt.context().iter().map(MessageRequest::from).collect();
+            messages = serde_json::from_str(&prompt.context())?;
+        }
+
+        // If user wants to regenerate the prompt, we need to rebuild the context
+        // by remove the last assistant message until we find the last user message
+        if prompt.regenerate() && !messages.is_empty() {
+            let mut i = messages.len() as i32 - 1;
+            while i >= 0 {
+                if messages[i as usize].role == "user" {
+                    break;
+                }
+                messages.pop();
+                i -= 1;
+            }
+            // Pop the last user message, we will add it again
+            messages.pop();
         }
 
         messages.push(MessageRequest {
@@ -192,7 +206,7 @@ impl Backend for OpenAI {
                             id: message_id.clone(),
                             model: self.current_model().to_string(),
                             text,
-                            context: vec![],
+                            context: None,
                             done: false,
                         };
 
@@ -208,14 +222,11 @@ impl Backend for OpenAI {
             content: last_message.clone(),
         });
 
-        let mut context = prompt.context().to_vec();
-        context.push(Message::new_system(&self.current_model, last_message).with_id(&message_id));
-
         let msg = BackendResponse {
             id: message_id,
             model: self.current_model().to_string(),
             text: String::new(),
-            context,
+            context: Some(serde_json::to_string(&messages)?),
             done: true,
         };
         event_tx.send(Event::BackendPromptResponse(msg))?;
@@ -326,29 +337,5 @@ pub struct OpenAIError {
 impl Display for OpenAIError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "OpenAI error ({}): {}", self.http_code, self.message)
-    }
-}
-
-impl From<Message> for MessageRequest {
-    fn from(value: Message) -> Self {
-        Self {
-            role: match value.issuer() {
-                Issuer::System(_) => "assistant".to_string(),
-                Issuer::User(_) => "user".to_string(),
-            },
-            content: value.text().to_string(),
-        }
-    }
-}
-
-impl From<&Message> for MessageRequest {
-    fn from(value: &Message) -> Self {
-        Self {
-            role: match value.issuer() {
-                Issuer::System(_) => "assistant".to_string(),
-                Issuer::User(_) => "user".to_string(),
-            },
-            content: value.text().to_string(),
-        }
     }
 }

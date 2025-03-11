@@ -171,7 +171,7 @@ fn build_rows<'a>(models: &'a [String], current_model: &str) -> Vec<Row<'a>> {
             let current = model == current_model;
             let mut spans = vec![];
             spans.push(Span::styled(
-                if current { "[x]" } else { "[ ]" },
+                if current { "[x] " } else { "[ ] " },
                 Style::default(),
             ));
             spans.push(Span::styled(model, Style::default()));

@@ -24,7 +24,7 @@ pub trait Backend {
 
 pub type ArcBackend = Arc<Mutex<dyn Backend + Send + Sync>>;
 
-pub fn new_boxed_backend(config: &Configuration) -> Result<ArcBackend> {
+pub fn new_backend(config: &Configuration) -> Result<ArcBackend> {
     let backend = config
         .backend()
         .ok_or_else(|| eyre::eyre!("No backend configuration found"))?;
@@ -33,7 +33,7 @@ pub fn new_boxed_backend(config: &Configuration) -> Result<ArcBackend> {
         .openai()
         .ok_or_else(|| eyre::eyre!("No OpenAI configuration found"))?;
 
-    let endpoint = openai.endpoint().unwrap_or_default();
+    let endpoint = openai.endpoint().unwrap_or("https://api.openai.com");
 
     let mut backend = OpenAI::default().with_endpoint(endpoint);
 

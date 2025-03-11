@@ -152,6 +152,7 @@ impl<'a> App<'_> {
                 self.app_state = AppState::new(self.theme);
                 return Ok(false);
             }
+
             Event::KeyboardCtrlH => {
                 // TODO: Handle toggle open History
             }
@@ -201,21 +202,11 @@ impl<'a> App<'_> {
                     return Ok(false);
                 };
 
-                let msg_id = last_user_msg.unwrap().id().to_string();
-
                 self.app_state.waiting_for_backend = true;
-                let mut prompt = BackendPrompt::new(input_str);
+                let prompt = BackendPrompt::new(input_str)
+                    .with_context(&self.app_state.context)
+                    .with_regenerate();
 
-                let context: Vec<Message> = self
-                    .app_state
-                    .build_context_for(&msg_id)
-                    .into_iter()
-                    .cloned()
-                    .collect();
-
-                if !context.is_empty() {
-                    prompt = prompt.with_context(context);
-                }
                 self.action_tx.send(Action::BackendRequest(prompt))?;
             }
 
@@ -239,24 +230,12 @@ impl<'a> App<'_> {
                 }
 
                 let msg = Message::new_user("user", input_str);
-                let msg_id = msg.id().to_string();
                 self.input = TextArea::default().build();
                 self.app_state.add_message(msg);
 
                 self.app_state.waiting_for_backend = true;
 
-                let mut prompt = BackendPrompt::new(input_str);
-
-                let context: Vec<Message> = self
-                    .app_state
-                    .build_context_for(&msg_id)
-                    .into_iter()
-                    .cloned()
-                    .collect();
-
-                if !context.is_empty() {
-                    prompt = prompt.with_context(context);
-                }
+                let prompt = BackendPrompt::new(input_str).with_context(&self.app_state.context);
                 self.action_tx.send(Action::BackendRequest(prompt))?;
             }
 

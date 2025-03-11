@@ -11,6 +11,7 @@ pub struct AppState<'a> {
     pub(crate) messages: Vec<Message>,
     pub(crate) scroll: Scroll,
     pub(crate) waiting_for_backend: bool,
+    pub(crate) context: String,
 }
 
 impl<'a> AppState<'_> {
@@ -22,6 +23,7 @@ impl<'a> AppState<'_> {
             messages: Vec::new(),
             scroll: Scroll::default(),
             waiting_for_backend: false,
+            context: String::new(),
         };
 
         app_state.messages.push(Message::new_system(
@@ -89,20 +91,17 @@ impl<'a> AppState<'_> {
 
         if msg.done {
             self.waiting_for_backend = false;
-        }
-    }
+            if let Some(ctx) = msg.context {
+                self.context = ctx;
+            }
 
-    pub fn build_context_for(&self, msg_id: &str) -> Vec<&Message> {
-        self.messages
-            .iter()
-            .filter(|msg| 
-                match msg.issuer() {
-                    Issuer::System(sys) => sys != "system",
-                    _ => true,
-                }
-                &&msg.id() != msg_id
-            )
-            .collect::<Vec<_>>()
+            if self.context.is_empty() {
+                self.add_message(Message::new_system(
+                    "system",
+                    "No context available for this code.",
+                ));
+            }
+        }
     }
 
     pub fn sync_state(&mut self) {

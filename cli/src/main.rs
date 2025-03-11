@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use eyre::Result;
 use openai_app::{App, services::ActionService};
-use openai_backend::new_boxed_backend;
+use openai_backend::new_backend;
 use openai_models::{Action, Event};
 use openai_tui::{Command, init_logger, init_theme};
 use tokio::{sync::mpsc, task};
@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
 
     let theme = init_theme(&config)?;
 
-    let backend = new_boxed_backend(&config)?;
+    let backend = new_backend(&config)?;
     {
         let mut lock = backend.lock().await;
         lock.health_check().await?;
@@ -23,22 +23,24 @@ async fn main() -> Result<()> {
         if models.is_empty() {
             eyre::bail!("No models available");
         }
-        let want_models = config
-            .backend()
-            .cloned()
-            .unwrap_or_default()
-            .models()
-            .unwrap_or_default()
-            .to_vec();
 
-        let model = if want_models.is_empty() {
+        let backend_config = config.backend().cloned().unwrap_or_default();
+        let want_model = backend_config.default_model().unwrap_or_default();
+
+        let model = if want_model.is_empty() {
             models[0].clone()
         } else {
-            want_models
+            models
                 .iter()
-                .filter(|m| models.contains(m))
-                .next()
-                .unwrap_or(&models[0])
+                .find(|m| m == &&want_model)
+                .unwrap_or_else(|| {
+                    log::warn!(
+                        "Model {} not found, using default ({})",
+                        want_model,
+                        models[0]
+                    );
+                    &models[0]
+                })
                 .clone()
         };
 

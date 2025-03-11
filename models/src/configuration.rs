@@ -35,7 +35,7 @@ pub struct Theme {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Backend {
     openai: Option<OpenAI>,
-    models: Option<Vec<String>>,
+    default_model: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -107,8 +107,8 @@ impl Backend {
         self.openai.as_ref()
     }
 
-    pub fn models(&self) -> Option<&[String]> {
-        self.models.as_deref()
+    pub fn default_model(&self) -> Option<&str> {
+        self.default_model.as_deref()
     }
 }
 
@@ -155,7 +155,7 @@ impl Default for Backend {
     fn default() -> Self {
         Self {
             openai: Some(OpenAI::default()),
-            models: None,
+            default_model: None,
         }
     }
 }
