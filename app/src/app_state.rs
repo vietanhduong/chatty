@@ -1,5 +1,6 @@
 use openai_models::{BackendResponse, Message, message::Issuer};
 use ratatui::layout::Rect;
+use syntect::highlighting::Theme;
 
 use crate::{ui::BubbleList, ui::Scroll};
 
@@ -13,9 +14,9 @@ pub struct AppState<'a> {
 }
 
 impl<'a> AppState<'_> {
-    pub fn new() -> Self {
+    pub fn new(theme: &'a Theme) -> AppState<'a> {
         let mut app_state = AppState {
-            bubble_list: BubbleList::new(),
+            bubble_list: BubbleList::new(theme),
             last_known_height: 0,
             last_known_width: 0,
             messages: Vec::new(),

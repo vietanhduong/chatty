@@ -16,6 +16,7 @@ use ratatui::{
     prelude::{Backend, CrosstermBackend},
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation},
 };
+use syntect::highlighting::Theme;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -36,13 +37,14 @@ pub struct App<'a> {
 
 impl<'a> App<'_> {
     pub fn new(
+        theme: &'a Theme,
         action_tx: mpsc::UnboundedSender<Action>,
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
     ) -> App<'a> {
         App {
             action_tx,
             events: EventsService::new(event_rx),
-            app_state: AppState::new(),
+            app_state: AppState::new(theme),
             input: TextArea::default().build(),
             loading: Loading::new("Thinking... Press <Ctrl+c> to abort"),
             help: Help::new(),

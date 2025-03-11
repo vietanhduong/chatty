@@ -1,0 +1,16 @@
+[log]
+level = "debug"
+
+[log.file]
+path = "/var/log/openai-tui.log"
+append = true
+
+[theme]
+name = "dark"
+bin_path = "/etc/openai-tui/bin/them.bin"
+
+[backend]
+models = ["deepseek-chat", "deepseek-reasoner"]
+
+[backend.openai]
+endpoint = "https://api.deepseek.com"

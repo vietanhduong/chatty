@@ -1,42 +1,47 @@
-use std::{fs::File, io::Write, sync::Arc};
+use std::sync::Arc;
 
-use chrono::Local;
-use env_logger::Builder;
 use eyre::Result;
-use log::LevelFilter;
 use openai_app::{App, services::ActionService};
-use openai_backend::{BoxedBackend, OpenAI};
+use openai_backend::new_boxed_backend;
 use openai_models::{Action, Event};
+use openai_tui::{Command, init_logger, init_theme};
 use tokio::{sync::mpsc, task};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let log_file = Box::new(File::create("/tmp/openai_app.log")?);
+    let config = Command::get_config()?;
+    init_logger(&config)?;
 
-    Builder::new()
-        .format(|buf, record| {
-            writeln!(
-                buf,
-                "{}:{} {} [{}] - {}",
-                record.file().unwrap_or("unknown"),
-                record.line().unwrap_or(0),
-                Local::now().format("%Y-%m-%dT%H:%M:%S%.3f"),
-                record.level(),
-                record.args()
-            )
-        })
-        .target(env_logger::Target::Pipe(log_file))
-        .filter(None, LevelFilter::Debug)
-        .init();
+    let theme = init_theme(&config)?;
 
-    let mut backend: BoxedBackend = Box::new(
-        OpenAI::default()
-            .with_endpoint("https://api.deepseek.com")
-            .with_token(std::env::var("OPENAI_API_KEY")?.as_str()),
-    );
-
+    let mut backend = new_boxed_backend(&config)?;
     backend.health_check().await?;
-    backend.set_model("deepseek-chat").await?;
+
+    let models = backend.list_models().await?;
+    if models.is_empty() {
+        eyre::bail!("No models available");
+    }
+
+    let want_models = config
+        .backend()
+        .cloned()
+        .unwrap_or_default()
+        .models()
+        .unwrap_or_default()
+        .to_vec();
+
+    let model = if want_models.is_empty() {
+        models[0].clone()
+    } else {
+        want_models
+            .iter()
+            .filter(|m| models.contains(m))
+            .next()
+            .unwrap_or(&models[0])
+            .clone()
+    };
+
+    backend.set_model(&model).await?;
 
     let backend = Arc::new(backend);
 
@@ -51,7 +56,7 @@ async fn main() -> Result<()> {
             .await
     });
 
-    let mut app = App::new(action_tx.clone(), &mut event_rx);
+    let mut app = App::new(&theme, action_tx.clone(), &mut event_rx);
 
     app.run().await?;
     Ok(())

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use openai_models::Message;
 use ratatui::{buffer::Buffer, layout::Rect, text::Line};
+use syntect::highlighting::Theme;
 
 use super::bubble::Bubble;
 
@@ -13,14 +14,16 @@ struct CacheEntry<'a> {
 }
 
 pub struct BubbleList<'a> {
+    theme: &'a Theme,
     cache: HashMap<usize, CacheEntry<'a>>,
     line_width: usize,
     line_len: usize,
 }
 
 impl<'a> BubbleList<'a> {
-    pub fn new() -> Self {
+    pub fn new(theme: &'a Theme) -> Self {
         Self {
+            theme,
             cache: HashMap::new(),
             line_len: 0,
             line_width: 0,
@@ -59,7 +62,7 @@ impl<'a> BubbleList<'a> {
                 }
 
                 let bubble_lines =
-                    Bubble::new(message, line_width, total_codeblock_counter).as_lines();
+                    Bubble::new(message, line_width, total_codeblock_counter).as_lines(self.theme);
                 let bubble_lines_len = bubble_lines.len();
 
                 let codeblocks_count = message.codeblocks().len();

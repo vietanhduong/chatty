@@ -1,5 +1,5 @@
 [package]
-name = "openai-cli"
+name = "openai-tui"
 version = "0.1.0"
 edition = "2024"
 
@@ -10,6 +10,9 @@ tokio.workspace = true
 env_logger.workspace = true
 log.workspace = true
 chrono.workspace = true
+toml.workspace = true
+clap.workspace = true
+syntect.workspace = true
 
 openai-app = { path = "../app" }
 openai-backend = { path = "../backend" }

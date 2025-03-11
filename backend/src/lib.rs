@@ -4,7 +4,7 @@ pub use crate::openai::OpenAI;
 
 use async_trait::async_trait;
 use eyre::Result;
-use openai_models::{BackendPrompt, Event};
+use openai_models::{BackendPrompt, Event, config::Configuration};
 use tokio::sync::mpsc;
 
 #[async_trait]
@@ -21,3 +21,22 @@ pub trait Backend {
 }
 
 pub type BoxedBackend = Box<dyn Backend + Send + Sync>;
+
+pub fn new_boxed_backend(config: &Configuration) -> Result<BoxedBackend> {
+    let backend = config
+        .backend()
+        .ok_or_else(|| eyre::eyre!("No backend configuration found"))?;
+
+    let openai = backend
+        .openai()
+        .ok_or_else(|| eyre::eyre!("No OpenAI configuration found"))?;
+
+    let endpoint = openai.endpoint().unwrap_or_default();
+
+    let mut backend = OpenAI::default().with_endpoint(endpoint);
+
+    if let Some(api_key) = openai.api_key() {
+        backend = backend.with_token(api_key);
+    }
+    Ok(Box::new(backend))
+}

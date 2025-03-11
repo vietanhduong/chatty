@@ -3,7 +3,7 @@ use ratatui::{
     style::Style,
     text::{Line, Span},
 };
-use syntect::{easy::HighlightLines, highlighting::ThemeSet};
+use syntect::{easy::HighlightLines, highlighting::Theme};
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::syntaxes::{SYNTAX_SET, Syntaxes};
@@ -68,11 +68,8 @@ impl<'a> Bubble<'_> {
         self.outer_padding_percentage
     }
 
-    pub fn as_lines(&mut self) -> Vec<Line<'a>> {
-        // FIXME: Optimize this by load the default theme only once
-        let ts = ThemeSet::load_defaults();
-        let theme = ts.themes.get("base16-ocean.dark").unwrap();
-        let mut highlight = HighlightLines::new(Syntaxes::get("text"), &theme);
+    pub fn as_lines(&mut self, theme: &Theme) -> Vec<Line<'a>> {
+        let mut highlight = HighlightLines::new(Syntaxes::get("text"), theme);
         let mut in_codeblock = false;
         let mut lines: Vec<Line> = vec![];
 

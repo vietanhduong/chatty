@@ -39,3 +39,5 @@ log = "0.4.26"
 env_logger = "0.11.6"
 chrono = "0.4.40"
 unicode-segmentation = "1.12.0"
+clap = { version = "4.5.32", features = ["derive"] }
+toml = "0.8.20"
