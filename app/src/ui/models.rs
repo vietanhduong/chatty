@@ -6,7 +6,7 @@ use openai_models::Event;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Flex, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, Cell, Clear, Row, Table, TableState},
 };
@@ -79,7 +79,7 @@ impl ModelsScreen {
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
-            .title(" Models ")
+            .title(" Models ".bg(Color::Red).fg(Color::White).bold())
             .title_alignment(Alignment::Center)
             .title_bottom(" <q>/<Enter> to close/select ")
             .style(Style {

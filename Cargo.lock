@@ -1484,6 +1484,7 @@ name = "openai-app"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "chrono",
  "crossterm",
  "eyre",
  "futures",

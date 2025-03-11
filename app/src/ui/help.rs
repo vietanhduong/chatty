@@ -99,7 +99,7 @@ impl<'a> HelpScreen<'_> {
 
     pub fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         let block = Block::bordered()
-            .title(" Help ")
+            .title(" Help ".bg(Color::Red).fg(Color::White).bold())
             .title_alignment(Alignment::Center)
             .title_bottom("<Esc>/<q> to close")
             .style(Style {

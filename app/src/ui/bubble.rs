@@ -1,6 +1,6 @@
 use openai_models::Message;
 use ratatui::{
-    style::Style,
+    style::{Color, Style},
     text::{Line, Span},
 };
 use syntect::{easy::HighlightLines, highlighting::Theme};
@@ -159,7 +159,11 @@ impl<'a> Bubble<'_> {
         );
 
         // Replace bottom bar ─ with the date
-        let date = self.message.timestamp().format("%H:%M %m/%d");
+        let date = self
+            .message
+            .timestamp()
+            .with_timezone(&chrono::Local)
+            .format("%H:%M %m/%d");
         let bottom_bar = format!(
             "╰─ {} {}╯",
             date,
@@ -201,19 +205,21 @@ impl<'a> Bubble<'_> {
         }
 
         let issuer = &self.message.issuer_str();
-        // Padding space
+        // 2 Padding space
         if issuer.width() + 2 > max_line_len {
             max_line_len = issuer.width() + 2;
         }
 
         // date format
-        let date = &self.message.timestamp().format("%H:%M %m/%d");
+        let date = &self
+            .message
+            .timestamp()
+            .with_timezone(&chrono::Local)
+            .format("%H:%M %m/%d");
+
         if date.to_string().width() + 2 > max_line_len {
             max_line_len = date.to_string().width() + 2;
         }
-
-        // Count the number of graphemes in the message text
-        // and push it to the max_line_len
 
         // Restrict max_line_len to 85% of max_width
         if max_line_len as f32 > 0.85 * self.max_width as f32 {
@@ -247,7 +253,18 @@ impl<'a> Bubble<'_> {
     }
 
     fn highlighted_span(&self, text: String) -> Span<'a> {
-        Span::from(text)
+        let color = if self.message.is_system() {
+            Color::Yellow
+        } else {
+            Color::LightBlue
+        };
+        Span::styled(
+            text,
+            Style {
+                fg: Some(color),
+                ..Style::default()
+            },
+        )
     }
 
     fn highlighted_line(&self, text: String) -> Line<'a> {

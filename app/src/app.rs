@@ -132,6 +132,12 @@ impl<'a> App<'_> {
                 if self.app_state.waiting_for_backend {
                     self.app_state.waiting_for_backend = false;
                     self.action_tx.send(Action::BackendAbort)?;
+                    return Ok(false);
+                }
+
+                // Clear text in the input area if not waiting for backend
+                if !self.input.lines().is_empty() {
+                    self.input = TextArea::default().build();
                 }
             }
             Event::KeyboardCtrlQ => {

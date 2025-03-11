@@ -15,6 +15,7 @@ futures.workspace = true
 arboard.workspace = true
 log.workspace = true
 unicode-width.workspace = true
+chrono.workspace = true
 
 openai-backend = { path = "../backend" }
 openai-models = { path = "../models" }
