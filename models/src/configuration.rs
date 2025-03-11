@@ -10,7 +10,14 @@ pub struct Configuration {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Log {
     level: Option<String>,
+    filters: Option<Vec<LogFilter>>,
     file: Option<LogFile>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LogFilter {
+    module: String,
+    level: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -58,6 +65,20 @@ impl Log {
 
     pub fn file(&self) -> Option<&LogFile> {
         self.file.as_ref()
+    }
+
+    pub fn filters(&self) -> Option<&[LogFilter]> {
+        self.filters.as_deref()
+    }
+}
+
+impl LogFilter {
+    pub fn module(&self) -> &str {
+        &self.module
+    }
+
+    pub fn level(&self) -> Option<&str> {
+        self.level.as_deref()
     }
 }
 
@@ -116,6 +137,7 @@ impl Default for Log {
         Self {
             level: Some("info".to_string()),
             file: None,
+            filters: None,
         }
     }
 }

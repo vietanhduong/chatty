@@ -27,9 +27,18 @@ pub fn init_logger(config: &Configuration) -> Result<()> {
         Box::new(std::io::stderr())
     };
 
-    let log_level = LevelFilter::from_str(log.level().unwrap_or("info"))?;
+    let raw_level = log.level().unwrap_or("info");
+    let log_level = LevelFilter::from_str(raw_level)?;
 
-    env_logger::Builder::new()
+    let mut builder = env_logger::Builder::new();
+
+    for filter in log.filters().unwrap_or_default() {
+        let module_level =
+            LevelFilter::from_str(filter.level().unwrap_or(raw_level)).unwrap_or(log_level.clone());
+        builder.filter(Some(filter.module()), module_level);
+    }
+
+    builder
         .format(|buf, record| {
             writeln!(
                 buf,
@@ -45,7 +54,6 @@ pub fn init_logger(config: &Configuration) -> Result<()> {
         .target(env_logger::Target::Pipe(log_file))
         .filter(None, log_level)
         .try_init()?;
-
     Ok(())
 }
 
@@ -77,9 +85,14 @@ mod tests {
     #[test]
     fn test_load_configuration() {
         let config = load_configuration("./testdata/config.toml").expect("failed to load config");
-        assert_eq!(config.log().unwrap().level(), Some("debug"));
 
-        let log_file = config.log().unwrap().file();
+        let log = config.log().unwrap();
+        assert_eq!(log.level(), Some("info"));
+        let log_filters = log.filters().unwrap_or_default();
+        assert_eq!(log_filters.len(), 1);
+        assert_eq!(log_filters[0].module(), "openai_backend");
+
+        let log_file = log.file();
         assert!(log_file.is_some());
         assert_eq!(log_file.unwrap().path(), "/var/log/openai-tui.log");
         assert_eq!(log_file.unwrap().append(), true);
@@ -87,7 +100,7 @@ mod tests {
         assert_eq!(config.theme().unwrap().name(), Some("dark"));
         assert_eq!(
             config.theme().unwrap().folder_path(),
-            Some("/etc/openai-tui/bin/them.bin")
+            Some("/etc/openai-tui/theme")
         );
 
         let backend = config.backend().unwrap();

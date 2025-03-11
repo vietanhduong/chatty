@@ -1,5 +1,8 @@
 [log]
-level = "debug"
+level = "info"
+filters = [{ module = "openai_backend", "level" = "debug" }]
+
+module = "openai_tui"
 
 [log.file]
 path = "/var/log/openai-tui.log"
@@ -7,7 +10,7 @@ append = true
 
 [theme]
 name = "dark"
-bin_path = "/etc/openai-tui/bin/them.bin"
+folder_path = "/etc/openai-tui/theme"
 
 [backend]
 models = ["deepseek-chat", "deepseek-reasoner"]
