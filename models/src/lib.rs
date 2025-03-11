@@ -22,6 +22,7 @@ pub enum Event {
     KeyboardCtrlC,
     KeyboardCtrlR,
     KeyboardCtrlN,
+    KeyboardCtrlE,
     KeyboardCtrlL,
     KeyboardCtrlH,
     KeyboardF1,

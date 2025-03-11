@@ -6,12 +6,14 @@ use std::{
 };
 
 use ratatui::{
-    layout::{Alignment, Constraint, Flex, Layout, Rect},
+    layout::{Alignment, Constraint, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Text},
-    widgets::{Block, Cell, Clear, Row, Table, TableState},
+    widgets::{Block, BorderType, Borders, Cell, Clear, Padding, Row, Table, TableState},
 };
 use tui_textarea::Key;
+
+use super::helpers;
 
 pub const KEY_BINDINGS: Lazy<Vec<KeyBinding>> = Lazy::new(build_key_bindings);
 const ROW_HEIGHT: usize = 1;
@@ -83,11 +85,12 @@ impl<'a> HelpScreen<'_> {
             }
 
             Event::KeyboardCharInput(input) => {
-                if Key::Char('q') == input.key {
+                if input.key == Key::Char('q') {
                     self.showing = false;
                     return false;
                 }
             }
+
             Event::UiScrollDown => self.next_row(),
             Event::UiScrollUp => self.prev_row(),
 
@@ -98,16 +101,16 @@ impl<'a> HelpScreen<'_> {
     }
 
     pub fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
-        let block = Block::bordered()
-            .title(" Help ".bg(Color::Red).fg(Color::White).bold())
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::LightBlue))
+            .padding(Padding::symmetric(1, 0))
+            .title(" Help ")
             .title_alignment(Alignment::Center)
-            .title_bottom("<Esc>/<q> to close")
-            .style(Style {
-                bg: Some(Color::Blue),
-                fg: Some(Color::White),
-                ..Default::default()
-            });
-        let area = Self::popup_area(area, 60, 30);
+            .title_bottom(" <Esc> to close ")
+            .style(Style::default());
+        let area = helpers::popup_area(area, 40, 30);
         frame.render_widget(Clear, area);
 
         if self.last_known_width != area.width as usize
@@ -140,18 +143,8 @@ impl<'a> HelpScreen<'_> {
             .filter(|b| !b.short_description.is_empty())
             .map(|b| format!("{}: {}", b.key(), b.short_description()))
             .collect::<Vec<_>>();
-        let line = Line::from(instructions.join(" | ")).green();
+        let line = Line::from(instructions.join(" | ")).light_green();
         frame.render_widget(line, area);
-    }
-
-    fn popup_area(area: Rect, percent_width: u16, percent_height: u16) -> Rect {
-        let vertical =
-            Layout::vertical([Constraint::Percentage(percent_height)]).flex(Flex::Center);
-        let horizontal =
-            Layout::horizontal([Constraint::Percentage(percent_width)]).flex(Flex::Center);
-        let [area] = vertical.areas(area);
-        let [area] = horizontal.areas(area);
-        area
     }
 }
 
@@ -192,16 +185,23 @@ fn build_rows<'a>(max_width: usize) -> Vec<Row<'a>> {
 
 fn build_key_bindings() -> Vec<KeyBinding> {
     vec![
+        KeyBinding::new(Input::new(Key::Esc), "Close Popup"),
+        KeyBinding::new(Input::new(Key::F(1)), "Show Help").with_short_desc("Help"),
         KeyBinding::new(Input::new(Key::Char('h')).ctrl(), "Show Chat History")
             .with_short_desc("History"),
         KeyBinding::new(Input::new(Key::Char('q')).ctrl(), "Quit").with_short_desc("Quit"),
-        KeyBinding::new(Input::new(Key::F(1)), "Show Help").with_short_desc("Help"),
-        KeyBinding::new(Input::new(Key::Char('c')).ctrl(), "Abort Request"),
+        KeyBinding::new(
+            Input::new(Key::Char('c')).ctrl(),
+            "Abort Request/Clear Chat",
+        ),
         KeyBinding::new(Input::new(Key::Char('r')).ctrl(), "Regenerate Response"),
         KeyBinding::new(Input::new(Key::Char('l')).ctrl(), "List/Select Model"),
+        KeyBinding::new(Input::new(Key::Char('e')).ctrl(), "Edit Mode"),
         KeyBinding::new(Input::new(Key::Char('n')).ctrl(), "New Chat"),
-        KeyBinding::new(Input::new(Key::Up).ctrl(), "Scroll Up"),
-        KeyBinding::new(Input::new(Key::Down).ctrl(), "Scroll Down"),
+        KeyBinding::new(Input::new(Key::Up), "Scroll Up"),
+        KeyBinding::new(Input::new(Key::Down), "Scroll Down"),
+        KeyBinding::new(Input::new(Key::Up).ctrl(), "Scroll Page Up"),
+        KeyBinding::new(Input::new(Key::Down).ctrl(), "Scroll Page Down"),
     ]
 }
 

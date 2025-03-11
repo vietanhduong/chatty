@@ -6,6 +6,8 @@ use tokio::sync::mpsc;
 use tokio::time;
 use tui_textarea::{Input, Key};
 
+const FRAME_DURATION: time::Duration = time::Duration::from_millis(1000 / 60);
+
 pub struct EventsService<'a> {
     crossterm_events: EventStream,
     events: &'a mut mpsc::UnboundedReceiver<Event>,
@@ -37,14 +39,15 @@ impl<'a> EventsService<'_> {
                 // Map ctrl events
                 if input.ctrl {
                     match input.key {
-                        Key::Char('u') => return Some(Event::UiScrollUp),
-                        Key::Char('d') => return Some(Event::UiScrollDown),
+                        Key::Char('u') => return Some(Event::UiScrollPageUp),
+                        Key::Char('d') => return Some(Event::UiScrollPageDown),
                         Key::Char('q') => return Some(Event::KeyboardCtrlQ),
                         Key::Char('c') => return Some(Event::KeyboardCtrlC),
                         Key::Char('r') => return Some(Event::KeyboardCtrlR),
                         Key::Char('l') => return Some(Event::KeyboardCtrlL),
                         Key::Char('h') => return Some(Event::KeyboardCtrlH),
                         Key::Char('n') => return Some(Event::KeyboardCtrlN),
+                        Key::Char('e') => return Some(Event::KeyboardCtrlE),
                         _ => return None,
                     }
                 }
@@ -75,7 +78,7 @@ impl<'a> EventsService<'_> {
                     Some(Err(_)) => None,
                     None => None
                 },
-                _ = time::sleep(time::Duration::from_millis(500)) => Some(Event::UiTick)
+                _ = time::sleep(FRAME_DURATION) => Some(Event::UiTick)
             };
 
             if let Some(event) = e {

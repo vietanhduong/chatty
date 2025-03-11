@@ -8,7 +8,6 @@ use super::bubble::Bubble;
 
 struct CacheEntry<'a> {
     message_id: String,
-    codeblocks_count: usize,
     text_len: usize,
     lines: Vec<Line<'a>>,
 }
@@ -48,7 +47,6 @@ impl<'a> BubbleList<'a> {
             self.line_width = line_width;
         }
 
-        let mut total_codeblock_counter = 0;
         self.line_len = messages
             .iter()
             .enumerate()
@@ -56,23 +54,17 @@ impl<'a> BubbleList<'a> {
                 if self.cache.contains_key(&i) {
                     let cache_entry = self.cache.get(&i).unwrap();
                     if i < (messages.len() - 1) || message.text().len() == cache_entry.text_len {
-                        total_codeblock_counter += cache_entry.codeblocks_count;
                         return cache_entry.lines.len();
                     }
                 }
 
-                let bubble_lines =
-                    Bubble::new(message, line_width, total_codeblock_counter).as_lines(self.theme);
+                let bubble_lines = Bubble::new(message, line_width).as_lines(self.theme);
                 let bubble_lines_len = bubble_lines.len();
-
-                let codeblocks_count = message.codeblocks().len();
-                total_codeblock_counter += codeblocks_count;
 
                 self.cache.insert(
                     i,
                     CacheEntry {
                         message_id: message.id().to_string(),
-                        codeblocks_count,
                         text_len: message.text().len(),
                         lines: bubble_lines,
                     },

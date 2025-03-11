@@ -23,7 +23,7 @@ use tokio::sync::mpsc;
 use crate::{
     app_state::AppState,
     services::EventsService,
-    ui::{HelpScreen, Loading, ModelsScreen, TextArea, bubble},
+    ui::{EditScreen, HelpScreen, Loading, ModelsScreen, TextArea, bubble},
 };
 
 pub struct App<'a> {
@@ -33,6 +33,7 @@ pub struct App<'a> {
     input: tui_textarea::TextArea<'a>,
     help_screen: HelpScreen<'a>,
     models_screen: ModelsScreen,
+    edit_screen: EditScreen<'a>,
 
     loading: Loading,
     theme: &'a Theme,
@@ -54,6 +55,7 @@ impl<'a> App<'_> {
             loading: Loading::new("Thinking... Press <Ctrl+c> to abort!"),
             help_screen: HelpScreen::new(),
             models_screen: ModelsScreen::new(backend),
+            edit_screen: EditScreen::new(theme),
         }
     }
 
@@ -105,6 +107,14 @@ impl<'a> App<'_> {
 
         if self.models_screen.showing() {
             if self.models_screen.handle_key_event(event).await? {
+                // If true, stop the process
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        if self.edit_screen.showing() {
+            if self.edit_screen.handle_key_event(event) {
                 // If true, stop the process
                 return Ok(true);
             }
@@ -168,6 +178,14 @@ impl<'a> App<'_> {
                     return Ok(false);
                 }
                 self.models_screen.toggle_showing()
+            }
+
+            Event::KeyboardCtrlE => {
+                if self.app_state.waiting_for_backend {
+                    return Ok(false);
+                }
+                self.edit_screen.set_messages(&self.app_state.messages);
+                self.edit_screen.toggle_showing();
             }
 
             Event::KeyboardCtrlR => {
@@ -311,6 +329,9 @@ impl<'a> App<'_> {
             }
             if self.models_screen.showing() {
                 self.models_screen.render(frame, frame.area());
+            }
+            if self.edit_screen.showing() {
+                self.edit_screen.render(frame, frame.area());
             }
         })?;
         Ok(())

@@ -3,10 +3,10 @@ use ratatui::{
     style::{Color, Style},
     text::{Line, Span},
 };
-use syntect::{easy::HighlightLines, highlighting::Theme};
+use syntect::highlighting::Theme;
 use unicode_width::UnicodeWidthStr;
 
-use super::syntaxes::{SYNTAX_SET, Syntaxes};
+use super::helpers;
 
 pub const DEFAULT_PADDING: usize = 8;
 pub const DEFAULT_BORDER_ELEMENTS_LEN: usize = 5;
@@ -15,7 +15,6 @@ pub const DEFAULT_OUTER_PADDING_PERCENTAGE: f32 = 0.04;
 pub struct Bubble<'a> {
     message: &'a Message,
     max_width: usize,
-    codeblock_counter: usize,
 
     // Settings
     padding: usize,
@@ -24,11 +23,10 @@ pub struct Bubble<'a> {
 }
 
 impl<'a> Bubble<'_> {
-    pub fn new(message: &'a Message, max_width: usize, codeblock_counter: usize) -> Bubble<'a> {
+    pub fn new(message: &'a Message, max_width: usize) -> Bubble<'a> {
         Bubble {
             message,
             max_width,
-            codeblock_counter,
 
             // Settings
             // Unicode character border + padding
@@ -68,83 +66,13 @@ impl<'a> Bubble<'_> {
         self.outer_padding_percentage
     }
 
-    pub fn as_lines(&mut self, theme: &Theme) -> Vec<Line<'a>> {
-        let mut highlight = HighlightLines::new(Syntaxes::get("text"), theme);
-        let mut in_codeblock = false;
-        let mut lines: Vec<Line> = vec![];
-
+    pub fn as_lines(&mut self, theme: &'a Theme) -> Vec<Line<'a>> {
         let max_line_len = self.get_max_line_length();
 
-        for line in self.message.text().lines() {
-            let mut spans = vec![];
-            if line.trim().starts_with("```") {
-                let lang = line.trim().replace("```", "");
-                let syntax = Syntaxes::get(&lang);
-                if !in_codeblock {
-                    highlight = HighlightLines::new(syntax, &theme);
-                    in_codeblock = true;
-                    self.codeblock_counter += 1;
-                    spans = vec![Span::from(line.to_owned())];
-                } else {
-                    in_codeblock = false
-                }
-            } else if in_codeblock {
-                let line_nl = format!("{}\n", line);
-                let highlighted = highlight.highlight_line(&line_nl, &SYNTAX_SET).unwrap();
-                spans = highlighted
-                    .iter()
-                    .enumerate()
-                    .map(|(i, segment)| {
-                        let (style, content) = segment;
-                        let mut text = content.to_string();
-                        if i == highlighted.len() - 1 {
-                            text = text.trim_end().to_string();
-                        }
-
-                        Span::styled(
-                            text,
-                            Style {
-                                fg: Syntaxes::translate_colour(style.foreground),
-                                ..Style::default()
-                            },
-                        )
-                    })
-                    .collect();
-            }
-
-            if spans.is_empty() {
-                spans = vec![Span::styled(line.to_owned(), Style::default())];
-            }
-
-            let mut split_spans = vec![];
-            let mut line_char_count = 0;
-
-            for span in spans {
-                if span.content.width() + line_char_count <= max_line_len {
-                    line_char_count += span.content.width();
-                    split_spans.push(span);
-                    continue;
-                }
-
-                let mut word_set: Vec<&str> = vec![];
-                for word in span.content.split(' ') {
-                    if word.len() + line_char_count > max_line_len {
-                        split_spans.push(Span::styled(word_set.join(" "), span.style));
-                        lines.push(self.spans_to_line(split_spans, max_line_len));
-                        split_spans = vec![];
-                        word_set = vec![];
-                        line_char_count = 0;
-                    }
-
-                    word_set.push(word);
-                    line_char_count += word.len() + 1;
-                }
-
-                split_spans.push(Span::styled(word_set.join(" "), span.style));
-            }
-
-            lines.push(self.spans_to_line(split_spans, max_line_len));
-        }
+        let lines =
+            helpers::build_message_lines(self.message.text(), max_line_len, theme, |spans| {
+                self.format_spans(spans, max_line_len)
+            });
 
         self.wrap_lines_in_bubble(lines, max_line_len)
     }
@@ -229,7 +157,7 @@ impl<'a> Bubble<'_> {
         max_line_len
     }
 
-    fn spans_to_line(&self, mut spans: Vec<Span<'a>>, max_line_len: usize) -> Line<'a> {
+    fn format_spans(&self, mut spans: Vec<Span<'a>>, max_line_len: usize) -> Line<'a> {
         let line_str_len: usize = spans.iter().map(|e| return e.content.width()).sum();
         let fill = repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
         let formatted_line_len = line_str_len + fill.len() + self.padding;
@@ -256,7 +184,7 @@ impl<'a> Bubble<'_> {
         let color = if self.message.is_system() {
             Color::Yellow
         } else {
-            Color::LightBlue
+            Color::LightGreen
         };
         Span::styled(
             text,

@@ -5,12 +5,14 @@ use openai_backend::ArcBackend;
 use openai_models::Event;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Flex, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    layout::{Alignment, Constraint, Rect},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Cell, Clear, Row, Table, TableState},
+    widgets::{Block, BorderType, Borders, Cell, Clear, Padding, Row, Table, TableState},
 };
 use tui_textarea::Key;
+
+use super::helpers;
 
 pub struct ModelsScreen {
     showing: bool,
@@ -78,16 +80,16 @@ impl ModelsScreen {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let block = Block::bordered()
-            .title(" Models ".bg(Color::Red).fg(Color::White).bold())
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(Color::LightBlue))
+            .padding(Padding::symmetric(1, 0))
+            .title(" Models ")
             .title_alignment(Alignment::Center)
-            .title_bottom(" <q>/<Enter> to close/select ")
-            .style(Style {
-                bg: Some(Color::Blue),
-                fg: Some(Color::White),
-                ..Default::default()
-            });
-        let area = Self::popup_area(area, 30, 60);
+            .title_bottom(" <Esc>/<Space> to close/select ")
+            .style(Style::default());
+        let area = helpers::popup_area(area, 30, 60);
         frame.render_widget(Clear, area);
 
         let selected_row_style = Style::default()
@@ -132,18 +134,16 @@ impl ModelsScreen {
                 return Ok(true);
             }
 
-            Event::KeyboardCharInput(input) => {
-                if Key::Char('q') == input.key {
+            Event::KeyboardCharInput(input) => match input.key {
+                Key::Char('j') => self.next_row(),
+                Key::Char('k') => self.prev_row(),
+                Key::Char(' ') => self.set_model().await?,
+                Key::Char('q') => {
                     self.showing = false;
                     return Ok(false);
                 }
-            }
-
-            Event::KeyboardEnter => {
-                self.set_model().await?;
-                self.showing = false;
-                return Ok(false);
-            }
+                _ => {}
+            },
 
             Event::UiScrollDown => self.next_row(),
             Event::UiScrollUp => self.prev_row(),
@@ -151,16 +151,6 @@ impl ModelsScreen {
         }
 
         Ok(false)
-    }
-
-    fn popup_area(area: Rect, percent_width: u16, percent_height: u16) -> Rect {
-        let vertical =
-            Layout::vertical([Constraint::Percentage(percent_height)]).flex(Flex::Center);
-        let horizontal =
-            Layout::horizontal([Constraint::Percentage(percent_width)]).flex(Flex::Center);
-        let [area] = vertical.areas(area);
-        let [area] = horizontal.areas(area);
-        area
     }
 }
 
