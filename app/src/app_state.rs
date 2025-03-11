@@ -92,14 +92,16 @@ impl<'a> AppState<'_> {
         }
     }
 
-    pub fn chat_context(&self) -> Vec<&Message> {
-        // Filter all message except system ("system") messages
+    pub fn build_context_for(&self, msg_id: &str) -> Vec<&Message> {
         self.messages
             .iter()
-            .filter(|msg| match msg.issuer() {
-                Issuer::System(sys) => sys != "system",
-                _ => true,
-            })
+            .filter(|msg| 
+                match msg.issuer() {
+                    Issuer::System(sys) => sys != "system",
+                    _ => true,
+                }
+                &&msg.id() != msg_id
+            )
             .collect::<Vec<_>>()
     }
 

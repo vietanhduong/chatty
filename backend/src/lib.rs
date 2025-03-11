@@ -1,11 +1,13 @@
 pub mod openai;
 
+use std::sync::Arc;
+
 pub use crate::openai::OpenAI;
 
 use async_trait::async_trait;
 use eyre::Result;
 use openai_models::{BackendPrompt, Event, config::Configuration};
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 #[async_trait]
 pub trait Backend {
@@ -20,9 +22,9 @@ pub trait Backend {
     ) -> Result<()>;
 }
 
-pub type BoxedBackend = Box<dyn Backend + Send + Sync>;
+pub type ArcBackend = Arc<Mutex<dyn Backend + Send + Sync>>;
 
-pub fn new_boxed_backend(config: &Configuration) -> Result<BoxedBackend> {
+pub fn new_boxed_backend(config: &Configuration) -> Result<ArcBackend> {
     let backend = config
         .backend()
         .ok_or_else(|| eyre::eyre!("No backend configuration found"))?;
@@ -38,5 +40,5 @@ pub fn new_boxed_backend(config: &Configuration) -> Result<BoxedBackend> {
     if let Some(api_key) = openai.api_key() {
         backend = backend.with_token(api_key);
     }
-    Ok(Box::new(backend))
+    Ok(Arc::new(Mutex::new(backend)))
 }

@@ -42,12 +42,15 @@ impl<'a> EventsService<'_> {
                         Key::Char('q') => return Some(Event::KeyboardCtrlQ),
                         Key::Char('c') => return Some(Event::KeyboardCtrlC),
                         Key::Char('r') => return Some(Event::KeyboardCtrlR),
+                        Key::Char('l') => return Some(Event::KeyboardCtrlL),
                         Key::Char('h') => return Some(Event::KeyboardCtrlH),
+                        Key::Char('n') => return Some(Event::KeyboardCtrlN),
                         _ => return None,
                     }
                 }
 
                 match input.key {
+                    Key::Esc => Some(Event::KeyboardEsc),
                     Key::F(1) => Some(Event::KeyboardF1),
                     Key::Enter => Some(Event::KeyboardEnter),
                     Key::Up => Some(Event::UiScrollUp),

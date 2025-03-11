@@ -14,49 +14,54 @@ async fn main() -> Result<()> {
 
     let theme = init_theme(&config)?;
 
-    let mut backend = new_boxed_backend(&config)?;
-    backend.health_check().await?;
+    let backend = new_boxed_backend(&config)?;
+    {
+        let mut lock = backend.lock().await;
+        lock.health_check().await?;
 
-    let models = backend.list_models().await?;
-    if models.is_empty() {
-        eyre::bail!("No models available");
+        let models = lock.list_models().await?;
+        if models.is_empty() {
+            eyre::bail!("No models available");
+        }
+        let want_models = config
+            .backend()
+            .cloned()
+            .unwrap_or_default()
+            .models()
+            .unwrap_or_default()
+            .to_vec();
+
+        let model = if want_models.is_empty() {
+            models[0].clone()
+        } else {
+            want_models
+                .iter()
+                .filter(|m| models.contains(m))
+                .next()
+                .unwrap_or(&models[0])
+                .clone()
+        };
+
+        lock.set_model(&model).await?;
     }
-
-    let want_models = config
-        .backend()
-        .cloned()
-        .unwrap_or_default()
-        .models()
-        .unwrap_or_default()
-        .to_vec();
-
-    let model = if want_models.is_empty() {
-        models[0].clone()
-    } else {
-        want_models
-            .iter()
-            .filter(|m| models.contains(m))
-            .next()
-            .unwrap_or(&models[0])
-            .clone()
-    };
-
-    backend.set_model(&model).await?;
-
-    let backend = Arc::new(backend);
 
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
 
     let mut bg_futures = task::JoinSet::new();
 
+    let mut app = App::new(
+        Arc::clone(&backend),
+        &theme,
+        action_tx.clone(),
+        &mut event_rx,
+    );
+
     bg_futures.spawn(async move {
-        ActionService::new(event_tx, &mut action_rx, Arc::clone(&backend))
+        ActionService::new(event_tx, &mut action_rx, backend)
             .start()
             .await
     });
-
-    let mut app = App::new(&theme, action_tx.clone(), &mut event_rx);
 
     app.run().await?;
     Ok(())

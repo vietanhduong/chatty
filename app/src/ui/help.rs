@@ -7,7 +7,7 @@ use std::{
 
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Text},
     widgets::{Block, Cell, Clear, Row, Table, TableState},
 };
@@ -16,7 +16,7 @@ use tui_textarea::Key;
 pub const KEY_BINDINGS: Lazy<Vec<KeyBinding>> = Lazy::new(build_key_bindings);
 const ROW_HEIGHT: usize = 1;
 
-pub struct Help<'a> {
+pub struct HelpScreen<'a> {
     showing: bool,
 
     state: TableState,
@@ -24,18 +24,16 @@ pub struct Help<'a> {
     rows: Vec<Row<'a>>,
     last_known_width: usize,
     last_know_height: usize,
-    up_direction: bool,
 }
 
-impl<'a> Help<'_> {
-    pub fn new() -> Help<'a> {
-        Help {
+impl<'a> HelpScreen<'_> {
+    pub fn new() -> HelpScreen<'a> {
+        HelpScreen {
             showing: false,
             state: TableState::default().with_selected(0),
             rows: vec![],
             last_known_width: 0,
             last_know_height: 0,
-            up_direction: false,
         }
     }
 
@@ -48,55 +46,21 @@ impl<'a> Help<'_> {
     }
 
     fn next_row(&mut self) {
-        let step = if self.up_direction {
-            self.up_direction = false;
-            self.last_know_height / ROW_HEIGHT - 2
-        } else {
-            1
-        } as i32;
-        let mut i = match self.state.selected() {
-            Some(i) => max(min(self.rows.len() as i32 - 1, i as i32 + step), 0),
+        let i = match self.state.selected() {
+            Some(i) => max(min(self.rows.len() as i32 - 1, i as i32 + 1), 0),
             None => 0,
         } as usize;
 
-        let max_top = self.max_top_index();
-
-        if i <= max_top {
-            i = max_top + 1;
-        }
         self.state.select(Some(i));
     }
 
     fn prev_row(&mut self) {
-        let step = if !self.up_direction {
-            self.up_direction = true;
-            self.last_know_height / ROW_HEIGHT - 2
-        } else {
-            1
-        } as i32;
-        let mut i = match self.state.selected() {
-            Some(i) => max(0, (i as i32) - step),
+        let i = match self.state.selected() {
+            Some(i) => max(0, (i as i32) - 1),
             None => 0,
         } as usize;
 
-        let max_bot = self.max_bot_index();
-
-        if i >= max_bot {
-            i = max_bot - 1;
-        }
-
         self.state.select(Some(i));
-    }
-
-    /// max_top_row returns the maximum top row index that can be displayed
-    /// in the current viewport. This is used to determine the maximum
-    /// scroll position for the scrollbar.
-    fn max_top_index(&self) -> usize {
-        (((self.last_know_height as usize - 2) / ROW_HEIGHT) as i32 - 1) as usize
-    }
-
-    fn max_bot_index(&self) -> usize {
-        self.rows.len() - ((self.last_know_height - 2) / ROW_HEIGHT)
     }
 
     /// handle_key_event handles key events for the help menu.
@@ -105,6 +69,7 @@ impl<'a> Help<'_> {
         match event {
             Event::KeyboardEsc => {
                 self.showing = false;
+                return false;
             }
 
             Event::KeyboardF1 => {
@@ -152,15 +117,19 @@ impl<'a> Help<'_> {
             self.last_know_height = area.height as usize;
 
             self.rows = build_rows((area.width as f32 * 0.75).ceil() as usize);
-            let row_index = self.max_top_index();
+            let row_index = 0;
             self.state.select(Some(row_index));
         }
+
+        let selected_row_style = Style::default().add_modifier(Modifier::REVERSED);
 
         let table = Table::new(
             self.rows.clone(),
             [Constraint::Percentage(25), Constraint::Percentage(75)],
         )
-        .block(block);
+        .block(block)
+        .row_highlight_style(selected_row_style)
+        .cell_highlight_style(Style::default().bg(Color::White));
 
         frame.render_stateful_widget(table, area, &mut self.state);
     }
@@ -171,7 +140,7 @@ impl<'a> Help<'_> {
             .filter(|b| !b.short_description.is_empty())
             .map(|b| format!("{}: {}", b.key(), b.short_description()))
             .collect::<Vec<_>>();
-        let line = Line::from(instructions.join(" | ")).blue();
+        let line = Line::from(instructions.join(" | ")).green();
         frame.render_widget(line, area);
     }
 
@@ -189,10 +158,7 @@ impl<'a> Help<'_> {
 fn build_rows<'a>(max_width: usize) -> Vec<Row<'a>> {
     let mut rows = vec![];
     for binding in KEY_BINDINGS.iter() {
-        let key = Cell::from(binding.key().to_string()).style(Style {
-            fg: Some(Color::Yellow),
-            ..Default::default()
-        });
+        let key = Cell::from(binding.key().to_string()).style(Style::default());
 
         let mut line = String::new();
         let mut first = false;
@@ -232,7 +198,7 @@ fn build_key_bindings() -> Vec<KeyBinding> {
         KeyBinding::new(Input::new(Key::F(1)), "Show Help").with_short_desc("Help"),
         KeyBinding::new(Input::new(Key::Char('c')).ctrl(), "Abort Request"),
         KeyBinding::new(Input::new(Key::Char('r')).ctrl(), "Regenerate Response"),
-        KeyBinding::new(Input::new(Key::Char('m')).ctrl(), "Select Model"),
+        KeyBinding::new(Input::new(Key::Char('l')).ctrl(), "List/Select Model"),
         KeyBinding::new(Input::new(Key::Char('n')).ctrl(), "New Chat"),
         KeyBinding::new(Input::new(Key::Up).ctrl(), "Scroll Up"),
         KeyBinding::new(Input::new(Key::Down).ctrl(), "Scroll Down"),

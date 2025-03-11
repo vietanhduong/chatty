@@ -21,6 +21,8 @@ pub enum Event {
     KeyboardCtrlQ,
     KeyboardCtrlC,
     KeyboardCtrlR,
+    KeyboardCtrlN,
+    KeyboardCtrlL,
     KeyboardCtrlH,
     KeyboardF1,
     KeyboardPaste(String),

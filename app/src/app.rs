@@ -4,7 +4,8 @@ use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use eyre::Result;
+use eyre::{Context, Result};
+use openai_backend::ArcBackend;
 use openai_models::{Action, BackendPrompt, Event, Message, message::Issuer};
 use ratatui::crossterm::{
     execute,
@@ -22,7 +23,7 @@ use tokio::sync::mpsc;
 use crate::{
     app_state::AppState,
     services::EventsService,
-    ui::{Help, Loading, TextArea, bubble},
+    ui::{HelpScreen, Loading, ModelsScreen, TextArea, bubble},
 };
 
 pub struct App<'a> {
@@ -30,30 +31,41 @@ pub struct App<'a> {
     events: EventsService<'a>,
     app_state: AppState<'a>,
     input: tui_textarea::TextArea<'a>,
-    help: Help<'a>,
+    help_screen: HelpScreen<'a>,
+    models_screen: ModelsScreen,
 
     loading: Loading,
+    theme: &'a Theme,
 }
 
 impl<'a> App<'_> {
     pub fn new(
+        backend: ArcBackend,
         theme: &'a Theme,
         action_tx: mpsc::UnboundedSender<Action>,
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
     ) -> App<'a> {
         App {
+            theme,
             action_tx,
             events: EventsService::new(event_rx),
             app_state: AppState::new(theme),
             input: TextArea::default().build(),
-            loading: Loading::new("Thinking... Press <Ctrl+c> to abort"),
-            help: Help::new(),
+            loading: Loading::new("Thinking... Press <Ctrl+c> to abort!"),
+            help_screen: HelpScreen::new(),
+            models_screen: ModelsScreen::new(backend),
         }
     }
 
     pub async fn run(&mut self) -> Result<()> {
         let stdout = io::stdout();
         let mut stdout = stdout.lock();
+
+        // Prefetch the models in the background
+        self.models_screen
+            .fetch_models()
+            .await
+            .wrap_err("fetching models")?;
 
         enable_raw_mode()?;
         execute!(
@@ -83,8 +95,16 @@ impl<'a> App<'_> {
     async fn handle_key_event(&mut self) -> Result<bool> {
         let event = self.events.next().await?;
 
-        if self.help.showing() {
-            if self.help.handle_key_event(event) {
+        if self.help_screen.showing() {
+            if self.help_screen.handle_key_event(event) {
+                // If true, stop the process
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        if self.models_screen.showing() {
+            if self.models_screen.handle_key_event(event).await? {
                 // If true, stop the process
                 return Ok(true);
             }
@@ -122,9 +142,25 @@ impl<'a> App<'_> {
                 return Ok(true);
             }
 
-            Event::KeyboardF1 => self.help.toggle_showing(),
+            Event::KeyboardF1 => self.help_screen.toggle_showing(),
+
+            Event::KeyboardCtrlN => {
+                if self.app_state.waiting_for_backend {
+                    self.app_state.waiting_for_backend = false;
+                    self.action_tx.send(Action::BackendAbort)?;
+                }
+                self.app_state = AppState::new(self.theme);
+                return Ok(false);
+            }
             Event::KeyboardCtrlH => {
                 // TODO: Handle toggle open History
+            }
+
+            Event::KeyboardCtrlL => {
+                if self.app_state.waiting_for_backend {
+                    return Ok(false);
+                }
+                self.models_screen.toggle_showing()
             }
 
             Event::KeyboardCtrlR => {
@@ -137,6 +173,11 @@ impl<'a> App<'_> {
                 // and resubmit it to the backend
 
                 let mut i = self.app_state.messages.len() as i32 - 1;
+                if i == 0 {
+                    // Welcome message, nothing to do
+                    return Ok(false);
+                }
+
                 while i >= 0 {
                     if !self.app_state.messages[i as usize].is_system() {
                         break;
@@ -160,11 +201,17 @@ impl<'a> App<'_> {
                     return Ok(false);
                 };
 
+                let msg_id = last_user_msg.unwrap().id().to_string();
+
                 self.app_state.waiting_for_backend = true;
                 let mut prompt = BackendPrompt::new(input_str);
 
-                let context: Vec<Message> =
-                    self.app_state.chat_context().into_iter().cloned().collect();
+                let context: Vec<Message> = self
+                    .app_state
+                    .build_context_for(&msg_id)
+                    .into_iter()
+                    .cloned()
+                    .collect();
 
                 if !context.is_empty() {
                     prompt = prompt.with_context(context);
@@ -192,6 +239,7 @@ impl<'a> App<'_> {
                 }
 
                 let msg = Message::new_user("user", input_str);
+                let msg_id = msg.id().to_string();
                 self.input = TextArea::default().build();
                 self.app_state.add_message(msg);
 
@@ -199,8 +247,12 @@ impl<'a> App<'_> {
 
                 let mut prompt = BackendPrompt::new(input_str);
 
-                let context: Vec<Message> =
-                    self.app_state.chat_context().into_iter().cloned().collect();
+                let context: Vec<Message> = self
+                    .app_state
+                    .build_context_for(&msg_id)
+                    .into_iter()
+                    .cloned()
+                    .collect();
 
                 if !context.is_empty() {
                     prompt = prompt.with_context(context);
@@ -263,14 +315,17 @@ impl<'a> App<'_> {
                 &mut self.app_state.scroll.scrollbar_state,
             );
 
-            self.help.render_help_line(frame, layout[2]);
+            self.help_screen.render_help_line(frame, layout[2]);
             if self.app_state.waiting_for_backend {
                 self.loading.render(frame, layout[1]);
             } else {
                 frame.render_widget(&self.input, layout[1]);
             }
-            if self.help.showing() {
-                self.help.render(frame, frame.area())
+            if self.help_screen.showing() {
+                self.help_screen.render(frame, frame.area())
+            }
+            if self.models_screen.showing() {
+                self.models_screen.render(frame, frame.area());
             }
         })?;
         Ok(())

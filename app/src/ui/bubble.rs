@@ -74,7 +74,6 @@ impl<'a> Bubble<'_> {
         let mut lines: Vec<Line> = vec![];
 
         let max_line_len = self.get_max_line_length();
-        log::info!("max len: {}", max_line_len);
 
         for line in self.message.text().lines() {
             let mut spans = vec![];
@@ -196,8 +195,6 @@ impl<'a> Bubble<'_> {
             .map(|line| line.width())
             .max()
             .unwrap_or_default();
-
-        log::info!("message size: {}", self.message.text().width());
 
         if max_line_len > (self.max_width - line_boder_width) {
             max_line_len = self.max_width - line_boder_width;

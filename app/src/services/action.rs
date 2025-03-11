@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use eyre::{Ok, Result};
-use openai_backend::BoxedBackend;
+use eyre::Result;
+use openai_backend::ArcBackend;
 use openai_models::{Action, BackendPrompt, Event, Message};
 use tokio::{sync::mpsc, task::JoinHandle};
 
@@ -10,15 +10,16 @@ use tokio::{sync::mpsc, task::JoinHandle};
 pub struct ActionService<'a> {
     event_tx: mpsc::UnboundedSender<Event>,
     action_rx: &'a mut mpsc::UnboundedReceiver<Action>,
-    backend: Arc<BoxedBackend>,
+    backend: ArcBackend,
 }
 
 async fn completions(
-    backend: &BoxedBackend,
+    backend: &ArcBackend,
     prompt: BackendPrompt,
     event_tx: &mpsc::UnboundedSender<Event>,
 ) -> Result<()> {
-    backend.get_completion(prompt, event_tx).await?;
+    let lock = backend.lock().await;
+    lock.get_completion(prompt, event_tx).await?;
     Ok(())
 }
 
@@ -35,7 +36,7 @@ impl ActionService<'_> {
     pub fn new(
         event_tx: mpsc::UnboundedSender<Event>,
         action_rx: &'_ mut mpsc::UnboundedReceiver<Action>,
-        backend: Arc<BoxedBackend>,
+        backend: ArcBackend,
     ) -> ActionService<'_> {
         ActionService {
             event_tx,
