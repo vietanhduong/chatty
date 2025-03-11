@@ -5,10 +5,20 @@ use openai_models::config::Configuration;
 use crate::load_configuration;
 
 #[derive(Debug, Parser)]
-#[command(version, about, long_about = None)]
+#[command(
+    version,
+    about,
+    long_about = r#"A Terminal UI to interact OpenAI models
+
+Default configuration file location looks up in the following order:
+    * $XDG_CONFIG_HOME/openai-tui/config.toml
+    * $HOME/.config/openai-tui/config.toml
+    * $HOME/.openai-tui.toml
+"#
+)]
 pub struct Command {
     /// Configuration file path
-    #[arg(short, long)]
+    #[arg(short, long, value_name = "PATH")]
     pub config: Option<String>,
 }
 
