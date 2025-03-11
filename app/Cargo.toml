@@ -4,18 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-unicode-segmentation.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 eyre.workspace = true
 syntect.workspace = true
 once_cell.workspace = true
-bincode.workspace = true
 tokio.workspace = true
 tui-textarea.workspace = true
 futures.workspace = true
 arboard.workspace = true
 log.workspace = true
+unicode-width.workspace = true
 
 openai-backend = { path = "../backend" }
 openai-models = { path = "../models" }

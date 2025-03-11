@@ -1,6 +1,5 @@
 use once_cell::sync::Lazy;
 use ratatui::style::Color;
-use std::{env, fs};
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 
 pub static SYNTAX_SET: Lazy<SyntaxSet> = Lazy::new(Syntaxes::load);
@@ -9,10 +8,6 @@ pub struct Syntaxes;
 
 impl Syntaxes {
     fn load() -> SyntaxSet {
-        if let Ok(path) = env::var("SYNTAX_BIN") {
-            let bin = fs::read_to_string(path).unwrap();
-            return bincode::deserialize_from(&bin.as_bytes()[..]).unwrap();
-        }
         SyntaxSet::load_defaults_newlines()
     }
 

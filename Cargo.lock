@@ -1484,7 +1484,6 @@ name = "openai-app"
 version = "0.1.0"
 dependencies = [
  "arboard",
- "bincode",
  "crossterm",
  "eyre",
  "futures",
@@ -1496,7 +1495,7 @@ dependencies = [
  "syntect",
  "tokio",
  "tui-textarea",
- "unicode-segmentation",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -1513,7 +1512,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "tokio-util",
 ]
 
 [[package]]
@@ -1537,7 +1535,6 @@ dependencies = [
  "openai-app",
  "openai-backend",
  "openai-models",
- "ratatui",
  "syntect",
  "tokio",
  "toml",

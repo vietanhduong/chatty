@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 eyre.workspace = true
-ratatui.workspace = true
 tokio.workspace = true
 env_logger.workspace = true
 log.workspace = true
