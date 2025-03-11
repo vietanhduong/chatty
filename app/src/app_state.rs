@@ -1,7 +1,6 @@
 use openai_models::{BackendResponse, Message, message::Issuer};
 use ratatui::layout::Rect;
 use syntect::highlighting::Theme;
-use unicode_width::UnicodeWidthStr;
 
 use crate::{ui::BubbleList, ui::Scroll};
 
@@ -24,9 +23,6 @@ impl<'a> AppState<'_> {
             scroll: Scroll::default(),
             waiting_for_backend: false,
         };
-
-        let msg = "😊".replace("\u{00A0}", " ");
-        log::info!("{}: size: {}", msg, msg.width());
 
         app_state.messages.push(Message::new_system(
             "system",
