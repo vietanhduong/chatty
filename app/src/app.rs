@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, time};
 
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
@@ -7,8 +7,7 @@ use crossterm::{
 use eyre::{Context, Result};
 use openai_backend::ArcBackend;
 use openai_models::{
-    Action, BackendPrompt, Converstation, Event, Message, NoticeMessage, NoticeType,
-    message::Issuer,
+    Action, BackendPrompt, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
 use ratatui::crossterm::{
     execute,
@@ -149,7 +148,18 @@ impl<'a> App<'_> {
                 self.app_state.waiting_for_backend = false;
             }
             Event::BackendPromptResponse(msg) => {
+                let notify = msg.done && msg.init_conversation;
                 self.app_state.handle_backend_response(msg);
+
+                if notify {
+                    self.notice.add_message(
+                        NoticeMessage::new(format!(
+                            "Title: {}",
+                            self.app_state.converstation.title()
+                        ))
+                        .with_duration(time::Duration::from_secs(5)),
+                    );
+                }
             }
             Event::KeyboardCharInput(c) => {
                 if !self.app_state.waiting_for_backend {
@@ -194,20 +204,20 @@ impl<'a> App<'_> {
                         .with_type(NoticeType::Warning),
                 );
 
-                let mut con = Converstation::default();
+                // let mut con = Converstation::default();
 
-                for i in 0..=10 {
-                    con.add_message(Message::new_system(
-                        "system",
-                        format!(
-                            "{} History is not implemented yet! {}",
-                            chrono::Utc::now(),
-                            i
-                        ),
-                    ));
-                }
+                // for i in 0..=10 {
+                //     con.add_message(Message::new_system(
+                //         "system",
+                //         format!(
+                //             "{} History is not implemented yet! {}",
+                //             chrono::Utc::now(),
+                //             i
+                //         ),
+                //     ));
+                // }
 
-                self.app_state.set_converstation(con);
+                // self.app_state.set_converstation(con);
             }
 
             Event::KeyboardCtrlL => self.models_screen.toggle_showing(),
@@ -290,6 +300,8 @@ impl<'a> App<'_> {
                     return Ok(false);
                 }
 
+                let first = self.app_state.converstation.len() < 2;
+
                 let msg = Message::new_user("user", input_str);
                 self.input = TextArea::default().build();
                 self.app_state.add_message(msg);
@@ -298,8 +310,13 @@ impl<'a> App<'_> {
 
                 self.app_state.waiting_for_backend = true;
 
-                let prompt =
+                let mut prompt =
                     BackendPrompt::new(&model, input_str).with_context(&self.app_state.context);
+
+                if first {
+                    prompt = prompt.with_first();
+                }
+
                 self.action_tx.send(Action::BackendRequest(prompt))?;
             }
 

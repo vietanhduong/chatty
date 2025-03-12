@@ -19,6 +19,10 @@ impl Converstation {
         self
     }
 
+    pub fn set_title(&mut self, title: impl Into<String>) {
+        self.title = title.into();
+    }
+
     pub fn add_message(&mut self, message: Message) {
         self.messages.push(message);
     }

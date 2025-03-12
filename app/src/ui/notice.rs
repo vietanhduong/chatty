@@ -46,7 +46,12 @@ impl Notice {
         let now = chrono::Utc::now();
         self.notices.retain(|msg| {
             let elapsed = now.signed_duration_since(msg.created_at);
-            elapsed.num_milliseconds() < self.display_duration.as_millis() as i64
+            elapsed.num_milliseconds()
+                < msg
+                    .value
+                    .duration()
+                    .unwrap_or(self.display_duration)
+                    .as_millis() as i64
         });
     }
 

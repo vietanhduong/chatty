@@ -100,6 +100,22 @@ impl<'a> AppState<'_> {
         self.sync_state();
 
         if msg.done {
+            if msg.init_conversation {
+                // The init convesrsation message will contain the title of
+                // the conversation at the beginning of the text and starts with #
+
+                // Get the first line of the last message
+                let message = self.converstation.last_message().unwrap();
+                let first_line = message.text().lines().next().unwrap_or("");
+                // Check if the first line starts with #
+                if first_line.starts_with('#') {
+                    // Remove the # and any leading spaces
+                    let title = first_line.trim_start_matches('#').trim();
+                    // Set the title of the conversation
+                    self.converstation.set_title(title.to_string());
+                }
+            }
+
             self.waiting_for_backend = false;
             if let Some(ctx) = msg.context {
                 self.context = ctx;

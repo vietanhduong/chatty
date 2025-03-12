@@ -3,6 +3,8 @@ pub mod configuration;
 pub mod conversation;
 pub mod message;
 
+use std::time;
+
 use ratatui::style::Color;
 use tui_textarea::Input;
 
@@ -80,6 +82,7 @@ pub enum NoticeType {
 pub struct NoticeMessage {
     message: String,
     message_type: NoticeType,
+    duration: Option<time::Duration>,
 }
 
 impl NoticeMessage {
@@ -87,11 +90,17 @@ impl NoticeMessage {
         Self {
             message: message.into(),
             message_type: NoticeType::Info,
+            duration: None,
         }
     }
 
     pub fn with_type(mut self, message_type: NoticeType) -> Self {
         self.message_type = message_type;
+        self
+    }
+
+    pub fn with_duration(mut self, duration: time::Duration) -> Self {
+        self.duration = Some(duration);
         self
     }
 
@@ -101,6 +110,10 @@ impl NoticeMessage {
 
     pub fn message_type(&self) -> &NoticeType {
         &self.message_type
+    }
+
+    pub fn duration(&self) -> Option<time::Duration> {
+        self.duration
     }
 }
 

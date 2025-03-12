@@ -20,6 +20,12 @@ pub struct OpenAI {
     current_model: String,
 }
 
+const TITLE_PROMPT: &str = r#"
+
+---
+Please give a title to the conversation. The title should be placed at the top
+of the response, in separate line and starts with #"#;
+
 #[async_trait]
 impl Backend for OpenAI {
     async fn health_check(&self) -> Result<()> {
@@ -119,9 +125,18 @@ impl Backend for OpenAI {
             messages.pop();
         }
 
+        let origin_content = prompt.text();
+
+        let init_conversation = prompt.first();
+        let content = if prompt.first() {
+            format!("{}\n{}", prompt.text(), TITLE_PROMPT)
+        } else {
+            prompt.text().to_string()
+        };
+
         messages.push(MessageRequest {
             role: "user".to_string(),
-            content: prompt.text().to_string(),
+            content,
         });
 
         let model = if prompt.model().is_empty() {
@@ -214,6 +229,7 @@ impl Backend for OpenAI {
                             text,
                             context: None,
                             done: false,
+                            init_conversation,
                         };
 
                         event_tx.send(Event::BackendPromptResponse(msg))?;
@@ -222,6 +238,8 @@ impl Backend for OpenAI {
                 }
             }
         }
+
+        messages.last_mut().unwrap().content = origin_content.to_string();
 
         messages.push(MessageRequest {
             role: "assistant".to_string(),
@@ -234,6 +252,7 @@ impl Backend for OpenAI {
             text: String::new(),
             context: Some(serde_json::to_string(&messages)?),
             done: true,
+            init_conversation,
         };
         event_tx.send(Event::BackendPromptResponse(msg))?;
         Ok(())

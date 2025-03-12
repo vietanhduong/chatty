@@ -11,6 +11,7 @@ pub struct BackendResponse {
     pub text: String,
     pub done: bool,
     pub context: Option<String>,
+    pub init_conversation: bool,
 }
 
 pub struct BackendPrompt {
@@ -18,6 +19,7 @@ pub struct BackendPrompt {
     text: String,
     context: String,
     regenerate: bool,
+    first: bool,
 }
 
 impl BackendPrompt {
@@ -27,7 +29,13 @@ impl BackendPrompt {
             text: text.into(),
             context: String::new(),
             regenerate: false,
+            first: false,
         }
+    }
+
+    pub fn with_first(mut self) -> Self {
+        self.first = true;
+        self
     }
 
     pub fn with_context(mut self, ctx: impl Into<String>) -> Self {
@@ -54,5 +62,9 @@ impl BackendPrompt {
 
     pub fn regenerate(&self) -> bool {
         self.regenerate
+    }
+
+    pub fn first(&self) -> bool {
+        self.first
     }
 }
