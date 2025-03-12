@@ -41,3 +41,4 @@ clap = { version = "4.5.32", features = ["derive"] }
 toml = "0.8.20"
 unicode-width = "0.2.0"
 uuid = { version = "1.15.1", features = ["v4"] }
+tokio-rusqlite = { version = "0.6.0", features = ["bundled"] }

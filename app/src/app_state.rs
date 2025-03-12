@@ -1,4 +1,4 @@
-use openai_models::{BackendResponse, Converstation, Message, message::Issuer};
+use openai_models::{BackendResponse, Conversation, Message, message::Issuer};
 use ratatui::layout::Rect;
 use syntect::highlighting::Theme;
 
@@ -9,10 +9,9 @@ pub struct AppState<'a> {
     pub(crate) bubble_list: BubbleList<'a>,
     pub(crate) last_known_height: usize,
     pub(crate) last_known_width: usize,
-    pub(crate) converstation: Converstation,
+    pub(crate) conversation: Conversation,
     pub(crate) scroll: Scroll,
     pub(crate) waiting_for_backend: bool,
-    pub(crate) context: String,
 }
 
 impl<'a> AppState<'_> {
@@ -22,13 +21,12 @@ impl<'a> AppState<'_> {
             bubble_list: BubbleList::new(theme),
             last_known_height: 0,
             last_known_width: 0,
-            converstation: Converstation::default(),
+            conversation: Conversation::default(),
             scroll: Scroll::default(),
             waiting_for_backend: false,
-            context: String::new(),
         };
 
-        app_state.converstation.add_message(Message::new_system(
+        app_state.conversation.add_message(Message::new_system(
             "system",
             "Hello! How can I help you? 😊",
         ));
@@ -36,8 +34,8 @@ impl<'a> AppState<'_> {
         app_state
     }
 
-    pub fn set_converstation(&mut self, converstation: Converstation) {
-        self.converstation = converstation;
+    pub fn set_conversation(&mut self, conversation: Conversation) {
+        self.conversation = conversation;
         self.bubble_list = BubbleList::new(self.theme);
         self.sync_state();
         // Move the scroll to the last message
@@ -51,13 +49,13 @@ impl<'a> AppState<'_> {
     }
 
     pub fn add_message(&mut self, message: Message) {
-        self.converstation.add_message(message);
+        self.conversation.add_message(message);
         self.sync_state();
         self.scroll.last();
     }
 
     pub fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
-        if let Some(msg) = self.converstation.last_message() {
+        if let Some(msg) = self.conversation.last_message() {
             if issuer.is_none() {
                 return Some(msg);
             }
@@ -89,11 +87,11 @@ impl<'a> AppState<'_> {
     }
 
     pub fn handle_backend_response(&mut self, msg: BackendResponse) {
-        let last_message = self.converstation.last_mut_message().unwrap();
+        let last_message = self.conversation.last_mut_message().unwrap();
         if last_message.is_system() {
             last_message.append(&msg.text);
         } else {
-            self.converstation
+            self.conversation
                 .add_message(Message::new_system(msg.model.as_str(), &msg.text).with_id(msg.id));
         }
 
@@ -105,23 +103,23 @@ impl<'a> AppState<'_> {
                 // the conversation at the beginning of the text and starts with #
 
                 // Get the first line of the last message
-                let message = self.converstation.last_message().unwrap();
+                let message = self.conversation.last_message().unwrap();
                 let first_line = message.text().lines().next().unwrap_or("");
                 // Check if the first line starts with #
                 if first_line.starts_with('#') {
                     // Remove the # and any leading spaces
                     let title = first_line.trim_start_matches('#').trim();
                     // Set the title of the conversation
-                    self.converstation.set_title(title.to_string());
+                    self.conversation.set_title(title.to_string());
                 }
             }
 
             self.waiting_for_backend = false;
             if let Some(ctx) = msg.context {
-                self.context = ctx;
+                self.conversation.set_context(ctx);
             }
 
-            if self.context.is_empty() {
+            if self.conversation.context().unwrap_or_default().is_empty() {
                 self.add_message(Message::new_system(
                     "system",
                     "No context available for this code.",
@@ -132,7 +130,7 @@ impl<'a> AppState<'_> {
 
     pub fn sync_state(&mut self) {
         self.bubble_list
-            .set_messages(self.converstation.messages(), self.last_known_width);
+            .set_messages(self.conversation.messages(), self.last_known_width);
         let scrollbar_at_bottom = self.scroll.is_position_at_last();
         self.scroll
             .set_state(self.bubble_list.len(), self.last_known_height);

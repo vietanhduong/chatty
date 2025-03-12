@@ -155,7 +155,7 @@ impl<'a> App<'_> {
                     self.notice.add_message(
                         NoticeMessage::new(format!(
                             "Title: {}",
-                            self.app_state.converstation.title()
+                            self.app_state.conversation.title()
                         ))
                         .with_duration(time::Duration::from_secs(5)),
                     );
@@ -203,21 +203,6 @@ impl<'a> App<'_> {
                     NoticeMessage::new("History is not implemented yet!")
                         .with_type(NoticeType::Warning),
                 );
-
-                // let mut con = Converstation::default();
-
-                // for i in 0..=10 {
-                //     con.add_message(Message::new_system(
-                //         "system",
-                //         format!(
-                //             "{} History is not implemented yet! {}",
-                //             chrono::Utc::now(),
-                //             i
-                //         ),
-                //     ));
-                // }
-
-                // self.app_state.set_converstation(con);
             }
 
             Event::KeyboardCtrlL => self.models_screen.toggle_showing(),
@@ -227,7 +212,7 @@ impl<'a> App<'_> {
                     return Ok(false);
                 }
                 self.edit_screen
-                    .set_messages(self.app_state.converstation.messages());
+                    .set_messages(self.app_state.conversation.messages());
                 self.edit_screen.toggle_showing();
             }
 
@@ -240,18 +225,18 @@ impl<'a> App<'_> {
                 // until we find the last message from user
                 // and resubmit it to the backend
 
-                let mut i = self.app_state.converstation.len() as i32 - 1;
+                let mut i = self.app_state.conversation.len() as i32 - 1;
                 if i == 0 {
                     // Welcome message, nothing to do
                     return Ok(false);
                 }
 
                 while i >= 0 {
-                    if !self.app_state.converstation.messages()[i as usize].is_system() {
+                    if !self.app_state.conversation.messages()[i as usize].is_system() {
                         break;
                     }
                     self.app_state
-                        .converstation
+                        .conversation
                         .messages_mut()
                         .remove(i as usize);
                     self.app_state
@@ -275,7 +260,7 @@ impl<'a> App<'_> {
                 let model = self.current_model().await;
                 self.app_state.waiting_for_backend = true;
                 let prompt = BackendPrompt::new(&model, input_str)
-                    .with_context(&self.app_state.context)
+                    .with_context(self.app_state.conversation.context().unwrap_or_default())
                     .with_regenerate();
 
                 self.action_tx.send(Action::BackendRequest(prompt))?;
@@ -300,7 +285,7 @@ impl<'a> App<'_> {
                     return Ok(false);
                 }
 
-                let first = self.app_state.converstation.len() < 2;
+                let first = self.app_state.conversation.len() < 2;
 
                 let msg = Message::new_user("user", input_str);
                 self.input = TextArea::default().build();
@@ -310,8 +295,8 @@ impl<'a> App<'_> {
 
                 self.app_state.waiting_for_backend = true;
 
-                let mut prompt =
-                    BackendPrompt::new(&model, input_str).with_context(&self.app_state.context);
+                let mut prompt = BackendPrompt::new(&model, input_str)
+                    .with_context(self.app_state.conversation.context().unwrap_or_default());
 
                 if first {
                     prompt = prompt.with_first();

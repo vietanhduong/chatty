@@ -2,6 +2,7 @@ pub mod backend;
 pub mod configuration;
 pub mod conversation;
 pub mod message;
+pub mod storage;
 
 use std::time;
 
@@ -9,7 +10,7 @@ use ratatui::style::Color;
 use tui_textarea::Input;
 
 pub use backend::*;
-pub use conversation::Converstation;
+pub use conversation::Conversation;
 pub use message::Message;
 
 pub use crate::configuration as config;

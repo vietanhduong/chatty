@@ -3,19 +3,45 @@ use uuid::Uuid;
 use crate::Message;
 
 #[derive(Debug, Clone)]
-pub struct Converstation {
+pub struct Conversation {
     id: String,
     title: String,
+    timestamp: chrono::DateTime<chrono::Utc>,
     messages: Vec<Message>,
+    context: Option<String>,
 }
 
-impl Converstation {
-    pub fn new() -> Self {
-        Self::default()
+impl Conversation {
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    pub fn with_timestamp(mut self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
+        self.timestamp = timestamp;
+        self
     }
 
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = title.into();
+        self
+    }
+
+    pub fn with_context(mut self, context: impl Into<String>) -> Self {
+        self.context = Some(context.into());
+        self
+    }
+
+    pub fn set_context(&mut self, context: impl Into<String>) {
+        self.context = Some(context.into());
+    }
+
+    pub fn context(&self) -> Option<&str> {
+        self.context.as_deref()
+    }
+
+    pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
+        self.messages = messages;
         self
     }
 
@@ -25,6 +51,10 @@ impl Converstation {
 
     pub fn add_message(&mut self, message: Message) {
         self.messages.push(message);
+    }
+
+    pub fn timestamp(&self) -> chrono::DateTime<chrono::Utc> {
+        self.timestamp
     }
 
     pub fn messages(&self) -> &[Message] {
@@ -56,12 +86,14 @@ impl Converstation {
     }
 }
 
-impl Default for Converstation {
+impl Default for Conversation {
     fn default() -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             title: "New Chat".to_string(),
             messages: Vec::new(),
+            timestamp: chrono::Utc::now(),
+            context: None,
         }
     }
 }

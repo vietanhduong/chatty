@@ -45,6 +45,11 @@ impl Message {
         self
     }
 
+    pub fn with_timestamp(mut self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
+        self.timestamp = timestamp;
+        self
+    }
+
     pub fn id(&self) -> &str {
         &self.id
     }
