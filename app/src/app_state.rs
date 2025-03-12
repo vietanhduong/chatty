@@ -1,14 +1,15 @@
-use openai_models::{BackendResponse, Message, message::Issuer};
+use openai_models::{BackendResponse, Converstation, Message, message::Issuer};
 use ratatui::layout::Rect;
 use syntect::highlighting::Theme;
 
 use crate::{ui::BubbleList, ui::Scroll};
 
 pub struct AppState<'a> {
+    theme: &'a Theme,
     pub(crate) bubble_list: BubbleList<'a>,
     pub(crate) last_known_height: usize,
     pub(crate) last_known_width: usize,
-    pub(crate) messages: Vec<Message>,
+    pub(crate) converstation: Converstation,
     pub(crate) scroll: Scroll,
     pub(crate) waiting_for_backend: bool,
     pub(crate) context: String,
@@ -17,21 +18,30 @@ pub struct AppState<'a> {
 impl<'a> AppState<'_> {
     pub fn new(theme: &'a Theme) -> AppState<'a> {
         let mut app_state = AppState {
+            theme,
             bubble_list: BubbleList::new(theme),
             last_known_height: 0,
             last_known_width: 0,
-            messages: Vec::new(),
+            converstation: Converstation::default(),
             scroll: Scroll::default(),
             waiting_for_backend: false,
             context: String::new(),
         };
 
-        app_state.messages.push(Message::new_system(
+        app_state.converstation.add_message(Message::new_system(
             "system",
             "Hello! How can I help you? 😊",
         ));
 
         app_state
+    }
+
+    pub fn set_converstation(&mut self, converstation: Converstation) {
+        self.converstation = converstation;
+        self.bubble_list = BubbleList::new(self.theme);
+        self.sync_state();
+        // Move the scroll to the last message
+        self.scroll.last();
     }
 
     pub fn set_rect(&mut self, rect: Rect) {
@@ -41,13 +51,13 @@ impl<'a> AppState<'_> {
     }
 
     pub fn add_message(&mut self, message: Message) {
-        self.messages.push(message);
+        self.converstation.add_message(message);
         self.sync_state();
         self.scroll.last();
     }
 
     pub fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
-        if let Some(msg) = self.messages.last() {
+        if let Some(msg) = self.converstation.last_message() {
             if issuer.is_none() {
                 return Some(msg);
             }
@@ -79,12 +89,12 @@ impl<'a> AppState<'_> {
     }
 
     pub fn handle_backend_response(&mut self, msg: BackendResponse) {
-        let last_message = self.messages.last_mut().unwrap();
+        let last_message = self.converstation.last_mut_message().unwrap();
         if last_message.is_system() {
             last_message.append(&msg.text);
         } else {
-            self.messages
-                .push(Message::new_system(msg.model.as_str(), &msg.text).with_id(msg.id));
+            self.converstation
+                .add_message(Message::new_system(msg.model.as_str(), &msg.text).with_id(msg.id));
         }
 
         self.sync_state();
@@ -106,7 +116,7 @@ impl<'a> AppState<'_> {
 
     pub fn sync_state(&mut self) {
         self.bubble_list
-            .set_messages(&self.messages, self.last_known_width);
+            .set_messages(self.converstation.messages(), self.last_known_width);
         let scrollbar_at_bottom = self.scroll.is_position_at_last();
         self.scroll
             .set_state(self.bubble_list.len(), self.last_known_height);

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["app", "backend", "cli", "models"]
+members = ["app", "backend", "cli", "models", "storage"]
 
 default-members = ["cli"]
 
@@ -40,3 +40,4 @@ chrono = "0.4.40"
 clap = { version = "4.5.32", features = ["derive"] }
 toml = "0.8.20"
 unicode-width = "0.2.0"
+uuid = { version = "1.15.1", features = ["v4"] }

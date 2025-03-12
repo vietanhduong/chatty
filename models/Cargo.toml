@@ -8,3 +8,4 @@ tui-textarea.workspace = true
 chrono.workspace = true
 serde.workspace = true
 ratatui.workspace = true
+uuid.workspace = true

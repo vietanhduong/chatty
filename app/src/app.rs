@@ -7,7 +7,8 @@ use crossterm::{
 use eyre::{Context, Result};
 use openai_backend::ArcBackend;
 use openai_models::{
-    Action, BackendPrompt, Event, Message, NoticeMessage, NoticeType, message::Issuer,
+    Action, BackendPrompt, Converstation, Event, Message, NoticeMessage, NoticeType,
+    message::Issuer,
 };
 use ratatui::crossterm::{
     execute,
@@ -191,7 +192,22 @@ impl<'a> App<'_> {
                 self.notice.add_message(
                     NoticeMessage::new("History is not implemented yet!")
                         .with_type(NoticeType::Warning),
-                )
+                );
+
+                let mut con = Converstation::default();
+
+                for i in 0..=10 {
+                    con.add_message(Message::new_system(
+                        "system",
+                        format!(
+                            "{} History is not implemented yet! {}",
+                            chrono::Utc::now(),
+                            i
+                        ),
+                    ));
+                }
+
+                self.app_state.set_converstation(con);
             }
 
             Event::KeyboardCtrlL => self.models_screen.toggle_showing(),
@@ -200,7 +216,8 @@ impl<'a> App<'_> {
                 if self.app_state.waiting_for_backend {
                     return Ok(false);
                 }
-                self.edit_screen.set_messages(&self.app_state.messages);
+                self.edit_screen
+                    .set_messages(self.app_state.converstation.messages());
                 self.edit_screen.toggle_showing();
             }
 
@@ -213,17 +230,20 @@ impl<'a> App<'_> {
                 // until we find the last message from user
                 // and resubmit it to the backend
 
-                let mut i = self.app_state.messages.len() as i32 - 1;
+                let mut i = self.app_state.converstation.len() as i32 - 1;
                 if i == 0 {
                     // Welcome message, nothing to do
                     return Ok(false);
                 }
 
                 while i >= 0 {
-                    if !self.app_state.messages[i as usize].is_system() {
+                    if !self.app_state.converstation.messages()[i as usize].is_system() {
                         break;
                     }
-                    self.app_state.messages.remove(i as usize);
+                    self.app_state
+                        .converstation
+                        .messages_mut()
+                        .remove(i as usize);
                     self.app_state
                         .bubble_list
                         .remove_message_by_index(i as usize);

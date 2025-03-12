@@ -1,12 +1,14 @@
 pub mod backend;
 pub mod configuration;
+pub mod conversation;
 pub mod message;
 
 use ratatui::style::Color;
 use tui_textarea::Input;
 
-pub use crate::backend::*;
-pub use crate::message::Message;
+pub use backend::*;
+pub use conversation::Converstation;
+pub use message::Message;
 
 pub use crate::configuration as config;
 
@@ -14,7 +16,7 @@ pub use crate::configuration as config;
 pub enum Event {
     Notice(NoticeMessage),
     AbortRequest,
-    BackendMessage(crate::Message),
+    BackendMessage(Message),
     BackendPromptResponse(BackendResponse),
     KeyboardCharInput(Input),
     KeyboardEsc,
