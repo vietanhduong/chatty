@@ -6,7 +6,9 @@ use crossterm::{
 };
 use eyre::{Context, Result};
 use openai_backend::ArcBackend;
-use openai_models::{Action, BackendPrompt, Event, Message, message::Issuer};
+use openai_models::{
+    Action, BackendPrompt, Event, Message, NoticeMessage, NoticeType, message::Issuer,
+};
 use ratatui::crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -23,10 +25,11 @@ use tokio::sync::mpsc;
 use crate::{
     app_state::AppState,
     services::EventsService,
-    ui::{EditScreen, HelpScreen, Loading, ModelsScreen, TextArea, bubble},
+    ui::{EditScreen, HelpScreen, Loading, ModelsScreen, Notice, TextArea, bubble, helpers},
 };
 
 pub struct App<'a> {
+    backend: ArcBackend,
     action_tx: mpsc::UnboundedSender<Action>,
     events: EventsService<'a>,
     app_state: AppState<'a>,
@@ -34,6 +37,7 @@ pub struct App<'a> {
     help_screen: HelpScreen<'a>,
     models_screen: ModelsScreen,
     edit_screen: EditScreen<'a>,
+    notice: Notice,
 
     loading: Loading,
     theme: &'a Theme,
@@ -47,7 +51,9 @@ impl<'a> App<'_> {
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
     ) -> App<'a> {
         App {
+            backend: backend.clone(),
             theme,
+            edit_screen: EditScreen::new(action_tx.clone(), theme),
             action_tx,
             events: EventsService::new(event_rx),
             app_state: AppState::new(theme),
@@ -55,8 +61,14 @@ impl<'a> App<'_> {
             loading: Loading::new("Thinking... Press <Ctrl+c> to abort!"),
             help_screen: HelpScreen::new(),
             models_screen: ModelsScreen::new(backend),
-            edit_screen: EditScreen::new(theme),
+            notice: Notice::default(),
         }
+    }
+
+    pub async fn current_model(&self) -> String {
+        let lock = self.backend.lock().await;
+        let model = lock.current_model();
+        model.to_string()
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -97,6 +109,11 @@ impl<'a> App<'_> {
     async fn handle_key_event(&mut self) -> Result<bool> {
         let event = self.events.next().await?;
 
+        if let Event::Notice(msg) = event {
+            self.notice.add_message(msg);
+            return Ok(false);
+        }
+
         if self.help_screen.showing() {
             if self.help_screen.handle_key_event(event) {
                 // If true, stop the process
@@ -114,7 +131,7 @@ impl<'a> App<'_> {
         }
 
         if self.edit_screen.showing() {
-            if self.edit_screen.handle_key_event(event) {
+            if self.edit_screen.handle_key_event(event).await? {
                 // If true, stop the process
                 return Ok(true);
             }
@@ -171,14 +188,13 @@ impl<'a> App<'_> {
 
             Event::KeyboardCtrlH => {
                 // TODO: Handle toggle open History
+                self.notice.add_message(
+                    NoticeMessage::new("History is not implemented yet!")
+                        .with_type(NoticeType::Warning),
+                )
             }
 
-            Event::KeyboardCtrlL => {
-                if self.app_state.waiting_for_backend {
-                    return Ok(false);
-                }
-                self.models_screen.toggle_showing()
-            }
+            Event::KeyboardCtrlL => self.models_screen.toggle_showing(),
 
             Event::KeyboardCtrlE => {
                 if self.app_state.waiting_for_backend {
@@ -226,8 +242,9 @@ impl<'a> App<'_> {
                     return Ok(false);
                 };
 
+                let model = self.current_model().await;
                 self.app_state.waiting_for_backend = true;
-                let prompt = BackendPrompt::new(input_str)
+                let prompt = BackendPrompt::new(&model, input_str)
                     .with_context(&self.app_state.context)
                     .with_regenerate();
 
@@ -257,9 +274,12 @@ impl<'a> App<'_> {
                 self.input = TextArea::default().build();
                 self.app_state.add_message(msg);
 
+                let model = self.current_model().await;
+
                 self.app_state.waiting_for_backend = true;
 
-                let prompt = BackendPrompt::new(input_str).with_context(&self.app_state.context);
+                let prompt =
+                    BackendPrompt::new(&model, input_str).with_context(&self.app_state.context);
                 self.action_tx.send(Action::BackendRequest(prompt))?;
             }
 
@@ -324,15 +344,13 @@ impl<'a> App<'_> {
             } else {
                 frame.render_widget(&self.input, layout[1]);
             }
-            if self.help_screen.showing() {
-                self.help_screen.render(frame, frame.area())
-            }
-            if self.models_screen.showing() {
-                self.models_screen.render(frame, frame.area());
-            }
-            if self.edit_screen.showing() {
-                self.edit_screen.render(frame, frame.area());
-            }
+
+            self.help_screen.render(frame, frame.area());
+            self.models_screen.render(frame, frame.area());
+            self.edit_screen.render(frame, frame.area());
+
+            let notice_area = helpers::notice_area(frame.area(), 30);
+            self.notice.render(frame, notice_area);
         })?;
         Ok(())
     }

@@ -99,8 +99,10 @@ impl<'a> Bubble<'_> {
                 .repeat(max_line_len - date.to_string().width() - 1)
                 .join("")
         );
-        let bar_padding =
-            repeat_from_substactions(" ", vec![self.max_width, max_line_len, self.padding]);
+        let bar_padding = helpers::repeat_from_substactions(
+            " ",
+            vec![self.max_width, max_line_len, self.padding],
+        );
 
         if self.message.is_system() {
             let mut res = vec![self.highlighted_line(format!("{top_bar}{bar_padding}"))];
@@ -159,14 +161,15 @@ impl<'a> Bubble<'_> {
 
     fn format_spans(&self, mut spans: Vec<Span<'a>>, max_line_len: usize) -> Line<'a> {
         let line_str_len: usize = spans.iter().map(|e| return e.content.width()).sum();
-        let fill = repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
+        let fill = helpers::repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
         let formatted_line_len = line_str_len + fill.len() + self.padding;
 
         let mut wrapped_spans = vec![self.highlighted_span("│ ".to_string())];
         wrapped_spans.append(&mut spans);
         wrapped_spans.push(self.highlighted_span(format!("{fill} │")));
 
-        let outer_padding = repeat_from_substactions(" ", vec![self.max_width, formatted_line_len]);
+        let outer_padding =
+            helpers::repeat_from_substactions(" ", vec![self.max_width, formatted_line_len]);
 
         if self.message.is_system() {
             // Left alignment
@@ -198,18 +201,4 @@ impl<'a> Bubble<'_> {
     fn highlighted_line(&self, text: String) -> Line<'a> {
         Line::from(self.highlighted_span(text))
     }
-}
-
-fn repeat_from_substactions(text: &str, subs: Vec<usize>) -> String {
-    let count = subs
-        .into_iter()
-        .map(|e| i32::try_from(e).unwrap())
-        .reduce(|a, b| a - b)
-        .unwrap();
-
-    if count <= 0 {
-        return String::new();
-    }
-
-    [text].repeat(count.try_into().unwrap()).join("")
 }

@@ -101,6 +101,10 @@ impl<'a> HelpScreen<'_> {
     }
 
     pub fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+        if !self.showing {
+            return;
+        }
+
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)

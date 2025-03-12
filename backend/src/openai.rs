@@ -124,8 +124,14 @@ impl Backend for OpenAI {
             content: prompt.text().to_string(),
         });
 
+        let model = if prompt.model().is_empty() {
+            self.current_model().to_string()
+        } else {
+            prompt.model().to_string()
+        };
+
         let completion_req = CompletionRequest {
-            model: self.current_model().to_string(),
+            model,
             messages: messages.clone(),
             stream: true,
         };

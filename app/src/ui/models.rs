@@ -80,6 +80,10 @@ impl ModelsScreen {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        if !self.showing {
+            return;
+        }
+
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)

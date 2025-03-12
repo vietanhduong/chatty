@@ -7,3 +7,4 @@ edition = "2024"
 tui-textarea.workspace = true
 chrono.workspace = true
 serde.workspace = true
+ratatui.workspace = true

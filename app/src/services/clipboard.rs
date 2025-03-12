@@ -12,6 +12,7 @@ impl ClipboardService {
         SENDER.set(tx).unwrap();
         let mut clipboard = arboard::Clipboard::new()?;
 
+        log::debug!("Clipboard service started");
         loop {
             let event = rx.recv().await;
             if event.is_none() {

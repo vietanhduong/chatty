@@ -1,4 +1,5 @@
-use openai_models::{Event, Message};
+use eyre::{Context, Result};
+use openai_models::{Action, Event, Message};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -7,6 +8,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding},
 };
 use syntect::highlighting::Theme;
+use tokio::sync::mpsc;
 use tui_textarea::Key;
 use unicode_width::UnicodeWidthStr;
 
@@ -17,15 +19,17 @@ pub struct EditScreen<'a> {
     messages: Vec<SelectedMessage>,
     list_state: ListState,
     theme: &'a Theme,
+    action_tx: mpsc::UnboundedSender<Action>,
 }
 
 impl<'a> EditScreen<'_> {
-    pub fn new(theme: &'a Theme) -> EditScreen<'a> {
+    pub fn new(action_tx: mpsc::UnboundedSender<Action>, theme: &'a Theme) -> EditScreen<'a> {
         EditScreen {
             showing: false,
             messages: vec![],
             list_state: ListState::default(),
             theme,
+            action_tx,
         }
     }
 
@@ -75,6 +79,10 @@ impl<'a> EditScreen<'_> {
     }
 
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        if !self.showing {
+            return;
+        }
+
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -82,12 +90,16 @@ impl<'a> EditScreen<'_> {
             .padding(Padding::symmetric(1, 0))
             .title(" Edit Mode ")
             .title_alignment(Alignment::Center)
-            .title_bottom(" <Esc> to close ")
+            .title_bottom(
+                " <Esc> to close, <Space> to select, <y> to copy selected, <c> to quick copy ",
+            )
             .style(Style::default());
+
         let area = helpers::popup_area(area, 70, 90);
         frame.render_widget(Clear, area);
         let inner = block.inner(area);
         frame.render_widget(block, area);
+
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
@@ -150,22 +162,44 @@ impl<'a> EditScreen<'_> {
         frame.render_widget(list, area);
     }
 
-    pub fn handle_key_event(&mut self, event: Event) -> bool {
+    pub async fn handle_key_event(&mut self, event: Event) -> Result<bool> {
         match event {
             Event::KeyboardEsc => {
                 self.showing = false;
-                return false;
+                return Ok(false);
             }
             Event::KeyboardCtrlE => {
                 self.showing = !self.showing;
-                return false;
+                return Ok(false);
             }
             Event::KeyboardCtrlQ => {
                 self.showing = false;
-                return true;
+                return Ok(true);
             }
 
             Event::KeyboardCharInput(input) => match input.key {
+                Key::Char('c') => {
+                    if let Some(i) = self.list_state.selected() {
+                        let message = self.messages[i].msg.clone();
+                        self.action_tx
+                            .send(Action::CopyMessages(vec![message]))
+                            .wrap_err("sending copy message")?
+                    }
+                }
+                Key::Char('y') => {
+                    let selected_messages: Vec<Message> = self
+                        .messages
+                        .iter()
+                        .filter(|msg| msg.selected)
+                        .map(|msg| msg.msg.clone())
+                        .collect();
+
+                    if !selected_messages.is_empty() {
+                        self.action_tx
+                            .send(Action::CopyMessages(selected_messages))
+                            .wrap_err("sending copy messages")?
+                    }
+                }
                 Key::Char('j') => self.next_row(),
                 Key::Char('k') => self.prev_row(),
                 Key::Char('g') => self.list_state.select(Some(0)),
@@ -177,7 +211,7 @@ impl<'a> EditScreen<'_> {
                 Key::Char(' ') => self.toggle_selected(),
                 Key::Char('q') => {
                     self.showing = false;
-                    return false;
+                    return Ok(false);
                 }
                 _ => {}
             },
@@ -189,7 +223,7 @@ impl<'a> EditScreen<'_> {
 
             _ => {}
         }
-        false
+        Ok(false)
     }
 }
 

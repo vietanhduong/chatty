@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use eyre::Result;
-use openai_app::{App, services::ActionService};
+use openai_app::{
+    App,
+    services::{ActionService, ClipboardService},
+};
 use openai_backend::new_backend;
 use openai_models::{Action, Event};
 use openai_tui::{Command, init_logger, init_theme};
@@ -51,6 +54,14 @@ async fn main() -> Result<()> {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
 
     let mut bg_futures = task::JoinSet::new();
+
+    if let Err(err) = ClipboardService::healthcheck() {
+        log::warn!("Clipboard service is not available: {err}");
+    } else {
+        bg_futures.spawn(async move {
+            return ClipboardService::start().await;
+        });
+    }
 
     let mut app = App::new(
         Arc::clone(&backend),

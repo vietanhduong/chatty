@@ -16,6 +16,12 @@ pub(crate) fn popup_area(area: Rect, percent_width: u16, percent_height: u16) ->
     area
 }
 
+pub(crate) fn notice_area(area: Rect, percent_width: u16) -> Rect {
+    let horizontal = Layout::horizontal([Constraint::Percentage(percent_width)]).flex(Flex::End);
+    let [area] = horizontal.areas(area);
+    area
+}
+
 pub(crate) fn build_message_lines<'a, 'b>(
     content: &'b str,
     max_width: usize,
@@ -96,4 +102,18 @@ pub(crate) fn build_message_lines<'a, 'b>(
         lines.push(format_spans(split_spans));
     }
     lines
+}
+
+pub(crate) fn repeat_from_substactions(text: &str, subs: Vec<usize>) -> String {
+    let count = subs
+        .into_iter()
+        .map(|e| i32::try_from(e).unwrap())
+        .reduce(|a, b| a - b)
+        .unwrap();
+
+    if count <= 0 {
+        return String::new();
+    }
+
+    [text].repeat(count.try_into().unwrap()).join("")
 }

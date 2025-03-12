@@ -14,14 +14,16 @@ pub struct BackendResponse {
 }
 
 pub struct BackendPrompt {
+    model: String,
     text: String,
     context: String,
     regenerate: bool,
 }
 
 impl BackendPrompt {
-    pub fn new(text: impl Into<String>) -> Self {
+    pub fn new(model: &str, text: impl Into<String>) -> Self {
         Self {
+            model: model.to_string(),
             text: text.into(),
             context: String::new(),
             regenerate: false,
@@ -36,6 +38,10 @@ impl BackendPrompt {
     pub fn with_regenerate(mut self) -> Self {
         self.regenerate = true;
         self
+    }
+
+    pub fn model(&self) -> &str {
+        &self.model
     }
 
     pub fn text(&self) -> &str {
