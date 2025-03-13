@@ -1,9 +1,9 @@
 pub(crate) mod migration;
 
 use async_trait::async_trait;
-use eyre::{Context, Result, bail};
+use eyre::{Context, Result};
 use openai_models::{Conversation, Message, message::Issuer, storage::FilterConversation};
-use tokio_rusqlite::{Connection, params};
+use tokio_rusqlite::{Connection, ToSql, named_params, params};
 
 use crate::Storage;
 
@@ -111,33 +111,71 @@ impl Storage for Sqlite {
         Ok(messages)
     }
 
-    async fn get_conversations(&self, filter: &FilterConversation) -> Result<Vec<Conversation>> {
-        bail!("get_conversations not implemented")
+    async fn get_conversations(&self, filter: FilterConversation) -> Result<Vec<Conversation>> {
+        let mut conversations = self
+            .conn
+            .call(move |conn| {
+                let (query, params) = filter_to_query(&filter);
+                let mut stmt = conn.prepare(&query)?;
+                let params: Vec<(&str, &dyn ToSql)> =
+                    params.iter().map(|(n, v)| (*n, v.as_ref())).collect();
+                let mut rows = stmt.query(params.as_slice())?;
+
+                let mut conversations = vec![];
+                while let Some(row) = rows.next()? {
+                    let id: String = row.get(0)?;
+                    let title: String = row.get(1)?;
+                    let context: String = row.get(2)?;
+                    let timestamp: i64 = row.get(3)?;
+                    let timestamp = chrono::DateTime::from_timestamp_millis(timestamp).ok_or(
+                        tokio_rusqlite::Error::Other(eyre::eyre!("invalid timestamp").into()),
+                    )?;
+
+                    let mut con = Conversation::default()
+                        .with_id(id)
+                        .with_title(title)
+                        .with_timestamp(timestamp);
+                    if !context.is_empty() {
+                        con.set_context(context);
+                    }
+                    conversations.push(con);
+                }
+                Ok(conversations)
+            })
+            .await?;
+
+        for conversation in &mut conversations {
+            let messages = self.get_messages(conversation.id()).await?;
+            conversation.messages_mut().extend(messages);
+        }
+
+        Ok(conversations)
     }
 
     async fn create_conversation(&mut self, conversation: Conversation) -> Result<()> {
         self.conn.call(move |conn| {
             let tx = conn.transaction()?;
             tx.execute(
-                "INSERT INTO conversations (id, title, timestamp) VALUES (?, ?, ?)",
-                params![
-                    conversation.id(),
-                    conversation.title(),
-                    conversation.timestamp().timestamp_millis()
-                ],
+                "INSERT INTO conversations (id, title, context, timestamp) VALUES (:id, :title, :context, :timestamp)",
+                named_params!{
+                    ":id": conversation.id(),
+                    ":title": conversation.title(),
+                    ":context": conversation.context().unwrap_or_default(),
+                    ":timestamp": conversation.timestamp().timestamp_millis()
+                },
             )?;
 
             for message in conversation.messages() {
                 tx.execute(
-                    "INSERT INTO messages (id, conversation_id, text, issuer, system, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                    params![
-                        message.id(),
-                        conversation.id(),
-                        message.text(),
-                        message.issuer_str(),
-                        message.is_system() as i32,
-                        message.timestamp().timestamp_millis()
-                    ],
+                    "INSERT INTO messages (id, conversation_id, text, issuer, system, timestamp) VALUES (:id, :conversation_id, :text, :issuer, :system, :timestamp)",
+                    named_params!{
+                        ":id": message.id(),
+                        ":converstation_id": conversation.id(),
+                        ":text": message.text(),
+                        ":issuer": message.issuer_str(),
+                        ":system": message.is_system() as i32,
+                        ":timestamp": message.timestamp().timestamp_millis()
+                    },
                 )?;
             }
             tx.commit()?;
@@ -185,18 +223,54 @@ impl Storage for Sqlite {
         self.conn.call(move |conn| {
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT INTO messages (id, conversation_id, text, issuer, system, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-            params![
-                message.id(),
-                conversation_id,
-                message.text(),
-                message.issuer_str(),
-                message.is_system() as i32,
-                message.timestamp().timestamp_millis()
-            ],
+            "INSERT INTO messages (id, conversation_id, text, issuer, system, timestamp) VALUES (:id, :conversation_id, :text, :issuer, :system, :timestamp)",
+            named_params!{
+                ":id": message.id(),
+                ":conversation_id": conversation_id,
+                ":text": message.text(),
+                ":isser": message.issuer_str(),
+                ":system": message.is_system() as i32,
+                ":timestamp": message.timestamp().timestamp_millis()
+            },
         )?;
         Ok(tx.commit()?)
         }).await?;
         Ok(())
     }
+}
+
+fn filter_to_query(filter: &FilterConversation) -> (String, Vec<(&str, Box<dyn ToSql>)>) {
+    let mut query =
+        String::from("SELECT id, title, context, timestamp FROM conversations WHERE 1=1");
+    let mut params: Vec<(&str, Box<dyn ToSql>)> = vec![];
+
+    if let Some(id) = filter.id() {
+        query.push_str(" AND id = :id");
+        params.push((":id", Box::new(id.to_string())));
+    }
+
+    if let Some(title) = filter.title() {
+        query.push_str(" AND title LIKE :title");
+        params.push((":title", Box::new(format!("%{}%", title))));
+    }
+
+    if let Some(message_contains) = filter.message_contains() {
+        query.push_str(" AND EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id AND text LIKE :message_contains)");
+        params.push((
+            ":message_contains",
+            Box::new(format!("%{}%", message_contains)),
+        ));
+    }
+
+    if let Some(start_time) = filter.start_time() {
+        query.push_str(" AND timestamp >= :start_time");
+        params.push((":start_time", Box::new(start_time.timestamp_millis())));
+    }
+
+    if let Some(end_time) = filter.end_time() {
+        query.push_str(" AND timestamp <= :end_time");
+        params.push((":end_time", Box::new(end_time.timestamp_millis())));
+    }
+
+    (query, params)
 }
