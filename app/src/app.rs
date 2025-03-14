@@ -4,10 +4,11 @@ use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use eyre::{Context, Result};
+use eyre::Result;
 use openai_backend::ArcBackend;
 use openai_models::{
-    Action, BackendPrompt, Event, Message, NoticeMessage, NoticeType, message::Issuer,
+    Action, AppendMessage, BackendPrompt, Event, Message, NoticeMessage, NoticeType,
+    message::Issuer,
 };
 use ratatui::crossterm::{
     execute,
@@ -23,10 +24,15 @@ use syntect::highlighting::Theme;
 use tokio::sync::mpsc;
 
 use crate::{
-    app_state::AppState,
+    app_state::{AppState, MessageAction},
     services::EventsService,
     ui::{EditScreen, HelpScreen, Loading, ModelsScreen, Notice, TextArea, bubble, helpers},
 };
+
+pub struct AppInitProps {
+    pub models: Vec<String>,
+    pub default_model: String,
+}
 
 pub struct App<'a> {
     backend: ArcBackend,
@@ -49,37 +55,30 @@ impl<'a> App<'_> {
         theme: &'a Theme,
         action_tx: mpsc::UnboundedSender<Action>,
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
+        init_props: AppInitProps,
     ) -> App<'a> {
         App {
             backend: backend.clone(),
             theme,
             edit_screen: EditScreen::new(action_tx.clone(), theme),
-            action_tx,
+            action_tx: action_tx.clone(),
             events: EventsService::new(event_rx),
             app_state: AppState::new(theme),
             input: TextArea::default().build(),
             loading: Loading::new("Thinking... Press <Ctrl+c> to abort!"),
             help_screen: HelpScreen::new(),
-            models_screen: ModelsScreen::new(backend),
+            models_screen: ModelsScreen::new(
+                init_props.default_model,
+                init_props.models,
+                action_tx.clone(),
+            ),
             notice: Notice::default(),
         }
-    }
-
-    pub async fn current_model(&self) -> String {
-        let lock = self.backend.lock().await;
-        let model = lock.current_model();
-        model.to_string()
     }
 
     pub async fn run(&mut self) -> Result<()> {
         let stdout = io::stdout();
         let mut stdout = stdout.lock();
-
-        // Prefetch the models in the background
-        self.models_screen
-            .fetch_models()
-            .await
-            .wrap_err("fetching models")?;
 
         enable_raw_mode()?;
         execute!(
@@ -149,7 +148,24 @@ impl<'a> App<'_> {
             }
             Event::BackendPromptResponse(msg) => {
                 let notify = msg.done && msg.init_conversation;
-                self.app_state.handle_backend_response(msg);
+                let msg_action = self.app_state.handle_backend_response(msg);
+                let mut insert = false;
+                let message = match msg_action {
+                    MessageAction::InsertMessage(msg) => {
+                        insert = true;
+                        msg
+                    }
+                    MessageAction::UpdateMessage(msg) => msg,
+                }
+                .clone();
+
+                let conversation_id = self.app_state.conversation.id().to_string();
+
+                self.action_tx.send(Action::AppendMessage(AppendMessage {
+                    conversation_id,
+                    message,
+                    insert,
+                }))?;
 
                 if notify {
                     self.notice.add_message(
@@ -159,6 +175,11 @@ impl<'a> App<'_> {
                         ))
                         .with_duration(time::Duration::from_secs(5)),
                     );
+
+                    // Save the conversation
+                    self.action_tx.send(Action::UpsertConversation(
+                        self.app_state.conversation.clone(),
+                    ))?;
                 }
             }
             Event::KeyboardCharInput(c) => {
@@ -257,7 +278,7 @@ impl<'a> App<'_> {
                     return Ok(false);
                 };
 
-                let model = self.current_model().await;
+                let model = self.backend.default_model();
                 self.app_state.waiting_for_backend = true;
                 let prompt = BackendPrompt::new(&model, input_str)
                     .with_context(self.app_state.conversation.context().unwrap_or_default())
@@ -291,7 +312,7 @@ impl<'a> App<'_> {
                 self.input = TextArea::default().build();
                 self.app_state.add_message(msg);
 
-                let model = self.current_model().await;
+                let model = self.backend.default_model();
 
                 self.app_state.waiting_for_backend = true;
 
@@ -300,6 +321,18 @@ impl<'a> App<'_> {
 
                 if first {
                     prompt = prompt.with_first();
+                    // Save the conversation
+                    self.action_tx.send(Action::UpsertConversation(
+                        self.app_state.conversation.clone(),
+                    ))?;
+
+                    for msg in self.app_state.conversation.messages() {
+                        self.action_tx.send(Action::AppendMessage(AppendMessage {
+                            conversation_id: self.app_state.conversation.id().to_string(),
+                            message: msg.clone(),
+                            insert: true,
+                        }))?;
+                    }
                 }
 
                 self.action_tx.send(Action::BackendRequest(prompt))?;

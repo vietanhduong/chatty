@@ -1560,6 +1560,7 @@ dependencies = [
  "once_cell",
  "openai-backend",
  "openai-models",
+ "openai-storage",
  "ratatui",
  "syntect",
  "tokio",
@@ -1595,6 +1596,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "openai-storage"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "eyre",
+ "futures",
+ "log",
+ "openai-models",
+ "tokio",
+ "tokio-rusqlite",
+]
+
+[[package]]
 name = "openai-tui"
 version = "0.1.0"
 dependencies = [
@@ -1606,6 +1621,7 @@ dependencies = [
  "openai-app",
  "openai-backend",
  "openai-models",
+ "openai-storage",
  "syntect",
  "tokio",
  "toml",
@@ -2294,20 +2310,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "storage"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "eyre",
- "futures",
- "log",
- "openai-models",
- "tokio",
- "tokio-rusqlite",
-]
 
 [[package]]
 name = "strsim"

@@ -5,8 +5,10 @@ pub struct FilterConversation {
     id: Option<String>,
     title: Option<String>,
     message_contains: Option<String>,
-    start_time: Option<chrono::DateTime<chrono::Utc>>,
-    end_time: Option<chrono::DateTime<chrono::Utc>>,
+    updated_at_from: Option<chrono::DateTime<chrono::Utc>>,
+    updated_at_to: Option<chrono::DateTime<chrono::Utc>>,
+    created_at_from: Option<chrono::DateTime<chrono::Utc>>,
+    created_at_to: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl FilterConversation {
@@ -25,13 +27,23 @@ impl FilterConversation {
         self
     }
 
-    pub fn with_start_time(mut self, start_time: chrono::DateTime<chrono::Utc>) -> Self {
-        self.start_time = Some(start_time);
+    pub fn with_updated_at_from(mut self, from: chrono::DateTime<chrono::Utc>) -> Self {
+        self.updated_at_from = Some(from);
         self
     }
 
-    pub fn with_end_time(mut self, end_time: chrono::DateTime<chrono::Utc>) -> Self {
-        self.end_time = Some(end_time);
+    pub fn with_updated_at_to(mut self, to: chrono::DateTime<chrono::Utc>) -> Self {
+        self.updated_at_to = Some(to);
+        self
+    }
+
+    pub fn with_created_at_from(mut self, from: chrono::DateTime<chrono::Utc>) -> Self {
+        self.created_at_from = Some(from);
+        self
+    }
+
+    pub fn with_created_at_to(mut self, to: chrono::DateTime<chrono::Utc>) -> Self {
+        self.created_at_to = Some(to);
         self
     }
 
@@ -47,12 +59,20 @@ impl FilterConversation {
         self.message_contains.as_deref()
     }
 
-    pub fn start_time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
-        self.start_time
+    pub fn updated_at_from(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.updated_at_from
     }
 
-    pub fn end_time(&self) -> Option<chrono::DateTime<chrono::Utc>> {
-        self.end_time
+    pub fn updated_at_to(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.updated_at_to
+    }
+
+    pub fn created_at_from(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.created_at_from
+    }
+
+    pub fn created_at_to(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        self.created_at_to
     }
 
     pub fn matches(&self, conversation: &Conversation) -> bool {
@@ -78,14 +98,26 @@ impl FilterConversation {
             }
         }
 
-        if let Some(start_time) = self.start_time {
-            if conversation.timestamp() < start_time {
+        if let Some(from) = self.updated_at_from {
+            if conversation.updated_at() < from {
                 return false;
             }
         }
 
-        if let Some(end_time) = self.end_time {
-            if conversation.timestamp() > end_time {
+        if let Some(to) = self.updated_at_to {
+            if conversation.updated_at() > to {
+                return false;
+            }
+        }
+
+        if let Some(from) = self.created_at_from {
+            if conversation.created_at() < from {
+                return false;
+            }
+        }
+
+        if let Some(to) = self.created_at_to {
+            if conversation.created_at() > to {
                 return false;
             }
         }

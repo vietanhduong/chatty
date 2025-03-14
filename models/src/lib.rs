@@ -18,9 +18,12 @@ pub use crate::configuration as config;
 #[derive(Debug)]
 pub enum Event {
     Notice(NoticeMessage),
+
     AbortRequest,
+    ModelChanged(String),
     BackendMessage(Message),
     BackendPromptResponse(BackendResponse),
+
     KeyboardCharInput(Input),
     KeyboardEsc,
     KeyboardEnter,
@@ -39,12 +42,23 @@ pub enum Event {
     UiScrollDown,
     UiScrollPageUp,
     UiScrollPageDown,
+
+    ListConversationsResponse(Vec<Conversation>),
+    ConversationResponse(Conversation),
 }
 
 pub enum Action {
     BackendAbort,
     BackendRequest(BackendPrompt),
+    BackendSetModel(String),
+
     CopyMessages(Vec<Message>),
+
+    ListConversations,
+    UpsertConversation(Conversation),
+    AppendMessage(AppendMessage),
+
+    GetConversation(String),
 }
 
 impl Event {
@@ -69,6 +83,12 @@ impl Event {
             _ => false,
         }
     }
+}
+
+pub struct AppendMessage {
+    pub message: Message,
+    pub conversation_id: String,
+    pub insert: bool,
 }
 
 #[derive(Debug, Default)]

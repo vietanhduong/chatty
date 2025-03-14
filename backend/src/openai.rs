@@ -1,4 +1,5 @@
 use std::ops::Deref;
+use std::sync::RwLock;
 use std::{fmt::Display, time};
 
 use crate::Backend;
@@ -17,7 +18,8 @@ pub struct OpenAI {
     token: Option<String>,
     timeout: Option<time::Duration>,
 
-    current_model: String,
+    cache_models: tokio::sync::RwLock<Vec<String>>,
+    default_model: RwLock<String>,
 }
 
 const TITLE_PROMPT: &str = r#"
@@ -32,11 +34,22 @@ impl Backend for OpenAI {
         if self.endpoint.is_empty() {
             bail!("Endpoint is not set");
         }
-        self.list_models().await?;
+
+        let cached_models = self.cache_models.read().await;
+        if !cached_models.is_empty() {
+            return Ok(());
+        }
+        drop(cached_models);
+
+        self.list_models(true).await?;
         Ok(())
     }
 
-    async fn list_models(&self) -> Result<Vec<String>> {
+    async fn list_models(&self, force: bool) -> Result<Vec<String>> {
+        if !force {
+            return Ok(self.cache_models.read().await.clone());
+        }
+
         let mut req = reqwest::Client::new().get(format!("{}/v1/models", self.endpoint));
 
         if let Some(timeout) = self.timeout {
@@ -69,17 +82,19 @@ impl Backend for OpenAI {
             .collect::<Vec<_>>();
 
         models.sort();
+        let mut cached = self.cache_models.write().await;
+        *cached = models.clone();
         Ok(models)
     }
 
-    fn current_model(&self) -> &str {
-        &self.current_model
+    fn default_model(&self) -> String {
+        self.default_model.read().unwrap().to_string()
     }
 
-    async fn set_model(&mut self, model: &str) -> Result<()> {
+    async fn set_default_model(&self, model: &str) -> Result<()> {
         // We will check the model against the list of available models
         // If the model is not available, we will return an error
-        let models = self.list_models().await?;
+        let models = self.list_models(false).await?;
         if !model.is_empty() && !models.contains(&model.to_string()) {
             bail!("OpenAI error: Model {} is not available", model);
         }
@@ -91,7 +106,8 @@ impl Backend for OpenAI {
         } else {
             model
         };
-        self.current_model = model.to_string();
+        let mut default_model = self.default_model.write().unwrap();
+        *default_model = model.to_string();
         Ok(())
     }
 
@@ -100,7 +116,7 @@ impl Backend for OpenAI {
         prompt: BackendPrompt,
         event_tx: &'a mpsc::UnboundedSender<Event>,
     ) -> Result<()> {
-        if self.current_model().is_empty() {
+        if self.default_model().is_empty() {
             bail!("OpenAI error: Model is not set");
         }
 
@@ -140,13 +156,13 @@ impl Backend for OpenAI {
         });
 
         let model = if prompt.model().is_empty() {
-            self.current_model().to_string()
+            self.default_model().to_string()
         } else {
             prompt.model().to_string()
         };
 
         let completion_req = CompletionRequest {
-            model,
+            model: model.clone(),
             messages: messages.clone(),
             stream: true,
         };
@@ -225,7 +241,7 @@ impl Backend for OpenAI {
                         last_message += &text;
                         let msg = BackendResponse {
                             id: message_id.clone(),
-                            model: self.current_model().to_string(),
+                            model: model.clone(),
                             text,
                             context: None,
                             done: false,
@@ -248,7 +264,7 @@ impl Backend for OpenAI {
 
         let msg = BackendResponse {
             id: message_id,
-            model: self.current_model().to_string(),
+            model,
             text: String::new(),
             context: Some(serde_json::to_string(&messages)?),
             done: true,
@@ -298,7 +314,8 @@ impl Default for OpenAI {
             endpoint: "https://api.openai.com".to_string(),
             token: None,
             timeout: None,
-            current_model: String::new(),
+            default_model: RwLock::new(String::new()),
+            cache_models: tokio::sync::RwLock::new(Vec::new()),
         }
     }
 }

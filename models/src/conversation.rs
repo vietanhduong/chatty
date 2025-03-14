@@ -6,9 +6,10 @@ use crate::Message;
 pub struct Conversation {
     id: String,
     title: String,
-    timestamp: chrono::DateTime<chrono::Utc>,
     messages: Vec<Message>,
     context: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl Conversation {
@@ -17,8 +18,16 @@ impl Conversation {
         self
     }
 
-    pub fn with_timestamp(mut self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
-        self.timestamp = timestamp;
+    pub fn with_created_at(mut self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
+        self.created_at = timestamp;
+        if self.updated_at.is_none() {
+            self.updated_at = Some(timestamp);
+        }
+        self
+    }
+
+    pub fn with_updated_at(mut self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
+        self.updated_at = Some(timestamp);
         self
     }
 
@@ -40,6 +49,10 @@ impl Conversation {
         self.context.as_deref()
     }
 
+    pub fn set_updated_at(&mut self, timestamp: chrono::DateTime<chrono::Utc>) {
+        self.updated_at = Some(timestamp);
+    }
+
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
         self.messages = messages;
         self
@@ -53,8 +66,12 @@ impl Conversation {
         self.messages.push(message);
     }
 
-    pub fn timestamp(&self) -> chrono::DateTime<chrono::Utc> {
-        self.timestamp
+    pub fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
+        self.created_at
+    }
+
+    pub fn updated_at(&self) -> chrono::DateTime<chrono::Utc> {
+        self.updated_at.unwrap_or(self.created_at)
     }
 
     pub fn messages(&self) -> &[Message] {
@@ -92,7 +109,8 @@ impl Default for Conversation {
             id: Uuid::new_v4().to_string(),
             title: "New Chat".to_string(),
             messages: Vec::new(),
-            timestamp: chrono::Utc::now(),
+            created_at: chrono::Utc::now(),
+            updated_at: None,
             context: None,
         }
     }

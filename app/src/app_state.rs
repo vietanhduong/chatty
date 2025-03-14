@@ -4,6 +4,11 @@ use syntect::highlighting::Theme;
 
 use crate::{ui::BubbleList, ui::Scroll};
 
+pub(crate) enum MessageAction<'a> {
+    UpdateMessage(&'a Message),
+    InsertMessage(&'a Message),
+}
+
 pub struct AppState<'a> {
     theme: &'a Theme,
     pub(crate) bubble_list: BubbleList<'a>,
@@ -86,14 +91,15 @@ impl<'a> AppState<'_> {
         None
     }
 
-    pub fn handle_backend_response(&mut self, msg: BackendResponse) {
+    pub(crate) fn handle_backend_response(&mut self, msg: BackendResponse) -> MessageAction {
         let last_message = self.conversation.last_mut_message().unwrap();
+        let insert = !last_message.is_system();
         if last_message.is_system() {
             last_message.append(&msg.text);
         } else {
             self.conversation
                 .add_message(Message::new_system(msg.model.as_str(), &msg.text).with_id(msg.id));
-        }
+        };
 
         self.sync_state();
 
@@ -114,6 +120,7 @@ impl<'a> AppState<'_> {
                 }
             }
 
+            self.conversation.set_updated_at(chrono::Utc::now());
             self.waiting_for_backend = false;
             if let Some(ctx) = msg.context {
                 self.conversation.set_context(ctx);
@@ -125,6 +132,14 @@ impl<'a> AppState<'_> {
                     "No context available for this code.",
                 ));
             }
+        }
+
+        let last_message = self.conversation.last_message().unwrap();
+
+        if insert {
+            MessageAction::InsertMessage(&last_message)
+        } else {
+            MessageAction::UpdateMessage(&last_message)
         }
     }
 

@@ -7,14 +7,14 @@ pub use crate::openai::OpenAI;
 use async_trait::async_trait;
 use eyre::Result;
 use openai_models::{BackendPrompt, Event, config::Configuration};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::mpsc;
 
 #[async_trait]
 pub trait Backend {
     async fn health_check(&self) -> Result<()>;
-    async fn list_models(&self) -> Result<Vec<String>>;
-    fn current_model(&self) -> &str;
-    async fn set_model(&mut self, model: &str) -> Result<()>;
+    async fn list_models(&self, force: bool) -> Result<Vec<String>>;
+    fn default_model(&self) -> String;
+    async fn set_default_model(&self, model: &str) -> Result<()>;
     async fn get_completion<'a>(
         &self,
         prompt: BackendPrompt,
@@ -22,7 +22,7 @@ pub trait Backend {
     ) -> Result<()>;
 }
 
-pub type ArcBackend = Arc<Mutex<dyn Backend + Send + Sync>>;
+pub type ArcBackend = Arc<dyn Backend + Send + Sync>;
 
 pub fn new_backend(config: &Configuration) -> Result<ArcBackend> {
     let backend = config
@@ -40,5 +40,5 @@ pub fn new_backend(config: &Configuration) -> Result<ArcBackend> {
     if let Some(api_key) = openai.api_key() {
         backend = backend.with_token(api_key);
     }
-    Ok(Arc::new(Mutex::new(backend)))
+    Ok(Arc::new(backend))
 }

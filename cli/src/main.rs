@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
-use eyre::Result;
+use eyre::{Context, Result};
 use openai_app::{
     App,
+    app::AppInitProps,
     services::{ActionService, ClipboardService},
 };
 use openai_backend::new_backend;
 use openai_models::{Action, Event};
+use openai_storage::new_storage;
 use openai_tui::{Command, init_logger, init_theme};
 use tokio::{sync::mpsc, task};
 
@@ -18,37 +20,38 @@ async fn main() -> Result<()> {
     let theme = init_theme(&config)?;
 
     let backend = new_backend(&config)?;
-    {
-        let mut lock = backend.lock().await;
-        lock.health_check().await?;
+    backend.health_check().await?;
 
-        let models = lock.list_models().await?;
-        if models.is_empty() {
-            eyre::bail!("No models available");
-        }
-
-        let backend_config = config.backend().cloned().unwrap_or_default();
-        let want_model = backend_config.default_model().unwrap_or_default();
-
-        let model = if want_model.is_empty() {
-            models[0].clone()
-        } else {
-            models
-                .iter()
-                .find(|m| m == &&want_model)
-                .unwrap_or_else(|| {
-                    log::warn!(
-                        "Model {} not found, using default ({})",
-                        want_model,
-                        models[0]
-                    );
-                    &models[0]
-                })
-                .clone()
-        };
-
-        lock.set_model(&model).await?;
+    let models = backend.list_models(false).await?;
+    if models.is_empty() {
+        eyre::bail!("No models available");
     }
+
+    let backend_config = config.backend().cloned().unwrap_or_default();
+    let want_model = backend_config.default_model().unwrap_or_default();
+
+    let model = if want_model.is_empty() {
+        models[0].clone()
+    } else {
+        models
+            .iter()
+            .find(|m| m == &&want_model)
+            .unwrap_or_else(|| {
+                log::warn!(
+                    "Model {} not found, using default ({})",
+                    want_model,
+                    models[0]
+                );
+                &models[0]
+            })
+            .clone()
+    };
+
+    backend.set_default_model(&model).await?;
+
+    let storage = new_storage(&config)
+        .await
+        .wrap_err("initializing storage")?;
 
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
@@ -68,10 +71,14 @@ async fn main() -> Result<()> {
         &theme,
         action_tx.clone(),
         &mut event_rx,
+        AppInitProps {
+            default_model: model,
+            models,
+        },
     );
 
     bg_futures.spawn(async move {
-        ActionService::new(event_tx, &mut action_rx, backend)
+        ActionService::new(event_tx, &mut action_rx, backend, storage)
             .start()
             .await
     });

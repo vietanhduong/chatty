@@ -2,13 +2,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Configuration {
-    log: Option<Log>,
-    theme: Option<Theme>,
-    backend: Option<Backend>,
+    log: Option<LogConfig>,
+    theme: Option<ThemeConfig>,
+    backend: Option<BackendConfig>,
+    storage: Option<StorageConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Log {
+pub struct LogConfig {
     level: Option<String>,
     filters: Option<Vec<LogFilter>>,
     file: Option<LogFile>,
@@ -27,38 +28,53 @@ pub struct LogFile {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Theme {
+pub struct ThemeConfig {
     name: Option<String>,
     folder_path: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Backend {
-    openai: Option<OpenAI>,
+pub struct BackendConfig {
+    openai: Option<OpenAIBackend>,
     default_model: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct OpenAI {
+pub struct OpenAIBackend {
     endpoint: Option<String>,
     api_key: Option<String>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum StorageConfig {
+    #[serde(rename = "sqlite")]
+    Sqlite(SqliteStorage),
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct SqliteStorage {
+    path: Option<String>,
+}
+
 impl Configuration {
-    pub fn log(&self) -> Option<&Log> {
+    pub fn log(&self) -> Option<&LogConfig> {
         self.log.as_ref()
     }
 
-    pub fn theme(&self) -> Option<&Theme> {
+    pub fn theme(&self) -> Option<&ThemeConfig> {
         self.theme.as_ref()
     }
 
-    pub fn backend(&self) -> Option<&Backend> {
+    pub fn backend(&self) -> Option<&BackendConfig> {
         self.backend.as_ref()
+    }
+
+    pub fn storage(&self) -> Option<&StorageConfig> {
+        self.storage.as_ref()
     }
 }
 
-impl Log {
+impl LogConfig {
     pub fn level(&self) -> Option<&str> {
         self.level.as_deref()
     }
@@ -92,7 +108,7 @@ impl LogFile {
     }
 }
 
-impl Theme {
+impl ThemeConfig {
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
@@ -102,8 +118,8 @@ impl Theme {
     }
 }
 
-impl Backend {
-    pub fn openai(&self) -> Option<&OpenAI> {
+impl BackendConfig {
+    pub fn openai(&self) -> Option<&OpenAIBackend> {
         self.openai.as_ref()
     }
 
@@ -112,7 +128,7 @@ impl Backend {
     }
 }
 
-impl OpenAI {
+impl OpenAIBackend {
     pub fn endpoint(&self) -> Option<&str> {
         self.endpoint.as_deref()
     }
@@ -122,17 +138,24 @@ impl OpenAI {
     }
 }
 
+impl SqliteStorage {
+    pub fn path(&self) -> Option<&str> {
+        self.path.as_deref()
+    }
+}
+
 impl Default for Configuration {
     fn default() -> Self {
         Self {
-            log: Some(Log::default()),
-            theme: Some(Theme::default()),
-            backend: Some(Backend::default()),
+            log: Some(LogConfig::default()),
+            theme: Some(ThemeConfig::default()),
+            backend: Some(BackendConfig::default()),
+            storage: Some(StorageConfig::default()),
         }
     }
 }
 
-impl Default for Log {
+impl Default for LogConfig {
     fn default() -> Self {
         Self {
             level: Some("info".to_string()),
@@ -142,7 +165,7 @@ impl Default for Log {
     }
 }
 
-impl Default for Theme {
+impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
             name: Some("base16-ocean.dark".to_string()),
@@ -151,20 +174,32 @@ impl Default for Theme {
     }
 }
 
-impl Default for Backend {
+impl Default for BackendConfig {
     fn default() -> Self {
         Self {
-            openai: Some(OpenAI::default()),
+            openai: Some(OpenAIBackend::default()),
             default_model: None,
         }
     }
 }
 
-impl Default for OpenAI {
+impl Default for OpenAIBackend {
     fn default() -> Self {
         Self {
             endpoint: Some("https://api.openapi.com".to_string()),
             api_key: None,
         }
+    }
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        Self::Sqlite(SqliteStorage::default())
+    }
+}
+
+impl Default for SqliteStorage {
+    fn default() -> Self {
+        Self { path: None }
     }
 }
