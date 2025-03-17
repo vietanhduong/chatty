@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use eyre::{Context, Result};
 use openai_app::{
     App,
@@ -7,7 +5,7 @@ use openai_app::{
     services::{ActionService, ClipboardService},
 };
 use openai_backend::new_backend;
-use openai_models::{Action, Event};
+use openai_models::{Action, Event, storage::FilterConversation};
 use openai_storage::new_storage;
 use openai_tui::{Command, init_logger, init_theme};
 use tokio::{sync::mpsc, task};
@@ -53,6 +51,10 @@ async fn main() -> Result<()> {
         .await
         .wrap_err("initializing storage")?;
 
+    let conversations = storage
+        .get_conversations(FilterConversation::default())
+        .await?;
+
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
 
@@ -67,13 +69,13 @@ async fn main() -> Result<()> {
     }
 
     let mut app = App::new(
-        Arc::clone(&backend),
         &theme,
         action_tx.clone(),
         &mut event_rx,
         AppInitProps {
             default_model: model,
             models,
+            conversations,
         },
     );
 

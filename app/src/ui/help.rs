@@ -13,8 +13,6 @@ use ratatui::{
 };
 use tui_textarea::Key;
 
-use super::helpers;
-
 pub const KEY_BINDINGS: Lazy<Vec<KeyBinding>> = Lazy::new(build_key_bindings);
 const ROW_HEIGHT: usize = 1;
 
@@ -114,7 +112,6 @@ impl<'a> HelpScreen<'_> {
             .title_alignment(Alignment::Center)
             .title_bottom(" <Esc> to close ")
             .style(Style::default());
-        let area = helpers::popup_area(area, 40, 30);
         frame.render_widget(Clear, area);
 
         if self.last_known_width != area.width as usize

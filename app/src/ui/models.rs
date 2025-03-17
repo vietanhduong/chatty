@@ -12,8 +12,6 @@ use ratatui::{
 use tokio::sync::mpsc;
 use tui_textarea::Key;
 
-use super::helpers;
-
 pub struct ModelsScreen {
     action_tx: mpsc::UnboundedSender<Action>,
     showing: bool,
@@ -35,6 +33,10 @@ impl ModelsScreen {
             current_model: default_model,
             action_tx,
         }
+    }
+
+    pub fn current_model(&self) -> &str {
+        &self.current_model
     }
 
     pub fn showing(&self) -> bool {
@@ -95,7 +97,6 @@ impl ModelsScreen {
             .title_alignment(Alignment::Center)
             .title_bottom(" <Esc>/<Space> to close/select ")
             .style(Style::default());
-        let area = helpers::popup_area(area, 30, 60);
         frame.render_widget(Clear, area);
 
         let selected_row_style = Style::default()

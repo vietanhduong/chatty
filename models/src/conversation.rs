@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::Message;
+use crate::{Message, message::Issuer};
 
 #[derive(Debug, Clone)]
 pub struct Conversation {
@@ -13,6 +13,15 @@ pub struct Conversation {
 }
 
 impl Conversation {
+    pub fn new_hello() -> Self {
+        let mut conversation = Self::default();
+        conversation.messages.push(Message::new_system(
+            "system",
+            "Hello! How can I help you? 😊",
+        ));
+        conversation
+    }
+
     pub fn with_id(mut self, id: impl Into<String>) -> Self {
         self.id = id.into();
         self
@@ -101,6 +110,38 @@ impl Conversation {
     pub fn messages_mut(&mut self) -> &mut Vec<Message> {
         &mut self.messages
     }
+
+    pub fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
+        if let Some(msg) = self.messages.last() {
+            if issuer.is_none() {
+                return Some(msg);
+            }
+
+            let value;
+            let is_system = match msg.issuer() {
+                Issuer::System(sys) => {
+                    value = sys.to_string();
+                    true
+                }
+                Issuer::User(val) => {
+                    value = val.to_string();
+                    false
+                }
+            };
+
+            if is_system == msg.is_system() {
+                if value.is_empty() {
+                    return Some(msg);
+                }
+                return if msg.issuer_str() == value {
+                    Some(msg)
+                } else {
+                    None
+                };
+            }
+        }
+        None
+    }
 }
 
 impl Default for Conversation {
@@ -108,7 +149,7 @@ impl Default for Conversation {
         Self {
             id: Uuid::new_v4().to_string(),
             title: "New Chat".to_string(),
-            messages: Vec::new(),
+            messages: vec![],
             created_at: chrono::Utc::now(),
             updated_at: None,
             context: None,

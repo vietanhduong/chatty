@@ -95,7 +95,6 @@ impl<'a> EditScreen<'_> {
             )
             .style(Style::default());
 
-        let area = helpers::popup_area(area, 70, 90);
         frame.render_widget(Clear, area);
         let inner = block.inner(area);
         frame.render_widget(block, area);

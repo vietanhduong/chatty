@@ -1,5 +1,7 @@
 pub(crate) mod migration;
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use openai_models::{Conversation, Message, message::Issuer, storage::FilterConversation};
@@ -125,7 +127,10 @@ impl Storage for Sqlite {
         Ok(messages)
     }
 
-    async fn get_conversations(&self, filter: FilterConversation) -> Result<Vec<Conversation>> {
+    async fn get_conversations(
+        &self,
+        filter: FilterConversation,
+    ) -> Result<HashMap<String, Conversation>> {
         let mut conversations = self
             .conn
             .call(move |conn| {
@@ -135,30 +140,41 @@ impl Storage for Sqlite {
                     params.iter().map(|(n, v)| (*n, v.as_ref())).collect();
                 let mut rows = stmt.query(params.as_slice())?;
 
-                let mut conversations = vec![];
+                let mut conversations: HashMap<String, Conversation> = HashMap::new();
+
                 while let Some(row) = rows.next()? {
                     let id: String = row.get(0)?;
                     let title: String = row.get(1)?;
                     let context: String = row.get(2)?;
-                    let timestamp: i64 = row.get(3)?;
-                    let timestamp = chrono::DateTime::from_timestamp_millis(timestamp).ok_or(
-                        tokio_rusqlite::Error::Other(eyre::eyre!("invalid timestamp").into()),
+                    let created_at: i64 = row.get(3)?;
+                    let created_at = chrono::DateTime::from_timestamp_millis(created_at).ok_or(
+                        tokio_rusqlite::Error::Other(eyre::eyre!("invalid created_at").into()),
+                    )?;
+
+                    let updated_at: i64 = row.get(4)?;
+                    let updated_at = chrono::DateTime::from_timestamp_millis(updated_at).ok_or(
+                        tokio_rusqlite::Error::Other(eyre::eyre!("invalid updated_at").into()),
                     )?;
 
                     let mut con = Conversation::default()
-                        .with_id(id)
+                        .with_id(&id)
                         .with_title(title)
-                        .with_created_at(timestamp);
+                        .with_created_at(created_at);
+
+                    if updated_at.timestamp_millis() > 0 {
+                        con = con.with_updated_at(updated_at);
+                    }
+
                     if !context.is_empty() {
                         con.set_context(context);
                     }
-                    conversations.push(con);
+                    conversations.insert(id, con);
                 }
                 Ok(conversations)
             })
             .await?;
 
-        for conversation in &mut conversations {
+        for (_, conversation) in &mut conversations {
             let messages = self.get_messages(conversation.id()).await?;
             conversation.messages_mut().extend(messages);
         }
@@ -550,7 +566,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_conversation_with_filter() {
+    async fn test_get_conversations_with_filter() {
         let db = Sqlite::new(None).await.unwrap();
         db.run_migration().await.unwrap();
 
@@ -565,29 +581,46 @@ mod tests {
 
         let filter = FilterConversation::default().with_id("test_id_0");
         let actual = db.get_conversations(filter).await.unwrap();
-        assert_eq!(actual.len(), 1);
-        assert_eq!(actual[0].id(), "test_id_0");
-        assert_eq!(actual[0].title(), "Even Conversation 0");
-        assert_eq!(actual[0].context(), Some("Context 0"));
-        assert_eq!(actual[0].messages().len(), 3);
+
+        let con = actual.get("test_id_0").unwrap();
+
+        assert_eq!(con.id(), "test_id_0");
+        assert_eq!(con.title(), "Even Conversation 0");
+        assert_eq!(con.context(), Some("Context 0"));
 
         let filter = FilterConversation::default().with_title("Odd");
         let actual = db.get_conversations(filter).await.unwrap();
         assert_eq!(actual.len(), 5);
-        assert_eq!(actual[0].id(), "test_id_1");
-        assert_eq!(actual[1].id(), "test_id_3");
-        assert_eq!(actual[2].id(), "test_id_5");
-        assert_eq!(actual[3].id(), "test_id_7");
-        assert_eq!(actual[4].id(), "test_id_9");
+
+        let expected_ids = vec![
+            "test_id_1",
+            "test_id_3",
+            "test_id_5",
+            "test_id_7",
+            "test_id_9",
+        ];
+
+        for (_, id) in expected_ids.iter().enumerate() {
+            let con = actual.get(*id).unwrap();
+            assert_eq!(con.id(), *id);
+        }
 
         let filter = FilterConversation::default().with_message_contains("System");
         let actual = db.get_conversations(filter).await.unwrap();
+
+        let expected_ids = vec![
+            "test_id_0",
+            "test_id_2",
+            "test_id_4",
+            "test_id_6",
+            "test_id_8",
+        ];
+
         assert_eq!(actual.len(), 5);
-        assert_eq!(actual[0].id(), "test_id_0");
-        assert_eq!(actual[1].id(), "test_id_2");
-        assert_eq!(actual[2].id(), "test_id_4");
-        assert_eq!(actual[3].id(), "test_id_6");
-        assert_eq!(actual[4].id(), "test_id_8");
+        for (_, id) in expected_ids.iter().enumerate() {
+            let con = actual.get(*id).unwrap();
+            assert_eq!(con.id(), *id);
+        }
     }
 
     fn fake_converstations() -> Vec<Conversation> {

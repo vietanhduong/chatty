@@ -1,6 +1,6 @@
 pub mod sqlite;
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use eyre::Result;
@@ -14,7 +14,10 @@ use sqlite::Sqlite;
 #[async_trait]
 pub trait Storage {
     async fn get_conversation(&self, id: &str) -> Result<Option<Conversation>>;
-    async fn get_conversations(&self, filter: FilterConversation) -> Result<Vec<Conversation>>;
+    async fn get_conversations(
+        &self,
+        filter: FilterConversation,
+    ) -> Result<HashMap<String, Conversation>>;
     async fn get_messages(&self, conversation_id: &str) -> Result<Vec<Message>>;
     async fn upsert_converstation(&self, conversation: Conversation) -> Result<()>;
     async fn delete_conversation(&self, id: &str) -> Result<()>;
