@@ -9,6 +9,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Cell, Clear, Padding, Row, Table, TableState},
 };
+use ratatui_macros::span;
 use tokio::sync::mpsc;
 use tui_textarea::Key;
 
@@ -37,6 +38,10 @@ impl ModelsScreen {
 
     pub fn current_model(&self) -> &str {
         &self.current_model
+    }
+
+    pub fn set_current_model(&mut self, model: String) {
+        self.current_model = model;
     }
 
     pub fn showing(&self) -> bool {
@@ -88,6 +93,14 @@ impl ModelsScreen {
             return;
         }
 
+        let instructions = vec![
+            " ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Esc/q"),
+            " to close, ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Enter"),
+            " to select, ".into(),
+        ];
+
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -95,7 +108,7 @@ impl ModelsScreen {
             .padding(Padding::symmetric(1, 0))
             .title(" Models ")
             .title_alignment(Alignment::Center)
-            .title_bottom(" <Esc>/<Space> to close/select ")
+            .title_bottom(Line::from(instructions))
             .style(Style::default());
         frame.render_widget(Clear, area);
 
@@ -128,6 +141,12 @@ impl ModelsScreen {
 
             Event::ModelChanged(model) => {
                 self.current_model = model;
+                return Ok(false);
+            }
+
+            Event::KeyboardEnter => {
+                self.request_change_model().await?;
+                self.showing = false;
                 return Ok(false);
             }
 

@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use openai_models::Event;
+use ratatui_macros::span;
 use std::{
     cmp::{max, min},
     fmt::Display,
@@ -12,6 +13,8 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Cell, Clear, Padding, Row, Table, TableState},
 };
 use tui_textarea::Key;
+
+use super::helpers;
 
 pub const KEY_BINDINGS: Lazy<Vec<KeyBinding>> = Lazy::new(build_key_bindings);
 const ROW_HEIGHT: usize = 1;
@@ -82,12 +85,15 @@ impl<'a> HelpScreen<'_> {
                 return true;
             }
 
-            Event::KeyboardCharInput(input) => {
-                if input.key == Key::Char('q') {
+            Event::KeyboardCharInput(input) => match input.key {
+                Key::Char('j') => self.next_row(),
+                Key::Char('k') => self.prev_row(),
+                Key::Char('q') => {
                     self.showing = false;
                     return false;
                 }
-            }
+                _ => {}
+            },
 
             Event::UiScrollDown => self.next_row(),
             Event::UiScrollUp => self.prev_row(),
@@ -110,7 +116,13 @@ impl<'a> HelpScreen<'_> {
             .padding(Padding::symmetric(1, 0))
             .title(" Help ")
             .title_alignment(Alignment::Center)
-            .title_bottom(" <Esc> to close ")
+            .title_bottom(Line::from(vec![
+                " ".into(),
+                span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Esc/q"),
+                " to close ".into(),
+                span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "↑/k/↓/j"),
+                " to move up/down ".into(),
+            ]))
             .style(Style::default());
         frame.render_widget(Clear, area);
 
@@ -139,12 +151,24 @@ impl<'a> HelpScreen<'_> {
     }
 
     pub fn render_help_line(&self, frame: &mut ratatui::Frame, area: Rect) {
-        let instructions = KEY_BINDINGS
+        let mut instructions = KEY_BINDINGS
             .iter()
             .filter(|b| !b.short_description.is_empty())
-            .map(|b| format!("{}: {}", b.key(), b.short_description()))
+            .map(|b| {
+                let key = b.key().to_string();
+                let desc = b.short_description.clone();
+                vec![
+                    span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); key),
+                    " ".into(),
+                    span!(Style::default().fg(Color::White); desc),
+                    " | ".into(),
+                ]
+            })
+            .flatten()
             .collect::<Vec<_>>();
-        let line = Line::from(instructions.join(" | ")).light_green();
+        instructions.pop(); // remove the last " | "
+
+        let line = Line::from(instructions).light_green();
         frame.render_widget(line, area);
     }
 }
@@ -153,33 +177,15 @@ fn build_rows<'a>(max_width: usize) -> Vec<Row<'a>> {
     let mut rows = vec![];
     for binding in KEY_BINDINGS.iter() {
         let key = Cell::from(binding.key().to_string()).style(Style::default());
-
-        let mut line = String::new();
-        let mut first = false;
-        for word in binding.long_description().split(' ') {
-            if line.len() + word.len() > max_width - 2 {
-                rows.push(
-                    Row::new(vec![
-                        if !first { key.clone() } else { Cell::from("") },
-                        Cell::from(Text::from(line.trim().to_string())),
-                    ])
-                    .height(ROW_HEIGHT as u16),
-                );
-                line.clear();
-                first = true;
-            }
-            line.push_str(word);
-            line.push(' ');
-        }
-        if !line.is_empty() {
-            rows.push(
-                Row::new(vec![
-                    if !first { key.clone() } else { Cell::from("") },
-                    Cell::from(Text::from(line.trim().to_string())),
-                ])
-                .height(ROW_HEIGHT as u16),
-            );
-        }
+        let desc = helpers::split_to_lines(
+            binding
+                .long_description()
+                .split(' ')
+                .map(|s| s.to_string().into())
+                .collect(),
+            max_width,
+        );
+        rows.push(Row::new(vec![key, Cell::from(Text::from(desc))]).height(ROW_HEIGHT as u16));
     }
     rows
 }
@@ -309,6 +315,6 @@ impl Display for Input {
             _ => "Unknown".to_string(),
         };
 
-        write!(f, "<{}{}>", modifer, key)
+        write!(f, "{}{}", modifer, key)
     }
 }

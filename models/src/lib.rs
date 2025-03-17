@@ -56,7 +56,8 @@ pub enum Action {
 
     ListConversations,
     UpsertConversation(Conversation),
-    AppendMessage(AppendMessage),
+    UpsertMessage(UpsertMessage),
+    RemoveMessage(String),
 
     GetConversation(String),
 }
@@ -85,10 +86,9 @@ impl Event {
     }
 }
 
-pub struct AppendMessage {
+pub struct UpsertMessage {
     pub message: Message,
     pub conversation_id: String,
-    pub insert: bool,
 }
 
 #[derive(Debug, Default)]

@@ -6,11 +6,6 @@ use syntect::highlighting::Theme;
 
 use crate::{ui::BubbleList, ui::Scroll};
 
-pub(crate) enum MessageAction {
-    UpdateMessage(Message),
-    InsertMessage(Message),
-}
-
 pub struct AppState<'a> {
     theme: &'a Theme,
     pub(crate) bubble_list: BubbleList<'a>,
@@ -57,24 +52,20 @@ impl<'a> AppState<'a> {
         self.scroll.last();
     }
 
-    fn insert_or_append_response(&self, resp: &BackendResponse) -> bool {
-        let mut conversation = self.conversation.borrow_mut();
-        let last_message = conversation.last_message().unwrap();
-        let insert = !last_message.is_system();
-        if !last_message.is_system() {
-            conversation
-                .add_message(Message::new_system(resp.model.as_str(), "").with_id(&resp.id));
-        }
-        conversation.last_mut_message().unwrap().append(&resp.text);
-        insert
-    }
-
     fn last_message(&self) -> Option<Message> {
         self.conversation.borrow().last_message().cloned()
     }
 
-    pub(crate) fn handle_backend_response(&mut self, resp: BackendResponse) -> MessageAction {
-        let insert = self.insert_or_append_response(&resp);
+    pub(crate) fn handle_backend_response(&mut self, resp: BackendResponse) {
+        {
+            let mut conversation = self.conversation.borrow_mut();
+            let last_message = conversation.last_message().unwrap();
+            if !last_message.is_system() {
+                conversation
+                    .add_message(Message::new_system(resp.model.as_str(), "").with_id(&resp.id));
+            }
+            conversation.last_mut_message().unwrap().append(&resp.text);
+        }
 
         if resp.done {
             if resp.init_conversation {
@@ -105,13 +96,6 @@ impl<'a> AppState<'a> {
         }
 
         self.sync_state();
-
-        let last_message = self.conversation.borrow().last_message().unwrap().clone();
-        if insert {
-            MessageAction::InsertMessage(last_message)
-        } else {
-            MessageAction::UpdateMessage(last_message)
-        }
     }
 
     pub fn sync_state(&mut self) {

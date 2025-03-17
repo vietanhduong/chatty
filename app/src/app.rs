@@ -6,7 +6,7 @@ use crossterm::{
 };
 use eyre::Result;
 use openai_models::{
-    Action, AppendMessage, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType,
+    Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, UpsertMessage,
     message::Issuer,
 };
 use ratatui::{
@@ -26,7 +26,7 @@ use syntect::highlighting::Theme;
 use tokio::sync::mpsc;
 
 use crate::{
-    app_state::{AppState, MessageAction},
+    app_state::AppState,
     services::EventsService,
     ui::{EditScreen, HelpScreen, HistoryScreen, Loading, ModelsScreen, Notice, TextArea, helpers},
 };
@@ -51,7 +51,6 @@ pub struct App<'a> {
     notice: Notice,
     conversations: HashMap<String, Rc<RefCell<Conversation>>>,
     loading: Loading,
-    theme: &'a Theme,
 }
 
 impl<'a> App<'a> {
@@ -72,7 +71,6 @@ impl<'a> App<'a> {
         conversations.insert(default_id.clone(), Rc::clone(&default_conversation));
 
         App {
-            theme,
             edit_screen: EditScreen::new(action_tx.clone(), theme),
             action_tx: action_tx.clone(),
             events: EventsService::new(event_rx),
@@ -132,6 +130,7 @@ impl<'a> App<'a> {
 
         if self.help_screen.showing() {
             if self.help_screen.handle_key_event(event) {
+                self.save_conversation(Rc::clone(&self.app_state.conversation));
                 return Ok(true);
             }
             return Ok(false);
@@ -139,6 +138,7 @@ impl<'a> App<'a> {
 
         if self.models_screen.showing() {
             if self.models_screen.handle_key_event(event).await? {
+                self.save_conversation(Rc::clone(&self.app_state.conversation));
                 return Ok(true);
             }
             return Ok(false);
@@ -146,6 +146,7 @@ impl<'a> App<'a> {
 
         if self.edit_screen.showing() {
             if self.edit_screen.handle_key_event(event).await? {
+                self.save_conversation(Rc::clone(&self.app_state.conversation));
                 return Ok(true);
             }
             return Ok(false);
@@ -153,14 +154,14 @@ impl<'a> App<'a> {
 
         if self.history_screen.showing() {
             if self.history_screen.handle_key_event(event).await? {
+                self.save_conversation(Rc::clone(&self.app_state.conversation));
                 return Ok(true);
             }
             match self.history_screen.current_conversation() {
                 Some(id) => {
                     let conversation_id = self.app_state.conversation.borrow().id().to_string();
                     if id != conversation_id {
-                        self.app_state
-                            .set_conversation(Rc::clone(self.conversations.get(&id).unwrap()));
+                        self.change_conversation(Rc::clone(self.conversations.get(&id).unwrap()));
                     }
                 }
                 None => {}
@@ -169,6 +170,11 @@ impl<'a> App<'a> {
         }
 
         match event {
+            Event::ModelChanged(model) => {
+                self.models_screen.set_current_model(model);
+                return Ok(false);
+            }
+
             Event::AbortRequest => {
                 self.app_state
                     .add_message(Message::new_system("system", "Aborted!"));
@@ -179,24 +185,7 @@ impl<'a> App<'a> {
             }
             Event::BackendPromptResponse(msg) => {
                 let notify = msg.done && msg.init_conversation;
-                let msg_action = self.app_state.handle_backend_response(msg);
-                let mut insert = false;
-                let message = match msg_action {
-                    MessageAction::InsertMessage(msg) => {
-                        insert = true;
-                        msg
-                    }
-                    MessageAction::UpdateMessage(msg) => msg,
-                }
-                .clone();
-
-                let conversation_id = self.app_state.conversation.borrow().id().to_string();
-
-                self.action_tx.send(Action::AppendMessage(AppendMessage {
-                    conversation_id,
-                    message,
-                    insert,
-                }))?;
+                self.app_state.handle_backend_response(msg);
 
                 if notify {
                     self.notice.add_message(
@@ -206,11 +195,6 @@ impl<'a> App<'a> {
                         ))
                         .with_duration(time::Duration::from_secs(5)),
                     );
-
-                    // Save the conversation
-                    self.action_tx.send(Action::UpsertConversation(
-                        self.app_state.conversation.borrow().clone(),
-                    ))?;
                 }
             }
             Event::KeyboardCharInput(c) => {
@@ -235,6 +219,7 @@ impl<'a> App<'a> {
                     self.app_state.waiting_for_backend = false;
                     self.action_tx.send(Action::BackendAbort)?;
                 }
+                self.save_conversation(Rc::clone(&self.app_state.conversation));
                 return Ok(true);
             }
 
@@ -270,9 +255,7 @@ impl<'a> App<'a> {
                     .next();
 
                 if let Some((_, conversation)) = blank_conversation {
-                    self.app_state.set_conversation(Rc::clone(conversation));
-                    self.history_screen
-                        .set_current_conversation(conversation.borrow().id());
+                    self.change_conversation(Rc::clone(conversation));
                     return Ok(false);
                 }
 
@@ -280,8 +263,9 @@ impl<'a> App<'a> {
                 let default_id = default_conversation.borrow().id().to_string();
                 self.conversations
                     .insert(default_id.clone(), Rc::clone(&default_conversation));
-                self.app_state = AppState::new(Rc::clone(&default_conversation), self.theme);
-                self.history_screen.add_conversation(default_conversation);
+                self.history_screen
+                    .add_conversation(Rc::clone(&default_conversation));
+                self.change_conversation(default_conversation);
                 return Ok(false);
             }
 
@@ -313,11 +297,9 @@ impl<'a> App<'a> {
                     return Ok(false);
                 }
 
-                // We pop all the message from the backend
-                // until we find the last message from user
-                // and resubmit it to the backend
-
                 {
+                    // We pop all the message from the backend until we find the last
+                    // message from user and resubmit it to the backend
                     let mut conversation = self.app_state.conversation.borrow_mut();
 
                     let mut i = conversation.len() as i32 - 1;
@@ -330,10 +312,14 @@ impl<'a> App<'a> {
                         if !conversation.messages()[i as usize].is_system() {
                             break;
                         }
-                        conversation.messages_mut().remove(i as usize);
+                        let con = conversation.messages_mut().remove(i as usize);
                         self.app_state
                             .bubble_list
                             .remove_message_by_index(i as usize);
+                        // Tell the storage to remove the message
+                        self.action_tx
+                            .send(Action::RemoveMessage(con.id().to_string()))?;
+
                         i -= 1;
                     }
                 }
@@ -394,18 +380,6 @@ impl<'a> App<'a> {
 
                 if first {
                     prompt = prompt.with_first();
-                    // Save the conversation
-                    self.action_tx
-                        .send(Action::UpsertConversation(conversation.clone()))?;
-
-                    for msg in conversation.messages() {
-                        self.action_tx.send(Action::AppendMessage(AppendMessage {
-                            conversation_id: conversation.id().to_string(),
-                            message: msg.clone(),
-                            insert: true,
-                        }))?;
-                    }
-
                     self.history_screen
                         .set_current_conversation(conversation.id());
                 }
@@ -434,7 +408,7 @@ impl<'a> App<'a> {
                         )
                         .as_str()
                         .split(' ')
-                        .map(|s| Span::raw(s))
+                        .map(Span::raw)
                         .collect::<Vec<_>>(),
                         current_width as usize,
                     ))
@@ -493,7 +467,7 @@ impl<'a> App<'a> {
             self.edit_screen
                 .render(f, helpers::popup_area(f.area(), 70, 90));
             self.history_screen
-                .render(f, helpers::popup_area(f.area(), 40, 90));
+                .render(f, helpers::popup_area(f.area(), 70, 90));
 
             self.notice.render(f, helpers::notice_area(f.area(), 30));
         })?;
@@ -507,6 +481,45 @@ impl<'a> App<'a> {
                 return Ok(());
             }
         }
+    }
+
+    fn save_conversation(&mut self, conversation: Rc<RefCell<Conversation>>) {
+        if conversation.borrow().len() < 2 {
+            // If the conversation is empty, we don't need to save it
+            return;
+        }
+
+        match self
+            .action_tx
+            .send(Action::UpsertConversation(conversation.borrow().clone()))
+        {
+            Err(err) => {
+                log::error!("Failed to send UpsertConversation action: {}", err);
+            }
+            _ => {}
+        };
+        // Upsert all messages in the current conversation
+        for msg in conversation.borrow().messages() {
+            match self.action_tx.send(Action::UpsertMessage(UpsertMessage {
+                conversation_id: conversation.borrow().id().to_string(),
+                message: msg.clone(),
+            })) {
+                Err(err) => {
+                    log::error!("Failed to send UpsertMessage action: {}", err);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn change_conversation(&mut self, new_con: Rc<RefCell<Conversation>>) {
+        self.save_conversation(Rc::clone(&self.app_state.conversation));
+        // Change the conversation
+        self.history_screen
+            .set_current_conversation(new_con.borrow().id());
+        self.app_state.set_conversation(new_con);
+        self.input = TextArea::default().build();
+        self.app_state.sync_state();
     }
 }
 

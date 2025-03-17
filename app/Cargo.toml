@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 ratatui.workspace = true
+ratatui-macros.workspace = true
 crossterm.workspace = true
 eyre.workspace = true
 syntect.workspace = true

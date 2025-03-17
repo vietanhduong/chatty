@@ -43,16 +43,22 @@ impl ActionService<'_> {
 
             let worker_tx = self.event_tx.clone();
             match event.unwrap() {
-                Action::AppendMessage(request) => {
-                    let resp = if request.insert {
-                        self.storage
-                            .add_messages(&request.conversation_id, &vec![request.message])
-                            .await
-                    } else {
-                        self.storage.update_message(request.message).await
-                    };
-
-                    if let Err(err) = resp {
+                Action::RemoveMessage(id) => {
+                    if let Err(err) = self.storage.delete_messsage(&id).await {
+                        log::error!("Failed to delete message: {}", err);
+                        self.send_notice(
+                            NoticeType::Error,
+                            format!("Failed to delete message: {}", err),
+                        );
+                        continue;
+                    }
+                }
+                Action::UpsertMessage(request) => {
+                    if let Err(err) = self
+                        .storage
+                        .upsert_message(&request.conversation_id, request.message)
+                        .await
+                    {
                         log::error!("Failed to append message: {}", err);
                         self.send_notice(
                             NoticeType::Error,

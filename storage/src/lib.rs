@@ -26,7 +26,8 @@ pub trait Storage {
         conversation_id: &str,
         message: &[openai_models::Message],
     ) -> Result<()>;
-    async fn update_message(&self, message: Message) -> Result<()>;
+    async fn upsert_message(&self, conversation_id: &str, message: Message) -> Result<()>;
+    async fn delete_messsage(&self, id: &str) -> Result<()>;
 }
 
 pub type ArcStorage = Arc<dyn Storage + Send + Sync>;

@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use eyre::Result;
 use openai_models::{Conversation, Event};
 use ratatui::{
@@ -9,6 +7,8 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding},
 };
+use ratatui_macros::span;
+use std::{cell::RefCell, rc::Rc};
 use tui_textarea::Key;
 
 use super::helpers;
@@ -216,26 +216,29 @@ impl<'a> HistoryScreen<'a> {
             return;
         }
 
-        self.build_list_items(area.width as usize);
-
-        log::debug!(
-            "con: {}, items: {}",
-            self.conversations.len(),
-            self.list_items.len()
-        );
+        let instructions: Vec<Span> = vec![
+            " ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Esc"),
+            " to close, ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Enter"),
+            " to select, ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "↑/k/↓/j"),
+            " to move up/down ".into(),
+        ];
 
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::LightBlue))
-            .padding(Padding::symmetric(1, 0))
+            .padding(Padding::new(1, 1, 0, 0))
             .title(" Chat History ")
             .title_alignment(Alignment::Center)
-            .title_bottom(" <Esc> to close ")
+            .title_bottom(Line::from(instructions))
             .style(Style::default());
 
         f.render_widget(Clear, area);
         let inner = block.inner(area);
+        self.build_list_items((inner.width - 2) as usize);
 
         let list = List::new(self.list_items.clone())
             .block(block)

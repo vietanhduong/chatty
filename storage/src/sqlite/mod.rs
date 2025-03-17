@@ -258,18 +258,28 @@ impl Storage for Sqlite {
         Ok(())
     }
 
-    async fn update_message(&self, message: Message) -> Result<()> {
+    async fn upsert_message(&self, conversation_id: &str, message: Message) -> Result<()> {
+        let conversation_id = conversation_id.to_string();
         let id = message.id().to_string();
         let text = message.text().to_string();
         let issuer = message.issuer_str().to_string();
         let system = message.is_system() as i32;
         let timestamp = message.created_at().timestamp_millis();
-        let affected_rows = self.conn
+        let affected_rows = self
+            .conn
             .call(move |conn| {
                 Ok(conn.execute(
-                    "UPDATE messages SET text = :text, issuer = :issuer, system = :system, created_at = :created_at WHERE id = :id",
+                    r#"INSERT INTO messages (id, conversation_id, text, issuer, system, created_at)
+            VALUES (:id, :conversation_id, :text, :issuer, :system, :created_at)
+            ON CONFLICT(id, conversation_id) DO UPDATE SET
+                text = excluded.text,
+                issuer = excluded.issuer,
+                system = excluded.system,
+                created_at = excluded.created_at
+            "#,
                     named_params! {
                         ":id": id,
+                        ":conversation_id": conversation_id,
                         ":text": text,
                         ":issuer": issuer,
                         ":system": system,
@@ -282,6 +292,18 @@ impl Storage for Sqlite {
         if affected_rows == 0 {
             bail!("no rows updated for message with id {}", message.id());
         }
+        Ok(())
+    }
+
+    async fn delete_messsage(&self, id: &str) -> Result<()> {
+        let id = id.to_string();
+        self.conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                tx.execute("DELETE FROM messages WHERE id = ?", params![id])?;
+                Ok(tx.commit()?)
+            })
+            .await?;
         Ok(())
     }
 }
@@ -660,7 +682,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_message() {
+    async fn test_upsert_message() {
         let db = Sqlite::new(None).await.unwrap();
         db.run_migration().await.unwrap();
 
@@ -682,11 +704,51 @@ mod tests {
             .unwrap();
 
         message.append(" hello");
-        db.update_message(message.clone()).await.unwrap();
+        db.upsert_message("test_id", message.clone()).await.unwrap();
+        let actual = db.get_messages("test_id").await.unwrap();
+        assert_eq!(actual.len(), 1);
+        assert_eq!(actual[0].id(), "msg1");
+        assert_eq!(actual[0].text(), "System message hello");
+
+        db.upsert_message("test_id", message.clone().with_id("msg2"))
+            .await
+            .unwrap();
+        let actual = db.get_messages("test_id").await.unwrap();
+        assert_eq!(actual.len(), 2);
+        assert_eq!(actual[1].id(), "msg2");
+    }
+
+    #[tokio::test]
+    async fn test_delete_message() {
+        let db = Sqlite::new(None).await.unwrap();
+        db.run_migration().await.unwrap();
+        let mut message = Message::new_system("system", "System message")
+            .with_id("msg1")
+            .with_created_at(chrono::Utc::now());
+
+        let conversation = Conversation::default()
+            .with_id("test_id")
+            .with_title("Test Conversation")
+            .with_context("Test Context")
+            .with_created_at(chrono::Utc::now())
+            .with_messages(vec![message.clone()]);
+
+        db.upsert_converstation(conversation.clone()).await.unwrap();
+
+        db.add_messages(conversation.id(), &[message.clone()])
+            .await
+            .unwrap();
+
+        message.append(" hello");
+        db.upsert_message("test_id", message.clone()).await.unwrap();
 
         let actual = db.get_messages("test_id").await.unwrap();
         assert_eq!(actual.len(), 1);
         assert_eq!(actual[0].id(), "msg1");
         assert_eq!(actual[0].text(), "System message hello");
+
+        db.delete_messsage("msg1").await.unwrap();
+        let actual = db.get_messages("test_id").await.unwrap();
+        assert_eq!(actual.len(), 0);
     }
 }
