@@ -9,7 +9,7 @@ pub struct Message {
     id: String,
     issuer: Issuer,
     text: String,
-    timestamp: chrono::DateTime<chrono::Utc>,
+    created_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl Message {
@@ -18,7 +18,7 @@ impl Message {
             id: chrono::Utc::now().timestamp().to_string(),
             issuer,
             text: text.into(),
-            timestamp: chrono::Utc::now(),
+            created_at: chrono::Utc::now(),
         }
     }
 
@@ -27,7 +27,7 @@ impl Message {
             id: chrono::Utc::now().timestamp().to_string(),
             issuer: Issuer::System(system.to_string()),
             text: text.into(),
-            timestamp: chrono::Utc::now(),
+            created_at: chrono::Utc::now(),
         }
     }
 
@@ -36,12 +36,22 @@ impl Message {
             id: chrono::Utc::now().timestamp().to_string(),
             issuer: Issuer::User(user.to_string()),
             text: text.into(),
-            timestamp: chrono::Utc::now(),
+            created_at: chrono::Utc::now(),
         }
     }
 
     pub fn with_id(mut self, id: impl Into<String>) -> Self {
         self.id = id.into();
+        self
+    }
+
+    pub fn with_created_at(mut self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
+        self.created_at = timestamp;
+        self
+    }
+
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = text.into();
         self
     }
 
@@ -61,8 +71,8 @@ impl Message {
         &self.text
     }
 
-    pub fn timestamp(&self) -> chrono::DateTime<chrono::Utc> {
-        self.timestamp
+    pub fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
+        self.created_at
     }
 
     pub fn issuer_str(&self) -> &str {

@@ -31,7 +31,6 @@ impl<'a> EventsService<'_> {
             },
             CrosstermEvent::Key(key_event) => {
                 let input: Input = key_event.into();
-
                 if input.alt && input.key == Key::Enter {
                     return Some(Event::KeyboardAltEnter);
                 }
@@ -41,7 +40,7 @@ impl<'a> EventsService<'_> {
                     match input.key {
                         Key::Char('u') => return Some(Event::UiScrollPageUp),
                         Key::Char('d') => return Some(Event::UiScrollPageDown),
-                        Key::Char('q') => return Some(Event::KeyboardCtrlQ),
+                        Key::Char('q') => return Some(Event::Quit),
                         Key::Char('c') => return Some(Event::KeyboardCtrlC),
                         Key::Char('r') => return Some(Event::KeyboardCtrlR),
                         Key::Char('l') => return Some(Event::KeyboardCtrlL),

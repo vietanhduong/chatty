@@ -89,7 +89,7 @@ impl<'a> Bubble<'_> {
         // Replace bottom bar ─ with the date
         let date = self
             .message
-            .timestamp()
+            .created_at()
             .with_timezone(&chrono::Local)
             .format("%H:%M %m/%d");
         let bottom_bar = format!(
@@ -143,7 +143,7 @@ impl<'a> Bubble<'_> {
         // date format
         let date = &self
             .message
-            .timestamp()
+            .created_at()
             .with_timezone(&chrono::Local)
             .format("%H:%M %m/%d");
 

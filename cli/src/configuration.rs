@@ -80,6 +80,8 @@ pub fn basename(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use openai_models::config::StorageConfig;
+
     use super::*;
 
     #[test]
@@ -111,5 +113,13 @@ mod tests {
 
         let model = backend.default_model().unwrap();
         assert_eq!(model, "gpt-3.5-turbo");
+
+        let storage = config.storage().unwrap();
+
+        match storage {
+            StorageConfig::Sqlite(sqlite) => {
+                assert_eq!(sqlite.path(), Some("/var/lib/openai-tui/chat.db"));
+            }
+        }
     }
 }

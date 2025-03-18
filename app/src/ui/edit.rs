@@ -7,6 +7,7 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding},
 };
+use ratatui_macros::span;
 use syntect::highlighting::Theme;
 use tokio::sync::mpsc;
 use tui_textarea::Key;
@@ -83,6 +84,18 @@ impl<'a> EditScreen<'_> {
             return;
         }
 
+        let instructions = vec![
+            " ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Esc/q"),
+            " to close, ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Space"),
+            " to select, ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "y"),
+            " to copy selected, ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "c"),
+            " to quick copy ".into(),
+        ];
+
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -90,12 +103,9 @@ impl<'a> EditScreen<'_> {
             .padding(Padding::symmetric(1, 0))
             .title(" Edit Mode ")
             .title_alignment(Alignment::Center)
-            .title_bottom(
-                " <Esc> to close, <Space> to select, <y> to copy selected, <c> to quick copy ",
-            )
+            .title_bottom(Line::from(instructions))
             .style(Style::default());
 
-        let area = helpers::popup_area(area, 70, 90);
         frame.render_widget(Clear, area);
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -162,7 +172,7 @@ impl<'a> EditScreen<'_> {
         frame.render_widget(list, area);
     }
 
-    pub async fn handle_key_event(&mut self, event: Event) -> Result<bool> {
+    pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
         match event {
             Event::KeyboardEsc => {
                 self.showing = false;
@@ -172,7 +182,7 @@ impl<'a> EditScreen<'_> {
                 self.showing = !self.showing;
                 return Ok(false);
             }
-            Event::KeyboardCtrlQ => {
+            Event::Quit => {
                 self.showing = false;
                 return Ok(true);
             }

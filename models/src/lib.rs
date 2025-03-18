@@ -2,6 +2,7 @@ pub mod backend;
 pub mod configuration;
 pub mod conversation;
 pub mod message;
+pub mod storage;
 
 use std::time;
 
@@ -9,7 +10,7 @@ use ratatui::style::Color;
 use tui_textarea::Input;
 
 pub use backend::*;
-pub use conversation::Converstation;
+pub use conversation::Conversation;
 pub use message::Message;
 
 pub use crate::configuration as config;
@@ -17,14 +18,16 @@ pub use crate::configuration as config;
 #[derive(Debug)]
 pub enum Event {
     Notice(NoticeMessage),
+
     AbortRequest,
+    ModelChanged(String),
     BackendMessage(Message),
     BackendPromptResponse(BackendResponse),
+
     KeyboardCharInput(Input),
     KeyboardEsc,
     KeyboardEnter,
     KeyboardAltEnter,
-    KeyboardCtrlQ,
     KeyboardCtrlC,
     KeyboardCtrlR,
     KeyboardCtrlN,
@@ -33,17 +36,30 @@ pub enum Event {
     KeyboardCtrlH,
     KeyboardF1,
     KeyboardPaste(String),
+
+    Quit,
+
     UiTick,
     UiScrollUp,
     UiScrollDown,
     UiScrollPageUp,
     UiScrollPageDown,
+
+    SetConversation(String),
+    ConversationDeleted(String),
 }
 
 pub enum Action {
     BackendAbort,
     BackendRequest(BackendPrompt),
+    BackendSetModel(String),
+
     CopyMessages(Vec<Message>),
+
+    UpsertConversation(Conversation),
+    UpsertMessage(UpsertMessage),
+    RemoveMessage(String),
+    RemoveConversation(String),
 }
 
 impl Event {
@@ -53,7 +69,7 @@ impl Event {
             Event::KeyboardEsc => true,
             Event::KeyboardEnter => true,
             Event::KeyboardAltEnter => true,
-            Event::KeyboardCtrlQ => true,
+            Event::Quit => true,
             Event::KeyboardCtrlC => true,
             Event::KeyboardCtrlR => true,
             Event::KeyboardCtrlN => true,
@@ -68,6 +84,12 @@ impl Event {
             _ => false,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertMessage {
+    pub message: Message,
+    pub conversation_id: String,
 }
 
 #[derive(Debug, Default)]

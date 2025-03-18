@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 ratatui.workspace = true
+ratatui-macros.workspace = true
 crossterm.workspace = true
 eyre.workspace = true
 syntect.workspace = true
@@ -16,6 +17,8 @@ arboard.workspace = true
 log.workspace = true
 unicode-width.workspace = true
 chrono.workspace = true
+tokio-util.workspace = true
 
 openai-backend = { path = "../backend" }
+openai-storage = { path = "../storage" }
 openai-models = { path = "../models" }

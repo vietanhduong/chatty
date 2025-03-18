@@ -1,81 +1,128 @@
-use std::sync::Arc;
-
-use eyre::Result;
+use eyre::{Context, Result};
 use openai_app::{
     App,
+    app::AppInitProps,
+    destruct_terminal_for_panic,
     services::{ActionService, ClipboardService},
 };
 use openai_backend::new_backend;
-use openai_models::{Action, Event};
+use openai_models::{Action, Event, storage::FilterConversation};
+use openai_storage::new_storage;
 use openai_tui::{Command, init_logger, init_theme};
 use tokio::{sync::mpsc, task};
+use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    std::panic::set_hook(Box::new(|panic_info| {
+        destruct_terminal_for_panic();
+        better_panic::Settings::auto().create_panic_handler()(panic_info);
+    }));
+
     let config = Command::get_config()?;
     init_logger(&config)?;
 
     let theme = init_theme(&config)?;
 
     let backend = new_backend(&config)?;
-    {
-        let mut lock = backend.lock().await;
-        lock.health_check().await?;
+    backend.health_check().await?;
 
-        let models = lock.list_models().await?;
-        if models.is_empty() {
-            eyre::bail!("No models available");
-        }
-
-        let backend_config = config.backend().cloned().unwrap_or_default();
-        let want_model = backend_config.default_model().unwrap_or_default();
-
-        let model = if want_model.is_empty() {
-            models[0].clone()
-        } else {
-            models
-                .iter()
-                .find(|m| m == &&want_model)
-                .unwrap_or_else(|| {
-                    log::warn!(
-                        "Model {} not found, using default ({})",
-                        want_model,
-                        models[0]
-                    );
-                    &models[0]
-                })
-                .clone()
-        };
-
-        lock.set_model(&model).await?;
+    let models = backend.list_models(false).await?;
+    if models.is_empty() {
+        eyre::bail!("No models available");
     }
+
+    let backend_config = config.backend().cloned().unwrap_or_default();
+    let want_model = backend_config.default_model().unwrap_or_default();
+
+    let model = if want_model.is_empty() {
+        models[0].clone()
+    } else {
+        models
+            .iter()
+            .find(|m| m == &&want_model)
+            .unwrap_or_else(|| {
+                log::warn!(
+                    "Model {} not found, using default ({})",
+                    want_model,
+                    models[0]
+                );
+                &models[0]
+            })
+            .clone()
+    };
+
+    backend.set_default_model(&model).await?;
+
+    let storage = new_storage(&config)
+        .await
+        .wrap_err("initializing storage")?;
+
+    let conversations = storage
+        .get_conversations(FilterConversation::default())
+        .await?;
 
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
 
     let mut bg_futures = task::JoinSet::new();
 
+    let mut app = App::new(
+        &theme,
+        action_tx.clone(),
+        event_tx.clone(),
+        &mut event_rx,
+        AppInitProps {
+            default_model: model,
+            models,
+            conversations,
+        },
+    );
+
+    let token = CancellationToken::new();
+
+    let token_clone = token.clone();
+    let event_tx_clone = event_tx.clone();
+    bg_futures.spawn(async move {
+        ActionService::new(
+            event_tx_clone,
+            &mut action_rx,
+            backend,
+            storage,
+            token_clone,
+        )
+        .start()
+        .await
+    });
+
     if let Err(err) = ClipboardService::healthcheck() {
         log::warn!("Clipboard service is not available: {err}");
     } else {
+        let token_clone = token.clone();
         bg_futures.spawn(async move {
-            return ClipboardService::start().await;
+            return ClipboardService::start(token_clone).await;
         });
     }
 
-    let mut app = App::new(
-        Arc::clone(&backend),
-        &theme,
-        action_tx.clone(),
-        &mut event_rx,
-    );
+    let res = app.run().await;
 
-    bg_futures.spawn(async move {
-        ActionService::new(event_tx, &mut action_rx, backend)
-            .start()
-            .await
-    });
+    token.cancel();
 
-    app.run().await?;
+    while let Some(res) = bg_futures.join_next().await {
+        match res {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => {
+                log::error!("Background task failed: {err}");
+            }
+            Err(err) => {
+                log::error!("Background task panicked: {err}");
+            }
+        }
+    }
+
+    if res.is_err() {
+        // destruct_terminal_for_panic();
+        return Err(res.unwrap_err());
+    }
     Ok(())
 }

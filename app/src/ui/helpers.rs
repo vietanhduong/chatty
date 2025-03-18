@@ -22,6 +22,27 @@ pub(crate) fn notice_area(area: Rect, percent_width: u16) -> Rect {
     area
 }
 
+pub(crate) fn split_to_lines<'a>(text: Vec<Span<'a>>, max_width: usize) -> Vec<Line<'a>> {
+    let mut lines = vec![];
+    let mut line = vec![];
+    let mut line_char_count = 0;
+    for word in text.into_iter() {
+        if line_char_count + word.content.len() > max_width - 2 {
+            lines.push(Line::from(line));
+            line = vec![];
+            line_char_count = 0;
+        }
+        line_char_count += word.width() + 1;
+        line.push(word);
+        line.push(Span::raw(" "));
+    }
+    if !line.is_empty() {
+        line.pop(); // remove the last space
+        lines.push(Line::from(line));
+    }
+    lines
+}
+
 pub(crate) fn build_message_lines<'a, 'b>(
     content: &'b str,
     max_width: usize,
