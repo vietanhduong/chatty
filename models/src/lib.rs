@@ -4,7 +4,7 @@ pub mod conversation;
 pub mod message;
 pub mod storage;
 
-use std::{collections::HashMap, time};
+use std::time;
 
 use ratatui::style::Color;
 use tui_textarea::Input;
@@ -38,14 +38,13 @@ pub enum Event {
     KeyboardPaste(String),
 
     Quit,
+
     UiTick,
     UiScrollUp,
     UiScrollDown,
     UiScrollPageUp,
     UiScrollPageDown,
 
-    ListConversationsResponse(HashMap<String, Conversation>),
-    ConversationResponse(Conversation),
     SetConversation(String),
     ConversationDeleted(String),
 }
