@@ -182,7 +182,7 @@ impl Storage for Sqlite {
         Ok(conversations)
     }
 
-    async fn upsert_converstation(&self, conversation: Conversation) -> Result<()> {
+    async fn upsert_conversation(&self, conversation: Conversation) -> Result<()> {
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;
@@ -431,7 +431,7 @@ mod tests {
             .with_context("Test Context")
             .with_created_at(chrono::Utc::now());
 
-        db.upsert_converstation(expected.clone()).await.unwrap();
+        db.upsert_conversation(expected.clone()).await.unwrap();
 
         let actual = db.get_conversation("test_id").await.unwrap();
         assert!(actual.is_some());
@@ -458,7 +458,7 @@ mod tests {
             .with_context("Test Context")
             .with_created_at(chrono::Utc::now());
 
-        db.upsert_converstation(expected.clone()).await.unwrap();
+        db.upsert_conversation(expected.clone()).await.unwrap();
 
         let actual = db.get_conversation("test_id").await.unwrap();
         assert!(actual.is_some());
@@ -481,7 +481,7 @@ mod tests {
         expected.set_title("Updated Title");
         expected.set_context("Updated Context");
 
-        db.upsert_converstation(expected.clone()).await.unwrap();
+        db.upsert_conversation(expected.clone()).await.unwrap();
 
         let actual = db.get_conversation("test_id").await.unwrap();
         assert!(actual.is_some());
@@ -512,7 +512,7 @@ mod tests {
             .with_created_at(chrono::Utc::now())
             .with_messages(messages.clone());
 
-        db.upsert_converstation(conversation.clone()).await.unwrap();
+        db.upsert_conversation(conversation.clone()).await.unwrap();
         db.add_messages(conversation.id(), conversation.messages())
             .await
             .unwrap();
@@ -562,7 +562,7 @@ mod tests {
             .with_created_at(chrono::Utc::now())
             .with_messages(messages.clone());
 
-        db.upsert_converstation(expected.clone()).await.unwrap();
+        db.upsert_conversation(expected.clone()).await.unwrap();
 
         let actual = db.get_conversation("test_id").await.unwrap();
         assert!(actual.is_some());
@@ -594,7 +594,7 @@ mod tests {
 
         let conversations = fake_converstations();
         for conversation in &conversations {
-            db.upsert_converstation(conversation.clone()).await.unwrap();
+            db.upsert_conversation(conversation.clone()).await.unwrap();
 
             db.add_messages(conversation.id(), conversation.messages())
                 .await
@@ -697,7 +697,7 @@ mod tests {
             .with_created_at(chrono::Utc::now())
             .with_messages(vec![message.clone()]);
 
-        db.upsert_converstation(conversation.clone()).await.unwrap();
+        db.upsert_conversation(conversation.clone()).await.unwrap();
 
         db.add_messages(conversation.id(), &[message.clone()])
             .await
@@ -733,7 +733,7 @@ mod tests {
             .with_created_at(chrono::Utc::now())
             .with_messages(vec![message.clone()]);
 
-        db.upsert_converstation(conversation.clone()).await.unwrap();
+        db.upsert_conversation(conversation.clone()).await.unwrap();
 
         db.add_messages(conversation.id(), &[message.clone()])
             .await

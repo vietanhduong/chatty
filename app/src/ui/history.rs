@@ -1,6 +1,6 @@
 use chrono::{Local, Utc};
 use eyre::Result;
-use openai_models::{Conversation, Event};
+use openai_models::{Action, Conversation, Event};
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -15,9 +15,14 @@ use std::{
     fmt::Display,
     rc::Rc,
 };
+use tokio::sync::mpsc;
 use tui_textarea::Key;
 
-use super::helpers;
+use super::{
+    helpers,
+    question::Question,
+    rename::{self, Rename},
+};
 
 const NO_CONVERSATIONS: &str = "No conversations found";
 
@@ -30,18 +35,42 @@ enum ConversationGroup {
     Older,
 }
 
-#[derive(Default)]
 pub struct HistoryScreen<'a> {
     showing: bool,
+
+    event_tx: mpsc::UnboundedSender<Event>,
+    action_tx: mpsc::UnboundedSender<Action>,
+
     conversations: Vec<Rc<RefCell<Conversation>>>,
     list_items: Vec<ListItem<'a>>,
     id_map: HashMap<usize, String>,
+
+    rename: Rename<'a>,
+    question: Question<'a>,
 
     current_conversation: Option<String>,
     list_state: ListState,
 }
 
 impl<'a> HistoryScreen<'a> {
+    pub fn new(
+        event_tx: mpsc::UnboundedSender<Event>,
+        action_tx: mpsc::UnboundedSender<Action>,
+    ) -> HistoryScreen<'a> {
+        HistoryScreen {
+            event_tx,
+            action_tx,
+            showing: false,
+            conversations: vec![],
+            list_items: vec![],
+            id_map: HashMap::new(),
+            rename: Rename::default(),
+            current_conversation: None,
+            list_state: ListState::default(),
+            question: Question::new(),
+        }
+    }
+
     pub fn showing(&self) -> bool {
         self.showing
     }
@@ -69,6 +98,33 @@ impl<'a> HistoryScreen<'a> {
 
     pub fn toggle_showing(&mut self) {
         self.showing = !self.showing;
+        if self.showing && self.current_conversation.is_some() {
+            self.move_cursor_to_current();
+        }
+    }
+
+    pub fn remove_conversation(&mut self, conversation: &str) {
+        if let Some(pos) = self
+            .conversations
+            .iter()
+            .position(|c| c.borrow().id() == conversation)
+        {
+            if self.current_conversation.as_deref() == Some(conversation) {
+                self.current_conversation = None;
+            }
+            self.conversations.remove(pos);
+        }
+    }
+
+    fn move_cursor_to_current(&mut self) {
+        if let Some(current_conversation) = self.current_conversation.as_ref() {
+            let pos = self
+                .id_map
+                .iter()
+                .find(|(_, id)| *id == current_conversation)
+                .map(|(pos, _)| *pos);
+            self.list_state.select(pos);
+        }
     }
 
     pub fn add_conversation(&mut self, conversation: Rc<RefCell<Conversation>>) {
@@ -96,20 +152,18 @@ impl<'a> HistoryScreen<'a> {
             .sort_by(|a, b| b.borrow().updated_at().cmp(&a.borrow().updated_at()));
     }
 
-    pub fn get_conversations(&self) -> &[Rc<RefCell<Conversation>>] {
-        &self.conversations
-    }
-
     pub fn current_conversation(&self) -> Option<String> {
         self.current_conversation.clone()
     }
 
     pub fn set_current_conversation(&mut self, conversation: impl Into<String>) {
         self.current_conversation = Some(conversation.into());
+        self.move_cursor_to_current();
     }
 
     fn next_row(&mut self) {
         if self.conversations.is_empty() {
+            self.list_state.select(None);
             return;
         }
 
@@ -135,6 +189,7 @@ impl<'a> HistoryScreen<'a> {
 
     fn prev_row(&mut self) {
         if self.conversations.is_empty() {
+            self.list_state.select(None);
             return;
         }
 
@@ -217,7 +272,19 @@ impl<'a> HistoryScreen<'a> {
         }
     }
 
-    pub async fn handle_key_event(&mut self, event: Event) -> Result<bool> {
+    pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
+        if self.rename.showing() {
+            if self.rename.handle_key_event(event) {
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        if self.question.showing() {
+            self.question.handle_key_event(event);
+            return Ok(false);
+        }
+
         match event {
             Event::KeyboardEsc => {
                 self.showing = false;
@@ -227,7 +294,7 @@ impl<'a> HistoryScreen<'a> {
                 self.showing = !self.showing;
                 return Ok(false);
             }
-            Event::KeyboardCtrlQ => {
+            Event::Quit => {
                 self.showing = false;
                 return Ok(true);
             }
@@ -236,15 +303,15 @@ impl<'a> HistoryScreen<'a> {
                 if self.list_state.selected().is_none() || self.conversations.is_empty() {
                     return Ok(false);
                 }
-                let idx = self.list_state.selected().unwrap();
 
-                match self.id_map.get(&idx) {
-                    Some(id) => {
-                        self.current_conversation = Some(id.clone());
-                        self.showing = false;
-                    }
-                    _ => {}
-                }
+                let id = match self.get_selected_conversation_id() {
+                    Some(id) => id.to_string(),
+                    None => return Ok(false),
+                };
+
+                self.showing = false;
+                self.event_tx.send(Event::SetConversation(id.clone())).ok();
+                self.current_conversation = Some(id);
                 return Ok(false);
             }
 
@@ -254,6 +321,59 @@ impl<'a> HistoryScreen<'a> {
                 Key::Char('q') => {
                     self.showing = false;
                     return Ok(false);
+                }
+                Key::Char('d') => {
+                    let conversation = match self.get_selected_conversation() {
+                        Some(c) => c,
+                        None => return Ok(false),
+                    };
+
+                    if conversation.borrow().len() < 2 {
+                        return Ok(false);
+                    }
+
+                    self.question.set_question(format!(
+                        "Do you want to delete \"{}\"?",
+                        conversation.borrow().title()
+                    ));
+                    let action_tx = self.action_tx.clone();
+                    let conversation_id = conversation.borrow().id().to_string();
+                    self.question.set_callback(move |confirm| {
+                        if !confirm {
+                            return;
+                        }
+                        action_tx
+                            .send(Action::RemoveConversation(conversation_id.clone()))
+                            .map_err(|_| {
+                                log::error!("Failed to send delete conversation action");
+                            })
+                            .ok();
+                    });
+                    self.question.toggle_showing();
+                }
+                Key::Char('r') => {
+                    if let Some(conversation) = self.get_selected_conversation() {
+                        // Ignore with blank conversation
+                        if conversation.borrow().len() < 2 {
+                            return Ok(false);
+                        }
+
+                        let action_tx = self.action_tx.clone();
+                        self.rename.set_text(conversation.borrow().title());
+                        self.rename.set_callback(move |new_title| {
+                            if new_title.is_empty() || new_title == conversation.borrow().title() {
+                                return;
+                            }
+                            conversation.borrow_mut().set_title(new_title);
+                            action_tx
+                                .send(Action::UpsertConversation(conversation.borrow().clone()))
+                                .map_err(|_| {
+                                    log::error!("Failed to send rename conversation action");
+                                })
+                                .ok();
+                        });
+                        self.rename.toggle_showing();
+                    }
                 }
                 _ => {}
             },
@@ -268,8 +388,31 @@ impl<'a> HistoryScreen<'a> {
         Ok(false)
     }
 
+    pub fn get_selected_conversation_id(&self) -> Option<&str> {
+        if self.list_state.selected().is_none() || self.conversations.is_empty() {
+            return None;
+        }
+        let idx = self.list_state.selected().unwrap();
+
+        match self.id_map.get(&idx) {
+            Some(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub fn get_selected_conversation(&self) -> Option<Rc<RefCell<Conversation>>> {
+        let id = self.get_selected_conversation_id()?;
+        self.conversations
+            .iter()
+            .find(|c| c.borrow().id() == id)
+            .cloned()
+    }
+
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
         if !self.showing {
+            if !self.conversations.is_empty() && self.list_items.is_empty() {
+                self.build_list_items((area.width - 2) as usize);
+            }
             return;
         }
 
@@ -279,6 +422,8 @@ impl<'a> HistoryScreen<'a> {
             " to close, ".into(),
             span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Enter"),
             " to select, ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "r"),
+            " to rename, ".into(),
             span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "↑/k/↓/j"),
             " to move up/down ".into(),
         ];
@@ -301,6 +446,12 @@ impl<'a> HistoryScreen<'a> {
             .block(block)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
         f.render_stateful_widget(list, inner, &mut self.list_state);
+
+        let rename_area = rename::rename_area(inner, ((inner.width as f32 * 0.8).ceil()) as u16);
+        self.rename.render(f, rename_area);
+
+        let question_area = helpers::popup_area(inner, 70, 30);
+        self.question.render(f, question_area);
     }
 }
 

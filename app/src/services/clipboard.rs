@@ -1,24 +1,32 @@
 use eyre::{Result, bail};
 use once_cell::sync::OnceCell;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 static SENDER: OnceCell<mpsc::UnboundedSender<String>> = OnceCell::new();
 
 pub struct ClipboardService;
 
 impl ClipboardService {
-    pub async fn start() -> Result<()> {
+    pub async fn start(cancel_token: CancellationToken) -> Result<()> {
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
         SENDER.set(tx).unwrap();
         let mut clipboard = arboard::Clipboard::new()?;
 
         log::debug!("Clipboard service started");
         loop {
-            let event = rx.recv().await;
-            if event.is_none() {
-                continue;
+            tokio::select! {
+                _ = cancel_token.cancelled() => {
+                    log::debug!("Clipboard service cancelled");
+                    return Ok(());
+                }
+                event = rx.recv() => {
+                    if event.is_none() {
+                        continue;
+                    }
+                    clipboard.set_text(event.unwrap())?;
+                }
             }
-            clipboard.set_text(event.unwrap())?;
         }
     }
 

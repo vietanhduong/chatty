@@ -12,6 +12,8 @@ chrono.workspace = true
 toml.workspace = true
 clap.workspace = true
 syntect.workspace = true
+better-panic.workspace = true
+tokio-util.workspace = true
 
 openai-app = { path = "../app" }
 openai-backend = { path = "../backend" }

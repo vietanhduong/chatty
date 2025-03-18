@@ -2,28 +2,25 @@ use ratatui::{
     Frame,
     layout::Rect,
     style::{Modifier, Style},
+    text::{Line, Text},
     widgets::{Block, BorderType, Borders, Padding, Paragraph},
 };
 
 #[derive(Default)]
-pub struct Loading(String);
+pub struct Loading<'a>(Line<'a>);
 
-impl Loading {
-    pub fn new(text: &str) -> Self {
-        Self(text.to_string())
+impl<'a> Loading<'a> {
+    pub fn new(text: impl Into<Line<'a>>) -> Loading<'a> {
+        Loading(text.into())
     }
 
-    fn text(&self) -> &str {
-        if self.0.is_empty() {
-            "Loading..."
-        } else {
-            &self.0
-        }
+    fn value(&self) -> &Line {
+        &self.0
     }
 
     pub fn render(&self, frame: &mut Frame, rect: Rect) {
         frame.render_widget(
-            Paragraph::new(self.text())
+            Paragraph::new(Text::from(vec![self.value().clone()]))
                 .style(Style {
                     add_modifier: Modifier::ITALIC,
                     ..Default::default()

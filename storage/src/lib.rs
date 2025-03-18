@@ -19,7 +19,7 @@ pub trait Storage {
         filter: FilterConversation,
     ) -> Result<HashMap<String, Conversation>>;
     async fn get_messages(&self, conversation_id: &str) -> Result<Vec<Message>>;
-    async fn upsert_converstation(&self, conversation: Conversation) -> Result<()>;
+    async fn upsert_conversation(&self, conversation: Conversation) -> Result<()>;
     async fn delete_conversation(&self, id: &str) -> Result<()>;
     async fn add_messages(
         &self,

@@ -52,7 +52,7 @@ impl<'a> AppState<'a> {
         self.scroll.last();
     }
 
-    fn last_message(&self) -> Option<Message> {
+    pub(crate) fn last_message(&self) -> Option<Message> {
         self.conversation.borrow().last_message().cloned()
     }
 

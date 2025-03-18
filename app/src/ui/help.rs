@@ -68,7 +68,7 @@ impl<'a> HelpScreen<'_> {
 
     /// handle_key_event handles key events for the help menu.
     /// Returns true when user hit quit (Ctrl + Q).
-    pub fn handle_key_event(&mut self, event: Event) -> bool {
+    pub fn handle_key_event(&mut self, event: &Event) -> bool {
         match event {
             Event::KeyboardEsc => {
                 self.showing = false;
@@ -80,7 +80,7 @@ impl<'a> HelpScreen<'_> {
                 return false;
             }
 
-            Event::KeyboardCtrlQ => {
+            Event::Quit => {
                 self.showing = false;
                 return true;
             }

@@ -28,7 +28,6 @@ pub enum Event {
     KeyboardEsc,
     KeyboardEnter,
     KeyboardAltEnter,
-    KeyboardCtrlQ,
     KeyboardCtrlC,
     KeyboardCtrlR,
     KeyboardCtrlN,
@@ -37,6 +36,8 @@ pub enum Event {
     KeyboardCtrlH,
     KeyboardF1,
     KeyboardPaste(String),
+
+    Quit,
     UiTick,
     UiScrollUp,
     UiScrollDown,
@@ -45,6 +46,8 @@ pub enum Event {
 
     ListConversationsResponse(HashMap<String, Conversation>),
     ConversationResponse(Conversation),
+    SetConversation(String),
+    ConversationDeleted(String),
 }
 
 pub enum Action {
@@ -54,12 +57,10 @@ pub enum Action {
 
     CopyMessages(Vec<Message>),
 
-    ListConversations,
     UpsertConversation(Conversation),
     UpsertMessage(UpsertMessage),
     RemoveMessage(String),
-
-    GetConversation(String),
+    RemoveConversation(String),
 }
 
 impl Event {
@@ -69,7 +70,7 @@ impl Event {
             Event::KeyboardEsc => true,
             Event::KeyboardEnter => true,
             Event::KeyboardAltEnter => true,
-            Event::KeyboardCtrlQ => true,
+            Event::Quit => true,
             Event::KeyboardCtrlC => true,
             Event::KeyboardCtrlR => true,
             Event::KeyboardCtrlN => true,
@@ -86,6 +87,7 @@ impl Event {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct UpsertMessage {
     pub message: Message,
     pub conversation_id: String,

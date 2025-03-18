@@ -70,7 +70,7 @@ impl ModelsScreen {
         self.state.select(Some(i));
     }
 
-    async fn request_change_model(&mut self) -> Result<()> {
+    fn request_change_model(&mut self) -> Result<()> {
         let index = self.state.selected().unwrap_or(0);
         if index >= self.models.len() {
             return Ok(());
@@ -122,7 +122,7 @@ impl ModelsScreen {
         frame.render_stateful_widget(table, area, &mut self.state);
     }
 
-    pub async fn handle_key_event(&mut self, event: Event) -> Result<bool> {
+    pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
         match event {
             Event::KeyboardEsc => {
                 self.showing = false;
@@ -134,18 +134,18 @@ impl ModelsScreen {
                 return Ok(false);
             }
 
-            Event::KeyboardCtrlQ => {
+            Event::Quit => {
                 self.showing = false;
                 return Ok(true);
             }
 
             Event::ModelChanged(model) => {
-                self.current_model = model;
+                self.current_model = model.clone();
                 return Ok(false);
             }
 
             Event::KeyboardEnter => {
-                self.request_change_model().await?;
+                self.request_change_model()?;
                 self.showing = false;
                 return Ok(false);
             }
@@ -153,7 +153,7 @@ impl ModelsScreen {
             Event::KeyboardCharInput(input) => match input.key {
                 Key::Char('j') => self.next_row(),
                 Key::Char('k') => self.prev_row(),
-                Key::Char(' ') => self.request_change_model().await?,
+                Key::Char(' ') => self.request_change_model()?,
                 Key::Char('q') => {
                     self.showing = false;
                     return Ok(false);

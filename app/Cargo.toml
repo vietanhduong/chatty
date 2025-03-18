@@ -17,6 +17,7 @@ arboard.workspace = true
 log.workspace = true
 unicode-width.workspace = true
 chrono.workspace = true
+tokio-util.workspace = true
 
 openai-backend = { path = "../backend" }
 openai-storage = { path = "../storage" }

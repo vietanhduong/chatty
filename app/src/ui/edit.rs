@@ -172,7 +172,7 @@ impl<'a> EditScreen<'_> {
         frame.render_widget(list, area);
     }
 
-    pub async fn handle_key_event(&mut self, event: Event) -> Result<bool> {
+    pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
         match event {
             Event::KeyboardEsc => {
                 self.showing = false;
@@ -182,7 +182,7 @@ impl<'a> EditScreen<'_> {
                 self.showing = !self.showing;
                 return Ok(false);
             }
-            Event::KeyboardCtrlQ => {
+            Event::Quit => {
                 self.showing = false;
                 return Ok(true);
             }

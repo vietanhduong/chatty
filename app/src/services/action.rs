@@ -5,12 +5,14 @@ use openai_backend::ArcBackend;
 use openai_models::{Action, BackendPrompt, Event, Message, NoticeMessage, NoticeType};
 use openai_storage::ArcStorage;
 use tokio::{sync::mpsc, task::JoinHandle};
+use tokio_util::sync::CancellationToken;
 
 use super::ClipboardService;
 
 pub struct ActionService<'a> {
     event_tx: mpsc::UnboundedSender<Event>,
     action_rx: &'a mut mpsc::UnboundedReceiver<Action>,
+    cancel_token: CancellationToken,
     backend: ArcBackend,
     storage: ArcStorage,
 }
@@ -21,8 +23,10 @@ impl ActionService<'_> {
         action_rx: &'_ mut mpsc::UnboundedReceiver<Action>,
         backend: ArcBackend,
         storage: ArcStorage,
+        cancel_token: CancellationToken,
     ) -> ActionService<'_> {
         ActionService {
+            cancel_token,
             event_tx,
             action_rx,
             backend,
@@ -36,122 +40,111 @@ impl ActionService<'_> {
         });
 
         loop {
-            let event = self.action_rx.recv().await;
-            if event.is_none() {
-                continue;
-            }
+            tokio::select! {
+                _ = self.cancel_token.cancelled() => {
+                    log::debug!("Action service cancelled");
+                    return Ok(());
+                }
 
-            let worker_tx = self.event_tx.clone();
-            match event.unwrap() {
-                Action::RemoveMessage(id) => {
-                    if let Err(err) = self.storage.delete_messsage(&id).await {
-                        log::error!("Failed to delete message: {}", err);
-                        self.send_notice(
-                            NoticeType::Error,
-                            format!("Failed to delete message: {}", err),
-                        );
+                event = self.action_rx.recv() => {
+                    if event.is_none() {
                         continue;
                     }
-                }
-                Action::UpsertMessage(request) => {
-                    if let Err(err) = self
-                        .storage
-                        .upsert_message(&request.conversation_id, request.message)
-                        .await
-                    {
-                        log::error!("Failed to append message: {}", err);
-                        self.send_notice(
-                            NoticeType::Error,
-                            format!("Failed to append message: {}", err),
-                        );
-                        continue;
-                    }
-                }
-                Action::UpsertConversation(conversation) => {
-                    if let Err(err) = self.storage.upsert_converstation(conversation).await {
-                        log::error!("Failed to upsert conversation: {}", err);
-                        self.send_notice(
-                            NoticeType::Error,
-                            format!("Failed to upsert conversation: {}", err),
-                        );
-                        continue;
-                    }
-                }
-                Action::GetConversation(con) => {
-                    let conversation = match self.storage.get_conversation(&con).await {
-                        Ok(conversation) => conversation,
-                        Err(err) => {
-                            log::error!("Failed to get conversation: {}", err);
-                            self.send_notice(
-                                NoticeType::Error,
-                                format!("Failed to get conversation: {}", err),
-                            );
-                            continue;
+                    let event = event.unwrap();
+                    let worker_tx = self.event_tx.clone();
+                    let storage = Arc::clone(&self.storage);
+                    let backend = Arc::clone(&self.backend);
+                    match event {
+                        Action::RemoveMessage(id) => {
+                            if let Err(err) = storage.delete_messsage(&id).await {
+                                log::error!("Failed to delete message: {}", err);
+                                send_notice(
+                                    worker_tx,
+                                    NoticeType::Error,
+                                    format!("Failed to delete message: {}", err),
+                                );
+                                return Err(err);
+                            }
                         }
-                    };
 
-                    match conversation {
-                        Some(conversation) => {
-                            worker_tx.send(Event::ConversationResponse(conversation))?;
+                        Action::UpsertMessage(request) => {
+                            if let Err(err) = storage
+                                .upsert_message(&request.conversation_id, request.message)
+                                .await
+                            {
+                                log::error!("Failed to append message: {}", err);
+                                send_notice(
+                                    worker_tx,
+                                    NoticeType::Error,
+                                    format!("Failed to append message: {}", err),
+                                );
+                                return Err(err);
+                            }
+                            log::debug!("Upserted message");
                         }
-                        None => {
-                            self.send_notice(
-                                NoticeType::Warning,
-                                "Conversation not found".to_string(),
-                            );
+
+                        Action::RemoveConversation(id) => {
+                            if let Err(err) = storage.delete_conversation(&id).await {
+                                log::error!("Failed to delete conversation: {}", err);
+                                send_notice(
+                                    worker_tx,
+                                    NoticeType::Error,
+                                    format!("Failed to delete conversation: {}", err),
+                                );
+                                return Err(err);
+                            }
+                            worker_tx.send(Event::ConversationDeleted(id))?;
+                            log::debug!("Deleted conversation");
                         }
-                    }
-                }
-                Action::ListConversations => {
-                    let conversations =
-                        match self.storage.get_conversations(Default::default()).await {
-                            Ok(conversations) => conversations,
-                            Err(err) => {
-                                log::error!("Failed to get conversations: {}", err);
+
+                        Action::UpsertConversation(conversation) => {
+                            if let Err(err) = storage.upsert_conversation(conversation).await {
+                                log::error!("Failed to upsert conversation: {}", err);
+                                send_notice(
+                                    worker_tx,
+                                    NoticeType::Error,
+                                    format!("Failed to upsert conversation: {}", err),
+                                );
+                                return Err(err);
+                            }
+                            log::debug!("Upserted conversation");
+                        }
+
+                        Action::BackendSetModel(model) => {
+                            if let Err(err) = self.backend.set_default_model(&model).await {
+                                log::error!("Failed to set model: {}", err);
                                 self.send_notice(
                                     NoticeType::Error,
-                                    format!("Failed to get conversations: {}", err),
+                                    format!("Failed to set model: {}", err),
                                 );
                                 continue;
                             }
-                        };
-                    worker_tx.send(Event::ListConversationsResponse(conversations))?;
-                }
-
-                Action::BackendSetModel(model) => {
-                    if let Err(err) = self.backend.set_default_model(&model).await {
-                        log::error!("Failed to set model: {}", err);
-                        self.send_notice(
-                            NoticeType::Error,
-                            format!("Failed to set model: {}", err),
-                        );
-                        continue;
-                    }
-                    worker_tx.send(Event::ModelChanged(model))?;
-                }
-
-                Action::BackendAbort => {
-                    worker.abort();
-                    worker_tx.send(Event::AbortRequest)?;
-                }
-
-                Action::BackendRequest(prompt) => {
-                    let backend = Arc::clone(&self.backend);
-                    worker = tokio::spawn(async move {
-                        if let Err(err) = completions(&backend, prompt, &worker_tx).await {
-                            worker_error(err, &worker_tx)?;
+                            worker_tx.send(Event::ModelChanged(model))?;
                         }
-                        Ok(())
-                    })
-                }
 
-                Action::CopyMessages(messages) => {
-                    if let Err(err) = self.copy_messages(messages) {
-                        log::error!("Failed to copy messages: {}", err);
-                        self.send_notice(
-                            NoticeType::Error,
-                            format!("Failed to copy messages: {}", err),
-                        );
+                        Action::BackendAbort => {
+                            worker.abort();
+                            worker_tx.send(Event::AbortRequest)?;
+                        }
+
+                        Action::BackendRequest(prompt) => {
+                            worker = tokio::spawn(async move {
+                                if let Err(err) = completions(&backend, prompt, &worker_tx).await {
+                                    worker_error(err, &worker_tx)?;
+                                }
+                                Ok(())
+                            })
+                        }
+
+                        Action::CopyMessages(messages) => {
+                            if let Err(err) = self.copy_messages(messages) {
+                                log::error!("Failed to copy messages: {}", err);
+                                self.send_notice(
+                                    NoticeType::Error,
+                                    format!("Failed to copy messages: {}", err),
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -201,4 +194,18 @@ fn worker_error(err: eyre::Error, event_tx: &mpsc::UnboundedSender<Event>) -> Re
     )))?;
 
     Ok(())
+}
+
+fn send_notice(
+    event_tx: mpsc::UnboundedSender<Event>,
+    notice_type: NoticeType,
+    message: impl Into<String>,
+) {
+    event_tx
+        .send(Event::Notice(
+            NoticeMessage::new(message).with_type(notice_type),
+        ))
+        .unwrap_or_else(|err| {
+            log::error!("Failed to send notice: {}", err);
+        });
 }

@@ -7,6 +7,8 @@ pub mod history;
 pub mod loading;
 pub mod models;
 pub mod notice;
+pub mod question;
+pub mod rename;
 pub mod scroll;
 pub mod syntaxes;
 pub mod textarea;

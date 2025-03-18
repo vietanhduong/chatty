@@ -2,6 +2,7 @@ use eyre::{Context, Result};
 use openai_app::{
     App,
     app::AppInitProps,
+    destruct_terminal_for_panic,
     services::{ActionService, ClipboardService},
 };
 use openai_backend::new_backend;
@@ -9,9 +10,15 @@ use openai_models::{Action, Event, storage::FilterConversation};
 use openai_storage::new_storage;
 use openai_tui::{Command, init_logger, init_theme};
 use tokio::{sync::mpsc, task};
+use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    std::panic::set_hook(Box::new(|panic_info| {
+        destruct_terminal_for_panic();
+        better_panic::Settings::auto().create_panic_handler()(panic_info);
+    }));
+
     let config = Command::get_config()?;
     init_logger(&config)?;
 
@@ -60,17 +67,10 @@ async fn main() -> Result<()> {
 
     let mut bg_futures = task::JoinSet::new();
 
-    if let Err(err) = ClipboardService::healthcheck() {
-        log::warn!("Clipboard service is not available: {err}");
-    } else {
-        bg_futures.spawn(async move {
-            return ClipboardService::start().await;
-        });
-    }
-
     let mut app = App::new(
         &theme,
         action_tx.clone(),
+        event_tx.clone(),
         &mut event_rx,
         AppInitProps {
             default_model: model,
@@ -79,12 +79,50 @@ async fn main() -> Result<()> {
         },
     );
 
+    let token = CancellationToken::new();
+
+    let token_clone = token.clone();
+    let event_tx_clone = event_tx.clone();
     bg_futures.spawn(async move {
-        ActionService::new(event_tx, &mut action_rx, backend, storage)
-            .start()
-            .await
+        ActionService::new(
+            event_tx_clone,
+            &mut action_rx,
+            backend,
+            storage,
+            token_clone,
+        )
+        .start()
+        .await
     });
 
-    app.run().await?;
+    if let Err(err) = ClipboardService::healthcheck() {
+        log::warn!("Clipboard service is not available: {err}");
+    } else {
+        let token_clone = token.clone();
+        bg_futures.spawn(async move {
+            return ClipboardService::start(token_clone).await;
+        });
+    }
+
+    let res = app.run().await;
+
+    token.cancel();
+
+    while let Some(res) = bg_futures.join_next().await {
+        match res {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => {
+                log::error!("Background task failed: {err}");
+            }
+            Err(err) => {
+                log::error!("Background task panicked: {err}");
+            }
+        }
+    }
+
+    if res.is_err() {
+        // destruct_terminal_for_panic();
+        return Err(res.unwrap_err());
+    }
     Ok(())
 }
