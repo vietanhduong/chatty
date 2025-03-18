@@ -67,7 +67,7 @@ impl<'a> HistoryScreen<'a> {
             rename: Rename::default(),
             current_conversation: None,
             list_state: ListState::default(),
-            question: Question::new(),
+            question: Question::new().with_title(" Delete Conversation "),
         }
     }
 
@@ -332,10 +332,14 @@ impl<'a> HistoryScreen<'a> {
                         return Ok(false);
                     }
 
-                    self.question.set_question(format!(
-                        "Do you want to delete \"{}\"?",
-                        conversation.borrow().title()
-                    ));
+                    let quest = vec![
+                        span!("Do you want to delete"),
+                        span!(format!("\"{}\"", conversation.borrow().title()))
+                            .add_modifier(Modifier::BOLD | Modifier::ITALIC)
+                            .yellow(),
+                        span!("?"),
+                    ];
+                    self.question.set_question(quest);
                     let action_tx = self.action_tx.clone();
                     let conversation_id = conversation.borrow().id().to_string();
                     self.question.set_callback(move |confirm| {
@@ -422,6 +426,8 @@ impl<'a> HistoryScreen<'a> {
             " to close, ".into(),
             span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Enter"),
             " to select, ".into(),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "d"),
+            " to delete, ".into(),
             span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "r"),
             " to rename, ".into(),
             span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "↑/k/↓/j"),
@@ -450,8 +456,7 @@ impl<'a> HistoryScreen<'a> {
         let rename_area = rename::rename_area(inner, ((inner.width as f32 * 0.8).ceil()) as u16);
         self.rename.render(f, rename_area);
 
-        let question_area = helpers::popup_area(inner, 70, 30);
-        self.question.render(f, question_area);
+        self.question.render(f, inner);
     }
 }
 
@@ -475,7 +480,7 @@ impl ConversationGroup {
     }
     fn to_list_item<'b>(&self) -> ListItem<'b> {
         ListItem::new(self.to_text())
-            .style(Style::default().fg(Color::Black).bg(Color::LightBlue))
+            .style(Style::default().fg(Color::White).bg(Color::LightBlue))
             .add_modifier(Modifier::BOLD)
     }
 }

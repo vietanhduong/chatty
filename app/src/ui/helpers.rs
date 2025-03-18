@@ -26,7 +26,7 @@ pub(crate) fn split_to_lines<'a>(text: Vec<Span<'a>>, max_width: usize) -> Vec<L
     let mut lines = vec![];
     let mut line = vec![];
     let mut line_char_count = 0;
-    for word in text.into_iter() {
+    for word in split_spans(text, " ") {
         if line_char_count + word.content.len() > max_width - 2 {
             lines.push(Line::from(line));
             line = vec![];
@@ -41,6 +41,20 @@ pub(crate) fn split_to_lines<'a>(text: Vec<Span<'a>>, max_width: usize) -> Vec<L
         lines.push(Line::from(line));
     }
     lines
+}
+
+fn split_spans<'a>(input: Vec<Span<'a>>, delim: &str) -> Vec<Span<'a>> {
+    let mut spans = vec![];
+    for item in input.into_iter() {
+        spans.extend(
+            item.content
+                .split(delim)
+                .into_iter()
+                .map(|word| Span::styled(word.to_string(), item.style.clone()))
+                .collect::<Vec<_>>(),
+        );
+    }
+    spans
 }
 
 pub(crate) fn build_message_lines<'a, 'b>(

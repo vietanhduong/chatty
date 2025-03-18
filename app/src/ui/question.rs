@@ -1,31 +1,43 @@
 use openai_models::Event;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    text::{Span, Text},
-    widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph},
+    layout::{Alignment, Rect},
+    style::{Style, Stylize},
+    text::{Line, Text},
+    widgets::{Block, BorderType, Borders, Clear, Padding},
 };
+use ratatui_macros::span;
 use tui_textarea::Key;
 
 use super::helpers;
 
 pub struct Question<'a> {
     showing: bool,
-    question: String,
+    question: Line<'a>,
+    title: Option<Line<'a>>,
     answer_callback: Option<Box<dyn Fn(bool) + 'a>>,
 }
 
 impl<'a> Question<'a> {
     pub fn new() -> Question<'a> {
         Question {
+            title: None,
             showing: false,
-            question: String::new(),
+            question: Line::default(),
             answer_callback: None,
         }
     }
 
-    pub fn set_question(&mut self, question: impl Into<String>) {
+    pub fn with_title(mut self, title: impl Into<Line<'a>>) -> Question<'a> {
+        self.set_title(title);
+        self
+    }
+
+    pub fn set_title(&mut self, title: impl Into<Line<'a>>) {
+        self.title = Some(title.into());
+    }
+
+    pub fn set_question(&mut self, question: impl Into<Line<'a>>) {
         self.question = question.into();
     }
 
@@ -44,68 +56,43 @@ impl<'a> Question<'a> {
         self.showing = !self.showing;
     }
 
-    pub fn question(&self) -> &str {
-        &self.question
-    }
-
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
         if !self.showing {
             return;
         }
 
-        let block = Block::default()
+        let max_width = (area.width as f32 * 0.8).ceil() as u16;
+        let lines = helpers::split_to_lines(self.question.spans.clone(), (max_width - 2) as usize);
+        let area = build_area(area, max_width, lines.len() as u16 + 2);
+
+        let mut block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .padding(Padding::symmetric(1, 0))
-            .border_style(Style::default().fg(Color::LightBlue));
+            .title_bottom(vec![
+                span!(" "),
+                span!("Esc/q").green().bold(),
+                span!(" to close, "),
+                span!("y").green().bold(),
+                span!(" to confirm, "),
+                span!("n").green().bold(),
+                span!(" to cancel "),
+            ])
+            .title_alignment(Alignment::Center)
+            .border_style(Style::default().light_blue());
+
+        if let Some(title) = &self.title {
+            block = block
+                .title(title.clone())
+                .title_alignment(Alignment::Center);
+        }
 
         f.render_widget(Clear, area);
         let inner = block.inner(area);
         f.render_widget(block, area);
 
-        // --------Question-line---------
-        // [ ] [Yes] [ No ] [ ]
-        let layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Fill(1), Constraint::Length(3)].as_ref())
-            .split(inner);
-
-        let text = Text::from(helpers::split_to_lines(
-            self.question
-                .split(' ')
-                .into_iter()
-                .map(|s| Span::raw(s.to_string()))
-                .collect(),
-            layout[0].width as usize,
-        ));
-
-        f.render_widget(text, layout[0]);
-
-        let answer_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Ratio(1, 5); 5].as_ref())
-            .split(layout[1]);
-
-        let yes_block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .style(Style::default().fg(Color::LightGreen));
-
-        let no_block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .style(Style::default().fg(Color::Red));
-
-        let yes = Paragraph::new("Yes")
-            .block(yes_block)
-            .alignment(ratatui::layout::Alignment::Center);
-
-        let no = Paragraph::new(" No")
-            .block(no_block)
-            .alignment(ratatui::layout::Alignment::Center);
-
-        f.render_widget(yes, answer_layout[1]);
-        f.render_widget(no, answer_layout[3]);
+        let text = Text::from(lines);
+        f.render_widget(text, inner);
     }
 
     pub fn handle_key_event(&mut self, event: &Event) {
@@ -136,4 +123,10 @@ impl<'a> Question<'a> {
             _ => {}
         }
     }
+}
+
+fn build_area(area: Rect, w: u16, h: u16) -> Rect {
+    let x = area.x + (area.width - w) / 2;
+    let y = area.y + (area.height - 1) / 3;
+    Rect::new(x, y, w, h)
 }
