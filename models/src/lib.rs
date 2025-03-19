@@ -108,12 +108,32 @@ pub struct NoticeMessage {
 }
 
 impl NoticeMessage {
-    pub fn new(message: impl Into<String>) -> Self {
+    pub fn info(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
             message_type: NoticeType::Info,
             duration: None,
         }
+    }
+
+    pub fn warning(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            message_type: NoticeType::Warning,
+            duration: None,
+        }
+    }
+
+    pub fn error(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            message_type: NoticeType::Error,
+            duration: None,
+        }
+    }
+
+    pub fn new(message: impl Into<String>) -> Self {
+        Self::info(message)
     }
 
     pub fn with_type(mut self, message_type: NoticeType) -> Self {

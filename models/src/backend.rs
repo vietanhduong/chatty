@@ -2,6 +2,8 @@ use std::{fmt::Display, time};
 
 use serde::{Deserialize, Serialize};
 
+use crate::Message;
+
 #[derive(Default)]
 pub struct CodeContext {
     pub language: String,
@@ -14,14 +16,13 @@ pub struct BackendResponse {
     pub id: String,
     pub text: String,
     pub done: bool,
-    pub context: Option<String>,
     pub init_conversation: bool,
 }
 
 pub struct BackendPrompt {
     model: Option<String>,
     text: String,
-    context: String,
+    context: Vec<Message>,
     regenerate: bool,
     first: bool,
 }
@@ -31,7 +32,7 @@ impl BackendPrompt {
         BackendPrompt {
             model: None,
             text: text.into(),
-            context: String::new(),
+            context: vec![],
             regenerate: false,
             first: false,
         }
@@ -47,8 +48,8 @@ impl BackendPrompt {
         self
     }
 
-    pub fn with_context(mut self, ctx: impl Into<String>) -> Self {
-        self.context = ctx.into();
+    pub fn with_context(mut self, ctx: Vec<Message>) -> Self {
+        self.context = ctx;
         self
     }
 
@@ -65,7 +66,7 @@ impl BackendPrompt {
         &self.text
     }
 
-    pub fn context(&self) -> &str {
+    pub fn context(&self) -> &[Message] {
         &self.context
     }
 

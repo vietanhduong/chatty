@@ -1,20 +1,29 @@
+pub mod gemini;
 pub mod manager;
 pub mod openai;
 
-pub use crate::openai::OpenAI;
+pub use gemini::Gemini;
+pub use manager::Manager;
+pub use openai::OpenAI;
 
 use async_trait::async_trait;
-use eyre::{Context, Result, bail};
+use eyre::{Context, Result};
 use openai_models::{BackendKind, BackendPrompt, Event, config::BackendConfig};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+const TITLE_PROMPT: &str = r#"
+
+---
+Please give a title to the conversation. The title should be placed at the top
+of the response, in separate line and starts with #"#;
+
 #[async_trait]
 pub trait Backend {
-    fn name(&self) -> String;
+    fn name(&self) -> &str;
     async fn health_check(&self) -> Result<()>;
     async fn list_models(&self, force: bool) -> Result<Vec<String>>;
-    fn default_model(&self) -> Option<String>;
+    async fn current_model(&self) -> Option<String>;
     async fn set_default_model(&self, model: &str) -> Result<()>;
     async fn get_completion<'a>(
         &self,
@@ -38,7 +47,7 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     let mut manager = manager::Manager::default();
     let default_timeout = config.timeout();
     for connection in connections {
-        let backend = match connection.kind() {
+        let backend: ArcBackend = match connection.kind() {
             BackendKind::OpenAI => {
                 let mut connection = connection.clone();
                 if connection.timeout().is_none() && default_timeout.is_some() {
@@ -47,9 +56,17 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
                 let openai: OpenAI = (&connection).into();
                 Arc::new(openai)
             }
-            _ => bail!("Unsupported backend kind: {}", connection.kind()),
+            BackendKind::Gemini => {
+                let mut connection = connection.clone();
+                if connection.timeout().is_none() && default_timeout.is_some() {
+                    connection = connection.with_timeout(default_timeout.unwrap());
+                }
+                let gemini: Gemini = (&connection).into();
+                Arc::new(gemini)
+            }
         };
-        let name = backend.name();
+
+        let name = backend.name().to_string();
         manager
             .add_connection(backend)
             .await

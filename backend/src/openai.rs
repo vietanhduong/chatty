@@ -1,16 +1,17 @@
 use std::ops::Deref;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::{fmt::Display, time};
 
-use crate::{ArcBackend, Backend};
+use crate::{ArcBackend, Backend, TITLE_PROMPT};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
-use futures::stream::StreamExt;
-use log::{debug, error, trace};
+use futures::TryStreamExt;
 use openai_models::{BackendConnection, BackendPrompt, BackendResponse, Event};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::io::AsyncBufReadExt;
+use tokio::sync::{RwLock, mpsc};
+use tokio_util::io::StreamReader;
 
 #[derive(Debug)]
 pub struct OpenAI {
@@ -21,20 +22,14 @@ pub struct OpenAI {
 
     want_models: Vec<String>,
 
-    cache_models: tokio::sync::RwLock<Vec<String>>,
-    default_model: RwLock<Option<String>>,
+    cache_models: RwLock<Vec<String>>,
+    current_model: RwLock<Option<String>>,
 }
-
-const TITLE_PROMPT: &str = r#"
-
----
-Please give a title to the conversation. The title should be placed at the top
-of the response, in separate line and starts with #"#;
 
 #[async_trait]
 impl Backend for OpenAI {
-    fn name(&self) -> String {
-        self.alias.clone()
+    fn name(&self) -> &str {
+        &self.alias
     }
 
     async fn health_check(&self) -> Result<()> {
@@ -98,8 +93,8 @@ impl Backend for OpenAI {
         Ok(models)
     }
 
-    fn default_model(&self) -> Option<String> {
-        let default_model = self.default_model.read().unwrap();
+    async fn current_model(&self) -> Option<String> {
+        let default_model = self.current_model.read().await;
         return default_model.clone();
     }
 
@@ -121,7 +116,7 @@ impl Backend for OpenAI {
                 .find(|m| m == &model)
                 .ok_or_else(|| eyre::eyre!("OpenAI error: Model {} is not available", model))?
         };
-        let mut default_model = self.default_model.write().unwrap();
+        let mut default_model = self.current_model.write().await;
         *default_model = Some(model.clone());
         Ok(())
     }
@@ -131,14 +126,25 @@ impl Backend for OpenAI {
         prompt: BackendPrompt,
         event_tx: &'a mpsc::UnboundedSender<Event>,
     ) -> Result<()> {
-        if self.default_model().is_none() && prompt.model().is_none() {
+        if self.current_model().await.is_none() && prompt.model().is_none() {
             bail!("OpenAI error: no model is set");
         }
 
         let mut messages: Vec<MessageRequest> = vec![];
         if !prompt.context().is_empty() {
             // FIXME: This approach might not be optimized for large contexts
-            messages = serde_json::from_str(&prompt.context())?;
+            messages = prompt
+                .context()
+                .into_iter()
+                .map(|c| MessageRequest {
+                    role: if c.is_system() {
+                        "assistant".to_string()
+                    } else {
+                        "user".to_string()
+                    },
+                    content: c.text().to_string(),
+                })
+                .collect::<Vec<_>>();
         }
 
         // If user wants to regenerate the prompt, we need to rebuild the context
@@ -172,7 +178,7 @@ impl Backend for OpenAI {
 
         let model = match prompt.model() {
             Some(model) => model.to_string(),
-            None => self.default_model().unwrap(),
+            None => self.current_model().await.unwrap(),
         };
 
         let completion_req = CompletionRequest {
@@ -193,7 +199,7 @@ impl Backend for OpenAI {
             req = req.bearer_auth(token);
         }
 
-        debug!("sending completion request: {:?}", completion_req);
+        log::debug!("Sending completion request: {:?}", completion_req);
 
         let res = req
             .json(&completion_req)
@@ -209,64 +215,63 @@ impl Backend for OpenAI {
             return Err(err.into());
         }
 
-        let mut stream = res.bytes_stream();
+        let stream = res.bytes_stream().map_err(|e| {
+            let err_msg = e.to_string();
+            return std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg);
+        });
+
+        let mut line_readers = StreamReader::new(stream).lines();
 
         let mut last_message = String::new();
         let mut message_id = String::new();
-        while let Some(item) = stream.next().await {
-            let item = item?;
-            let s = match std::str::from_utf8(&item) {
-                Ok(s) => s,
-                Err(_) => {
-                    error!("Error parsing stream response");
-                    continue;
-                }
+        while let Ok(line) = line_readers.next_line().await {
+            if line.is_none() {
+                break;
+            }
+
+            let line = line.unwrap().trim().to_string();
+            if !line.starts_with("data: ") {
+                continue;
+            }
+
+            let line = line[6..].to_string();
+            if line == "[DONE]" {
+                break;
+            }
+
+            log::trace!("streaming response: line: {}", line);
+
+            let data = serde_json::from_str::<CompletionResponse>(&line)
+                .wrap_err("parsing completion response")?;
+
+            let c = match data.choices.get(0) {
+                Some(c) => c,
+                None => continue,
             };
 
-            for p in s.split("\n\n") {
-                match p.strip_prefix("data: ") {
-                    Some(p) => {
-                        if p == "[DONE]" {
-                            break;
-                        }
-
-                        trace!("streaming response: body: {}", p);
-                        let data = serde_json::from_str::<CompletionResponse>(p)
-                            .wrap_err("parsing completion response")?;
-
-                        let c = match data.choices.get(0) {
-                            Some(c) => c,
-                            None => continue,
-                        };
-
-                        if message_id.is_empty() {
-                            message_id = data.id;
-                        }
-
-                        if c.finish_reason.is_some() {
-                            break;
-                        }
-
-                        let text = match c.delta.content {
-                            Some(ref text) => text.deref().to_string(),
-                            None => continue,
-                        };
-
-                        last_message += &text;
-                        let msg = BackendResponse {
-                            id: message_id.clone(),
-                            model: model.clone(),
-                            text,
-                            context: None,
-                            done: false,
-                            init_conversation,
-                        };
-
-                        event_tx.send(Event::BackendPromptResponse(msg))?;
-                    }
-                    None => {}
-                }
+            if message_id.is_empty() {
+                message_id = data.id;
             }
+
+            if c.finish_reason.is_some() {
+                break;
+            }
+
+            let text = match c.delta.content {
+                Some(ref text) => text.deref().to_string(),
+                None => continue,
+            };
+
+            last_message += &text;
+            let msg = BackendResponse {
+                id: message_id.clone(),
+                model: model.clone(),
+                text,
+                done: false,
+                init_conversation,
+            };
+
+            event_tx.send(Event::BackendPromptResponse(msg))?;
         }
 
         messages.last_mut().unwrap().content = origin_content.to_string();
@@ -280,7 +285,6 @@ impl Backend for OpenAI {
             id: message_id,
             model: model.clone(),
             text: String::new(),
-            context: Some(serde_json::to_string(&messages)?),
             done: true,
             init_conversation,
         };
@@ -365,7 +369,7 @@ impl Default for OpenAI {
             endpoint: "https://api.openai.com".to_string(),
             token: None,
             timeout: None,
-            default_model: RwLock::new(None),
+            current_model: RwLock::new(None),
             cache_models: tokio::sync::RwLock::new(Vec::new()),
             want_models: vec![],
         }
@@ -380,11 +384,6 @@ struct Model {
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ModelListResponse {
     data: Vec<Model>,
-}
-
-#[derive(Default, Debug, Serialize, Deserialize)]
-struct ErrorResponse {
-    error: OpenAIError,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -415,6 +414,11 @@ struct CompletionChoiceResponse {
 struct CompletionResponse {
     id: String,
     choices: Vec<CompletionChoiceResponse>,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
+struct ErrorResponse {
+    error: OpenAIError,
 }
 
 #[derive(Default, Error, Debug, Serialize, Deserialize)]

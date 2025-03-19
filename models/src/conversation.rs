@@ -7,7 +7,6 @@ pub struct Conversation {
     id: String,
     title: String,
     messages: Vec<Message>,
-    context: Option<String>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -43,19 +42,6 @@ impl Conversation {
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = title.into();
         self
-    }
-
-    pub fn with_context(mut self, context: impl Into<String>) -> Self {
-        self.context = Some(context.into());
-        self
-    }
-
-    pub fn set_context(&mut self, context: impl Into<String>) {
-        self.context = Some(context.into());
-    }
-
-    pub fn context(&self) -> Option<&str> {
-        self.context.as_deref()
     }
 
     pub fn set_updated_at(&mut self, timestamp: chrono::DateTime<chrono::Utc>) {
@@ -111,6 +97,19 @@ impl Conversation {
         &mut self.messages
     }
 
+    /// Return a vector of messages. The return vector is alway end up
+    /// with a message from system
+    pub fn build_context(&self) -> Vec<Message> {
+        if self.messages.is_empty() {
+            return vec![];
+        }
+        let mut context = self.messages.clone();
+        if !self.messages.last().unwrap().is_system() {
+            context.pop();
+        }
+        return context;
+    }
+
     pub fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
         if let Some(msg) = self.messages.last() {
             if issuer.is_none() {
@@ -152,7 +151,6 @@ impl Default for Conversation {
             messages: vec![],
             created_at: chrono::Utc::now(),
             updated_at: None,
-            context: None,
         }
     }
 }

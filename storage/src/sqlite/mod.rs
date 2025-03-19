@@ -45,45 +45,43 @@ impl Sqlite {
 impl Storage for Sqlite {
     async fn get_conversation(&self, id: &str) -> Result<Option<Conversation>> {
         let id = id.to_string();
-        let conversation = self
-            .conn
-            .call(move |conn| {
-                let mut stmt = conn.prepare(
-                    "SELECT id, title, context, created_at, updated_at FROM conversations WHERE id = ?",
-                )?;
-                let mut rows = stmt.query(params![id])?;
-
-                let mut conversation: Option<Conversation> = None;
-                if let Some(row) = rows.next()? {
-                    let id: String = row.get(0)?;
-                    let title: String = row.get(1)?;
-                    let context: String = row.get(2)?;
-                    let created_at: i64 = row.get(3)?;
-                    let created_at= chrono::DateTime::from_timestamp_millis(created_at).ok_or(
-                        tokio_rusqlite::Error::Other(eyre::eyre!("invalid created_at value").into()),
+        let conversation =
+            self.conn
+                .call(move |conn| {
+                    let mut stmt = conn.prepare(
+                        "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
                     )?;
+                    let mut rows = stmt.query(params![id])?;
 
-                    let updated_at: i64 = row.get(4)?;
-                    let updated_at = chrono::DateTime::from_timestamp_millis(updated_at).ok_or(
-                        tokio_rusqlite::Error::Other(eyre::eyre!("invalid updated_at value").into()),
-                    )?;
+                    let mut conversation: Option<Conversation> = None;
+                    if let Some(row) = rows.next()? {
+                        let id: String = row.get(0)?;
+                        let title: String = row.get(1)?;
+                        let created_at: i64 = row.get(2)?;
+                        let created_at = chrono::DateTime::from_timestamp_millis(created_at)
+                            .ok_or(tokio_rusqlite::Error::Other(
+                                eyre::eyre!("invalid created_at value").into(),
+                            ))?;
 
-                    let mut con = Conversation::default()
-                        .with_id(id)
-                        .with_title(title)
-                        .with_created_at(created_at);
-                    if updated_at.timestamp_millis() > 0 {
-                        con = con.with_updated_at(updated_at);
-                    }
+                        let updated_at: i64 = row.get(3)?;
+                        let updated_at = chrono::DateTime::from_timestamp_millis(updated_at)
+                            .ok_or(tokio_rusqlite::Error::Other(
+                                eyre::eyre!("invalid updated_at value").into(),
+                            ))?;
 
-                    if !context.is_empty() {
-                        con.set_context(context);
-                    }
-                    conversation = Some(con);
-                };
-                Ok(conversation)
-            })
-            .await?;
+                        let mut con = Conversation::default()
+                            .with_id(id)
+                            .with_title(title)
+                            .with_created_at(created_at);
+                        if updated_at.timestamp_millis() > 0 {
+                            con = con.with_updated_at(updated_at);
+                        }
+
+                        conversation = Some(con);
+                    };
+                    Ok(conversation)
+                })
+                .await?;
 
         if conversation.is_none() {
             return Ok(None);
@@ -145,13 +143,12 @@ impl Storage for Sqlite {
                 while let Some(row) = rows.next()? {
                     let id: String = row.get(0)?;
                     let title: String = row.get(1)?;
-                    let context: String = row.get(2)?;
-                    let created_at: i64 = row.get(3)?;
+                    let created_at: i64 = row.get(2)?;
                     let created_at = chrono::DateTime::from_timestamp_millis(created_at).ok_or(
                         tokio_rusqlite::Error::Other(eyre::eyre!("invalid created_at").into()),
                     )?;
 
-                    let updated_at: i64 = row.get(4)?;
+                    let updated_at: i64 = row.get(3)?;
                     let updated_at = chrono::DateTime::from_timestamp_millis(updated_at).ok_or(
                         tokio_rusqlite::Error::Other(eyre::eyre!("invalid updated_at").into()),
                     )?;
@@ -165,9 +162,6 @@ impl Storage for Sqlite {
                         con = con.with_updated_at(updated_at);
                     }
 
-                    if !context.is_empty() {
-                        con.set_context(context);
-                    }
                     conversations.insert(id, con);
                 }
                 Ok(conversations)
@@ -187,18 +181,16 @@ impl Storage for Sqlite {
             .call(move |conn| {
                 let tx = conn.transaction()?;
                 tx.execute(
-                    r#"INSERT INTO conversations (id, title, context, created_at, updated_at)
-                VALUES (:id, :title, :context, :created_at, :updated_at)
+                    r#"INSERT INTO conversations (id, title, created_at, updated_at)
+                VALUES (:id, :title, :created_at, :updated_at)
                 ON CONFLICT(id) DO UPDATE SET
                     title = excluded.title,
-                    context = excluded.context,
                     created_at = excluded.created_at,
                     updated_at = excluded.updated_at
                 "#,
                     named_params! {
                         ":id": conversation.id(),
                         ":title": conversation.title(),
-                        ":context": conversation.context().unwrap_or_default(),
                         ":created_at": conversation.created_at().timestamp_millis(),
                         ":updated_at": conversation.updated_at().timestamp_millis(),
                     },
@@ -309,9 +301,8 @@ impl Storage for Sqlite {
 }
 
 fn filter_to_query(filter: &FilterConversation) -> (String, Vec<(&str, Box<dyn ToSql>)>) {
-    let mut query = String::from(
-        "SELECT id, title, context, created_at, updated_at FROM conversations WHERE 1=1",
-    );
+    let mut query =
+        String::from("SELECT id, title, created_at, updated_at FROM conversations WHERE 1=1");
     let mut params: Vec<(&str, Box<dyn ToSql>)> = vec![];
 
     if let Some(id) = filter.id() {
@@ -366,7 +357,7 @@ mod tests {
         let (query, params) = filter_to_query(&filter);
         assert_eq!(
             query,
-            "SELECT id, title, context, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id"
+            "SELECT id, title, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id"
         );
 
         assert_eq!(params.len(), 1);
@@ -376,7 +367,7 @@ mod tests {
         let (query, params) = filter_to_query(&filter);
         assert_eq!(
             query,
-            "SELECT id, title, context, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id AND title LIKE :title"
+            "SELECT id, title, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id AND title LIKE :title"
         );
         assert_eq!(params.len(), 2);
         assert_eq!(params[0].0, ":id");
@@ -386,7 +377,7 @@ mod tests {
         let (query, params) = filter_to_query(&filter);
         assert_eq!(
             query,
-            "SELECT id, title, context, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id AND title LIKE :title AND EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id AND text LIKE :message_contains)"
+            "SELECT id, title, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id AND title LIKE :title AND EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id AND text LIKE :message_contains)"
         );
 
         assert_eq!(params.len(), 3);
@@ -398,7 +389,7 @@ mod tests {
         let (query, params) = filter_to_query(&filter);
         assert_eq!(
             query,
-            "SELECT id, title, context, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id AND title LIKE :title AND EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id AND text LIKE :message_contains) AND created_at >= :created_at_from"
+            "SELECT id, title, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id AND title LIKE :title AND EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id AND text LIKE :message_contains) AND created_at >= :created_at_from"
         );
         assert_eq!(params.len(), 4);
         assert_eq!(params[0].0, ":id");
@@ -410,7 +401,7 @@ mod tests {
         let (query, params) = filter_to_query(&filter);
         assert_eq!(
             query,
-            "SELECT id, title, context, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id AND title LIKE :title AND EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id AND text LIKE :message_contains) AND updated_at <= :updated_at_to AND created_at >= :created_at_from"
+            "SELECT id, title, created_at, updated_at FROM conversations WHERE 1=1 AND id = :id AND title LIKE :title AND EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id AND text LIKE :message_contains) AND updated_at <= :updated_at_to AND created_at >= :created_at_from"
         );
         assert_eq!(params.len(), 5);
         assert_eq!(params[0].0, ":id");
@@ -428,7 +419,6 @@ mod tests {
         let expected = Conversation::default()
             .with_id("test_id")
             .with_title("Test Conversation")
-            .with_context("Test Context")
             .with_created_at(chrono::Utc::now());
 
         db.upsert_conversation(expected.clone()).await.unwrap();
@@ -439,7 +429,6 @@ mod tests {
         let actual = actual.unwrap();
         assert_eq!(actual.id(), "test_id");
         assert_eq!(actual.title(), "Test Conversation");
-        assert_eq!(actual.context(), Some("Test Context"));
         assert_eq!(
             actual.created_at().timestamp_millis(),
             expected.created_at().timestamp_millis()
@@ -455,7 +444,6 @@ mod tests {
         let mut expected = Conversation::default()
             .with_id("test_id")
             .with_title("Test Conversation")
-            .with_context("Test Context")
             .with_created_at(chrono::Utc::now());
 
         db.upsert_conversation(expected.clone()).await.unwrap();
@@ -466,7 +454,6 @@ mod tests {
         let actual = actual.unwrap();
         assert_eq!(actual.id(), "test_id");
         assert_eq!(actual.title(), "Test Conversation");
-        assert_eq!(actual.context(), Some("Test Context"));
         assert_eq!(
             actual.created_at().timestamp_millis(),
             expected.created_at().timestamp_millis()
@@ -479,7 +466,6 @@ mod tests {
         assert_eq!(actual.messages().len(), 0);
 
         expected.set_title("Updated Title");
-        expected.set_context("Updated Context");
 
         db.upsert_conversation(expected.clone()).await.unwrap();
 
@@ -488,7 +474,6 @@ mod tests {
         let actual = actual.unwrap();
         assert_eq!(actual.id(), "test_id");
         assert_eq!(actual.title(), "Updated Title");
-        assert_eq!(actual.context(), Some("Updated Context"));
     }
 
     #[tokio::test]
@@ -508,7 +493,6 @@ mod tests {
         let conversation = Conversation::default()
             .with_id("test_id")
             .with_title("Test Conversation")
-            .with_context("Test Context")
             .with_created_at(chrono::Utc::now())
             .with_messages(messages.clone());
 
@@ -558,7 +542,6 @@ mod tests {
         let expected = Conversation::default()
             .with_id("test_id")
             .with_title("Test Conversation")
-            .with_context("Test Context")
             .with_created_at(chrono::Utc::now())
             .with_messages(messages.clone());
 
@@ -608,7 +591,6 @@ mod tests {
 
         assert_eq!(con.id(), "test_id_0");
         assert_eq!(con.title(), "Even Conversation 0");
-        assert_eq!(con.context(), Some("Context 0"));
 
         let filter = FilterConversation::default().with_title("Odd");
         let actual = db.get_conversations(filter).await.unwrap();
@@ -673,7 +655,6 @@ mod tests {
             let conversation = Conversation::default()
                 .with_id(format!("test_id_{}", i))
                 .with_title(format!("{} {}", title, i))
-                .with_context(format!("Context {}", i))
                 .with_created_at(chrono::Utc::now())
                 .with_messages(messages);
             conversations.push(conversation);
@@ -693,7 +674,6 @@ mod tests {
         let conversation = Conversation::default()
             .with_id("test_id")
             .with_title("Test Conversation")
-            .with_context("Test Context")
             .with_created_at(chrono::Utc::now())
             .with_messages(vec![message.clone()]);
 
@@ -729,7 +709,6 @@ mod tests {
         let conversation = Conversation::default()
             .with_id("test_id")
             .with_title("Test Conversation")
-            .with_context("Test Context")
             .with_created_at(chrono::Utc::now())
             .with_messages(vec![message.clone()]);
 

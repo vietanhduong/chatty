@@ -5,7 +5,7 @@ use openai_models::{Action, Event};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Cell, Clear, Padding, Row, Table, TableState},
 };
@@ -174,10 +174,15 @@ fn build_rows<'a>(models: &'a [String], current_model: &str) -> Vec<Row<'a>> {
         .map(|model| {
             let current = model == current_model;
             let mut spans = vec![];
-            spans.push(Span::styled(
-                if current { "[x] " } else { "[ ] " },
-                Style::default(),
-            ));
+            let mut style = Style::default();
+            let mut text = "[ ]";
+            if current {
+                style = style.add_modifier(Modifier::BOLD).red();
+                text = "[*]";
+            }
+
+            spans.push(Span::styled(text, style));
+            spans.push(Span::styled(" ", Style::default()));
             spans.push(Span::styled(model, Style::default()));
             Row::new(vec![Cell::from(Text::from(Line::from(spans)))]).height(1)
         })

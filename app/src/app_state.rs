@@ -89,11 +89,7 @@ impl<'a> AppState<'a> {
                 .borrow_mut()
                 .set_updated_at(chrono::Utc::now());
             self.waiting_for_backend = false;
-            if let Some(ctx) = resp.context {
-                self.conversation.borrow_mut().set_context(ctx);
-            }
         }
-
         self.sync_state();
     }
 

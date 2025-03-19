@@ -2,7 +2,6 @@ pub(crate) const MIGRATION: &str = r#"
     CREATE TABLE IF NOT EXISTS conversations (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
-        context TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
     );

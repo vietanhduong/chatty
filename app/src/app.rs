@@ -153,6 +153,10 @@ impl<'a> App<'a> {
                 return Ok(false);
             }
             self.change_conversation(Rc::clone(self.conversations.get(&id).unwrap()));
+            self.notice.info(format!(
+                "Changed conversation to \"{}\"",
+                self.app_state.conversation.borrow().title()
+            ));
             return Ok(false);
         }
 
@@ -188,6 +192,7 @@ impl<'a> App<'a> {
         match event {
             Event::ModelChanged(model) => {
                 self.models_screen.set_current_model(&model);
+                self.notice.info(format!("Changed model to \"{}\"", model));
                 return Ok(false);
             }
 
@@ -330,7 +335,7 @@ impl<'a> App<'a> {
                 self.app_state.waiting_for_backend = true;
                 let prompt = BackendPrompt::new(input_str)
                     .with_model(model)
-                    .with_context(conversation.context().unwrap_or_default())
+                    .with_context(conversation.build_context())
                     .with_regenerate();
 
                 self.action_tx.send(Action::BackendRequest(prompt))?;
@@ -367,13 +372,7 @@ impl<'a> App<'a> {
                 self.app_state.waiting_for_backend = true;
 
                 let mut prompt = BackendPrompt::new(input_str)
-                    .with_context(
-                        self.app_state
-                            .conversation
-                            .borrow()
-                            .context()
-                            .unwrap_or_default(),
-                    )
+                    .with_context(self.app_state.conversation.borrow().build_context())
                     .with_model(model);
 
                 if first {

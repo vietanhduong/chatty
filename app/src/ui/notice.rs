@@ -38,6 +38,18 @@ impl Notice {
         });
     }
 
+    pub fn info(&mut self, msg: impl Into<String>) {
+        self.add_message(NoticeMessage::info(msg))
+    }
+
+    pub fn warning(&mut self, msg: impl Into<String>) {
+        self.add_message(NoticeMessage::warning(msg))
+    }
+
+    pub fn error(&mut self, msg: impl Into<String>) {
+        self.add_message(NoticeMessage::error(msg))
+    }
+
     pub fn clear(&mut self) {
         self.notices.clear();
     }
