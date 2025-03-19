@@ -14,9 +14,22 @@ folder_path = "/etc/openai-tui/theme"
 
 [backend]
 default_model = "gpt-3.5-turbo"
+timeout = "60s"
 
-[backend.openai]
+
+[[backend.connections]]
+enabled = true
+alias = "deepseek"
+kind = "openai"
 endpoint = "https://api.deepseek.com"
+
+[[backend.connections]]
+enabled = true
+alias = "openai"
+kind = "openai"
+endpoint = "https://api.openai.com"
+models = ["gpt-3.5-turbo", "gpt-4"]
+
 
 [storage.sqlite]
 path = "/var/lib/openai-tui/chat.db"

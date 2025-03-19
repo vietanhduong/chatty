@@ -1,3 +1,7 @@
+use std::{fmt::Display, time};
+
+use serde::{Deserialize, Serialize};
+
 #[derive(Default)]
 pub struct CodeContext {
     pub language: String,
@@ -15,7 +19,7 @@ pub struct BackendResponse {
 }
 
 pub struct BackendPrompt {
-    model: String,
+    model: Option<String>,
     text: String,
     context: String,
     regenerate: bool,
@@ -23,14 +27,19 @@ pub struct BackendPrompt {
 }
 
 impl BackendPrompt {
-    pub fn new(model: &str, text: impl Into<String>) -> Self {
-        Self {
-            model: model.to_string(),
+    pub fn new(text: impl Into<String>) -> BackendPrompt {
+        BackendPrompt {
+            model: None,
             text: text.into(),
             context: String::new(),
             regenerate: false,
             first: false,
         }
+    }
+
+    pub fn with_model(mut self, model: &str) -> Self {
+        self.model = Some(model.to_string());
+        self
     }
 
     pub fn with_first(mut self) -> Self {
@@ -48,8 +57,8 @@ impl BackendPrompt {
         self
     }
 
-    pub fn model(&self) -> &str {
-        &self.model
+    pub fn model(&self) -> Option<&str> {
+        self.model.as_deref()
     }
 
     pub fn text(&self) -> &str {
@@ -66,5 +75,106 @@ impl BackendPrompt {
 
     pub fn first(&self) -> bool {
         self.first
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct BackendConnection {
+    enabled: bool,
+    kind: BackendKind,
+    alias: Option<String>,
+    endpoint: String,
+    api_key: Option<String>,
+    timeout: Option<time::Duration>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    models: Vec<String>,
+}
+
+impl BackendConnection {
+    pub fn new(kind: BackendKind, endpoint: impl Into<String>) -> Self {
+        Self {
+            enabled: false,
+            kind,
+            alias: None,
+            endpoint: endpoint.into(),
+            api_key: None,
+            timeout: None,
+            models: Vec::new(),
+        }
+    }
+
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub fn with_models(mut self, models: Vec<String>) -> Self {
+        self.models = models;
+        self
+    }
+
+    pub fn add_model(mut self, model: String) -> Self {
+        self.models.push(model);
+        self
+    }
+
+    pub fn with_alias(mut self, alias: impl Into<String>) -> Self {
+        self.alias = Some(alias.into());
+        self
+    }
+
+    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = Some(api_key.into());
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: time::Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    pub fn kind(&self) -> &BackendKind {
+        &self.kind
+    }
+
+    pub fn alias(&self) -> Option<&str> {
+        self.alias.as_deref()
+    }
+
+    pub fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    pub fn api_key(&self) -> Option<&str> {
+        self.api_key.as_deref()
+    }
+
+    pub fn timeout(&self) -> Option<time::Duration> {
+        self.timeout
+    }
+
+    pub fn models(&self) -> &[String] {
+        &self.models
+    }
+
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, Deserialize, Serialize, Debug, Clone)]
+pub enum BackendKind {
+    #[serde(rename = "openai")]
+    OpenAI,
+    #[serde(rename = "gemini")]
+    Gemini,
+}
+
+impl Display for BackendKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BackendKind::OpenAI => write!(f, "open_ai"),
+            BackendKind::Gemini => write!(f, "gemini"),
+        }
     }
 }

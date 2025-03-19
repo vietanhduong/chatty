@@ -187,7 +187,7 @@ impl<'a> App<'a> {
 
         match event {
             Event::ModelChanged(model) => {
-                self.models_screen.set_current_model(model);
+                self.models_screen.set_current_model(&model);
                 return Ok(false);
             }
 
@@ -328,7 +328,8 @@ impl<'a> App<'a> {
 
                 let model = self.models_screen.current_model();
                 self.app_state.waiting_for_backend = true;
-                let prompt = BackendPrompt::new(&model, input_str)
+                let prompt = BackendPrompt::new(input_str)
+                    .with_model(model)
                     .with_context(conversation.context().unwrap_or_default())
                     .with_regenerate();
 
@@ -365,13 +366,15 @@ impl<'a> App<'a> {
 
                 self.app_state.waiting_for_backend = true;
 
-                let mut prompt = BackendPrompt::new(&model, input_str).with_context(
-                    self.app_state
-                        .conversation
-                        .borrow()
-                        .context()
-                        .unwrap_or_default(),
-                );
+                let mut prompt = BackendPrompt::new(input_str)
+                    .with_context(
+                        self.app_state
+                            .conversation
+                            .borrow()
+                            .context()
+                            .unwrap_or_default(),
+                    )
+                    .with_model(model);
 
                 if first {
                     prompt = prompt.with_first();

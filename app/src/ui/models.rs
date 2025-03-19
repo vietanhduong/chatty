@@ -40,8 +40,8 @@ impl ModelsScreen {
         &self.current_model
     }
 
-    pub fn set_current_model(&mut self, model: String) {
-        self.current_model = model;
+    pub fn set_current_model(&mut self, model: &str) {
+        self.current_model = model.to_string();
     }
 
     pub fn showing(&self) -> bool {
@@ -76,14 +76,12 @@ impl ModelsScreen {
             return Ok(());
         }
 
-        let selected = self.models[index].clone();
-
-        if self.current_model == selected {
+        if self.current_model == self.models[index] {
             return Ok(());
         }
 
         self.action_tx
-            .send(Action::BackendSetModel(selected.clone()))?;
+            .send(Action::BackendSetModel(self.models[index].to_string()))?;
 
         Ok(())
     }

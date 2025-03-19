@@ -80,7 +80,7 @@ pub fn basename(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use openai_models::config::StorageConfig;
+    use openai_models::{BackendKind, config::StorageConfig};
 
     use super::*;
 
@@ -106,10 +106,28 @@ mod tests {
         );
 
         let backend = config.backend().unwrap();
-        assert_eq!(
-            backend.openai().unwrap().endpoint(),
-            Some("https://api.deepseek.com")
-        );
+        assert_eq!(backend.connections().len(), 2);
+
+        let deepseek = backend
+            .connections()
+            .iter()
+            .find(|c| c.alias() == Some("deepseek"))
+            .unwrap();
+        assert_eq!(deepseek.enabled(), true);
+        assert_eq!(deepseek.alias(), Some("deepseek"));
+        assert_eq!(deepseek.kind().to_string(), BackendKind::OpenAI.to_string());
+        assert_eq!(deepseek.endpoint(), "https://api.deepseek.com");
+
+        let openai = backend
+            .connections()
+            .iter()
+            .find(|c| c.alias() == Some("openai"))
+            .unwrap();
+        assert_eq!(openai.alias(), Some("openai"));
+        assert_eq!(openai.enabled(), true);
+        assert_eq!(openai.kind().to_string(), BackendKind::OpenAI.to_string());
+        assert_eq!(openai.endpoint(), "https://api.openai.com");
+        assert_eq!(openai.models(), &["gpt-3.5-turbo", "gpt-4"]);
 
         let model = backend.default_model().unwrap();
         assert_eq!(model, "gpt-3.5-turbo");

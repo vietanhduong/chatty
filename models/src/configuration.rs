@@ -1,4 +1,8 @@
+use core::time;
+
 use serde::{Deserialize, Serialize};
+
+use crate::BackendConnection;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Configuration {
@@ -35,8 +39,9 @@ pub struct ThemeConfig {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BackendConfig {
-    openai: Option<OpenAIBackend>,
     default_model: Option<String>,
+    timout: Option<time::Duration>,
+    connections: Vec<BackendConnection>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -119,12 +124,16 @@ impl ThemeConfig {
 }
 
 impl BackendConfig {
-    pub fn openai(&self) -> Option<&OpenAIBackend> {
-        self.openai.as_ref()
+    pub fn connections(&self) -> &[BackendConnection] {
+        &self.connections
     }
 
     pub fn default_model(&self) -> Option<&str> {
         self.default_model.as_deref()
+    }
+
+    pub fn timeout(&self) -> Option<time::Duration> {
+        self.timout
     }
 }
 
@@ -177,8 +186,9 @@ impl Default for ThemeConfig {
 impl Default for BackendConfig {
     fn default() -> Self {
         Self {
-            openai: Some(OpenAIBackend::default()),
             default_model: None,
+            connections: vec![],
+            timout: None,
         }
     }
 }

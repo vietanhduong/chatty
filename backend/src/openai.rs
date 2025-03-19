@@ -1,25 +1,28 @@
 use std::ops::Deref;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::{fmt::Display, time};
 
-use crate::Backend;
+use crate::{ArcBackend, Backend};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::stream::StreamExt;
 use log::{debug, error, trace};
-use openai_models::{BackendPrompt, BackendResponse, Event};
+use openai_models::{BackendConnection, BackendPrompt, BackendResponse, Event};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub struct OpenAI {
+    alias: String,
     endpoint: String,
     token: Option<String>,
     timeout: Option<time::Duration>,
 
+    want_models: Vec<String>,
+
     cache_models: tokio::sync::RwLock<Vec<String>>,
-    default_model: RwLock<String>,
+    default_model: RwLock<Option<String>>,
 }
 
 const TITLE_PROMPT: &str = r#"
@@ -30,6 +33,10 @@ of the response, in separate line and starts with #"#;
 
 #[async_trait]
 impl Backend for OpenAI {
+    fn name(&self) -> String {
+        self.alias.clone()
+    }
+
     async fn health_check(&self) -> Result<()> {
         if self.endpoint.is_empty() {
             bail!("Endpoint is not set");
@@ -46,7 +53,7 @@ impl Backend for OpenAI {
     }
 
     async fn list_models(&self, force: bool) -> Result<Vec<String>> {
-        if !force {
+        if !force && !self.cache_models.read().await.is_empty() {
             return Ok(self.cache_models.read().await.clone());
         }
 
@@ -75,27 +82,32 @@ impl Backend for OpenAI {
             .await
             .wrap_err("parsing model list response")?;
 
+        let all = self.want_models.is_empty();
+
         let mut models = res
             .data
-            .iter()
-            .map(|m| m.id.to_string())
+            .into_iter()
+            .filter(|m| all || self.want_models.contains(&m.id))
+            .map(|m| m.id)
             .collect::<Vec<_>>();
 
         models.sort();
+
         let mut cached = self.cache_models.write().await;
         *cached = models.clone();
         Ok(models)
     }
 
-    fn default_model(&self) -> String {
-        self.default_model.read().unwrap().to_string()
+    fn default_model(&self) -> Option<String> {
+        let default_model = self.default_model.read().unwrap();
+        return default_model.clone();
     }
 
     async fn set_default_model(&self, model: &str) -> Result<()> {
         // We will check the model against the list of available models
         // If the model is not available, we will return an error
         let models = self.list_models(false).await?;
-        if !model.is_empty() && !models.contains(&model.to_string()) {
+        if !model.is_empty() && !models.iter().any(|m| m == model) {
             bail!("OpenAI error: Model {} is not available", model);
         }
 
@@ -104,10 +116,13 @@ impl Backend for OpenAI {
                 .last()
                 .ok_or_else(|| eyre::eyre!("OpenAI error: No models available"))?
         } else {
-            model
+            models
+                .iter()
+                .find(|m| m == &model)
+                .ok_or_else(|| eyre::eyre!("OpenAI error: Model {} is not available", model))?
         };
         let mut default_model = self.default_model.write().unwrap();
-        *default_model = model.to_string();
+        *default_model = Some(model.clone());
         Ok(())
     }
 
@@ -116,8 +131,8 @@ impl Backend for OpenAI {
         prompt: BackendPrompt,
         event_tx: &'a mpsc::UnboundedSender<Event>,
     ) -> Result<()> {
-        if self.default_model().is_empty() {
-            bail!("OpenAI error: Model is not set");
+        if self.default_model().is_none() && prompt.model().is_none() {
+            bail!("OpenAI error: no model is set");
         }
 
         let mut messages: Vec<MessageRequest> = vec![];
@@ -155,10 +170,9 @@ impl Backend for OpenAI {
             content,
         });
 
-        let model = if prompt.model().is_empty() {
-            self.default_model().to_string()
-        } else {
-            prompt.model().to_string()
+        let model = match prompt.model() {
+            Some(model) => model.to_string(),
+            None => self.default_model().unwrap(),
         };
 
         let completion_req = CompletionRequest {
@@ -264,7 +278,7 @@ impl Backend for OpenAI {
 
         let msg = BackendResponse {
             id: message_id,
-            model,
+            model: model.clone(),
             text: String::new(),
             context: Some(serde_json::to_string(&messages)?),
             done: true,
@@ -275,9 +289,41 @@ impl Backend for OpenAI {
     }
 }
 
+impl From<OpenAI> for ArcBackend {
+    fn from(value: OpenAI) -> Self {
+        Arc::new(value)
+    }
+}
+
+impl From<&BackendConnection> for OpenAI {
+    fn from(value: &BackendConnection) -> Self {
+        let mut openai = OpenAI::default().with_endpoint(value.endpoint());
+
+        if let Some(api_key) = value.api_key() {
+            openai.token = Some(api_key.to_string());
+        }
+
+        if let Some(timeout) = value.timeout() {
+            openai.timeout = Some(timeout);
+        }
+
+        if let Some(alias) = value.alias() {
+            openai.alias = alias.to_string();
+        }
+
+        openai.want_models = value.models().to_vec();
+        openai
+    }
+}
+
 impl OpenAI {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_want_models(mut self, models: Vec<String>) -> Self {
+        self.want_models = models;
+        self
     }
 
     pub fn with_endpoint(mut self, endpoint: &str) -> Self {
@@ -306,16 +352,22 @@ impl OpenAI {
     pub fn timeout(&self) -> Option<time::Duration> {
         self.timeout
     }
+
+    pub fn want_models(&self) -> &[String] {
+        &self.want_models
+    }
 }
 
 impl Default for OpenAI {
     fn default() -> Self {
         Self {
+            alias: "OpenAI".to_string(),
             endpoint: "https://api.openai.com".to_string(),
             token: None,
             timeout: None,
-            default_model: RwLock::new(String::new()),
+            default_model: RwLock::new(None),
             cache_models: tokio::sync::RwLock::new(Vec::new()),
+            want_models: vec![],
         }
     }
 }

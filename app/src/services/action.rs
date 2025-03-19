@@ -119,6 +119,7 @@ impl ActionService<'_> {
                                 );
                                 continue;
                             }
+                            let model = self.backend.default_model().unwrap();
                             worker_tx.send(Event::ModelChanged(model))?;
                         }
 

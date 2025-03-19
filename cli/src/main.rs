@@ -5,7 +5,7 @@ use openai_app::{
     destruct_terminal_for_panic,
     services::{ActionService, ClipboardService},
 };
-use openai_backend::new_backend;
+use openai_backend::new_manager;
 use openai_models::{Action, Event, storage::FilterConversation};
 use openai_storage::new_storage;
 use openai_tui::{Command, init_logger, init_theme};
@@ -24,7 +24,11 @@ async fn main() -> Result<()> {
 
     let theme = init_theme(&config)?;
 
-    let backend = new_backend(&config)?;
+    if config.backend().is_none() {
+        eyre::bail!("No backend configured");
+    }
+
+    let backend = new_manager(config.backend().unwrap()).await?;
     backend.health_check().await?;
 
     let models = backend.list_models(false).await?;
@@ -40,7 +44,7 @@ async fn main() -> Result<()> {
     } else {
         models
             .iter()
-            .find(|m| m == &&want_model)
+            .find(|m| m.as_str() == want_model)
             .unwrap_or_else(|| {
                 log::warn!(
                     "Model {} not found, using default ({})",
