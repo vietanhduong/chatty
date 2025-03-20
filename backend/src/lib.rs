@@ -6,6 +6,9 @@ pub use gemini::Gemini;
 pub use manager::Manager;
 pub use openai::OpenAI;
 
+#[cfg(test)]
+use mockall::{automock, predicate::*};
+
 use async_trait::async_trait;
 use eyre::{Context, Result};
 use openai_models::{BackendKind, BackendPrompt, Event, config::BackendConfig};
@@ -18,6 +21,7 @@ const TITLE_PROMPT: &str = r#"
 Please give a title to the conversation. The title should be placed at the top
 of the response, in separate line and starts with #"#;
 
+#[cfg_attr(test, automock)]
 #[async_trait]
 pub trait Backend {
     fn name(&self) -> &str;

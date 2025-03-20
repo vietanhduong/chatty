@@ -67,7 +67,7 @@ impl Backend for Gemini {
 
     async fn health_check(&self) -> Result<()> {
         if self.endpoint.is_empty() {
-            bail!("Endpoint is not set");
+            bail!("endpoint is not set");
         }
 
         let cached_models = self.cache_models.read().await;
@@ -141,12 +141,12 @@ impl Backend for Gemini {
         let model = if model.is_empty() {
             models
                 .last()
-                .ok_or_else(|| eyre::eyre!("Gemini error: No models available"))?
+                .ok_or_else(|| eyre::eyre!("no models available"))?
         } else {
             models
                 .iter()
                 .find(|m| m == &model)
-                .ok_or_else(|| eyre::eyre!("Gemini error: Model {} not available", model))?
+                .ok_or_else(|| eyre::eyre!("model {} not available", model))?
         };
         let mut default_model = self.current_model.write().await;
         *default_model = Some(model.clone());
@@ -159,7 +159,7 @@ impl Backend for Gemini {
         event_tx: &'a mpsc::UnboundedSender<Event>,
     ) -> Result<()> {
         if self.current_model().await.is_none() && prompt.model().is_none() {
-            bail!("Gemini error: no model is set");
+            bail!("no model is set");
         }
 
         let mut contents: Vec<Content> = vec![];

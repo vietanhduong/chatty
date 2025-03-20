@@ -1,11 +1,13 @@
-use std::collections::HashMap;
+#[cfg(test)]
+#[path = "manager_test.rs"]
+mod tests;
 
+use crate::{ArcBackend, Backend};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use openai_models::{BackendPrompt, Event};
+use std::collections::HashMap;
 use tokio::sync::{RwLock, mpsc};
-
-use crate::{ArcBackend, Backend};
 
 #[derive(Default)]
 pub struct Manager {
@@ -25,12 +27,12 @@ impl Manager {
         connection
             .health_check()
             .await
-            .wrap_err(format!("health check connection: {}", alias))?;
+            .wrap_err(format!("health check backend {}", alias))?;
 
         connection
             .list_models(false)
             .await
-            .wrap_err("listing model")?
+            .wrap_err(format!("listing model backend {}", alias))?
             .into_iter()
             .for_each(|m| {
                 self.models.insert(m, alias.clone());
@@ -60,7 +62,7 @@ impl Backend for Manager {
             connection
                 .health_check()
                 .await
-                .wrap_err(format!("health check connection: {}", connection.name()))?;
+                .wrap_err(format!("health check backend {}", connection.name()))?;
         }
         Ok(())
     }
@@ -84,7 +86,7 @@ impl Backend for Manager {
                 *lock = Some(model.clone());
                 Ok(())
             }
-            _ => Err(eyre::eyre!("Model not found")),
+            _ => Err(eyre::eyre!("model not found")),
         }
     }
 
@@ -105,11 +107,13 @@ impl Backend for Manager {
         let connection = match self.get_connection(&model) {
             Some(connection) => connection,
             None => {
-                return Err(eyre::eyre!("Model is not available"));
+                return Err(eyre::eyre!("model is not available"));
             }
         };
         connection
             .get_completion(prompt.with_model(&model), event_tx)
             .await
+            .wrap_err(format!("get completion from backend {}", connection.name()))?;
+        Ok(())
     }
 }

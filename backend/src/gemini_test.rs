@@ -99,7 +99,7 @@ async fn test_set_current_model() {
     );
 
     let err = backend.set_current_model("o1-mini").await.unwrap_err();
-    assert!(err.to_string().contains("Model o1-mini not available"));
+    assert!(err.to_string().contains("model o1-mini not available"));
 }
 
 #[tokio::test]

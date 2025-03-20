@@ -109,12 +109,12 @@ impl Backend for OpenAI {
         let model = if model.is_empty() {
             models
                 .last()
-                .ok_or_else(|| eyre::eyre!("OpenAI error: No models available"))?
+                .ok_or_else(|| eyre::eyre!("no models available"))?
         } else {
             models
                 .iter()
                 .find(|m| m == &model)
-                .ok_or_else(|| eyre::eyre!("OpenAI error: Model {} not available", model))?
+                .ok_or_else(|| eyre::eyre!("model {} not available", model))?
         };
         let mut default_model = self.current_model.write().await;
         *default_model = Some(model.clone());
@@ -127,7 +127,7 @@ impl Backend for OpenAI {
         event_tx: &'a mpsc::UnboundedSender<Event>,
     ) -> Result<()> {
         if self.current_model().await.is_none() && prompt.model().is_none() {
-            bail!("OpenAI error: no model is set");
+            bail!("no model is set");
         }
 
         let mut messages: Vec<MessageRequest> = vec![];

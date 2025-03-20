@@ -45,3 +45,4 @@ uuid = { version = "1.15.1", features = ["v4"] }
 tokio-rusqlite = { version = "0.6.0", features = ["bundled"] }
 better-panic = "0.3.0"
 mockito = "1.7.0"
+mockall = "0.13.1"
