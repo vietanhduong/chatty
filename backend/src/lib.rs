@@ -18,8 +18,8 @@ use tokio::sync::mpsc;
 const TITLE_PROMPT: &str = r#"
 
 ---
-Please give a title to the conversation. The title should be placed at the top
-of the response, in separate line and starts with #"#;
+This is initial message. Please give name a title for this conversation.
+The title should be placed at the top of the response, in separate line and starts with #"#;
 
 #[cfg_attr(test, automock)]
 #[async_trait]

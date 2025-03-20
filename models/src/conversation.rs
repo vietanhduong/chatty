@@ -1,6 +1,5 @@
-use uuid::Uuid;
-
 use crate::{Message, message::Issuer};
+use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct Conversation {

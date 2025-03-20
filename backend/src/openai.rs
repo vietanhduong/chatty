@@ -229,11 +229,15 @@ impl Backend for OpenAI {
                 line = line[6..].to_string();
             }
 
+            if line.ends_with(": keep-alive") || line.is_empty() {
+                continue;
+            }
+
             if line == "[DONE]" {
                 break;
             }
 
-            log::trace!("streaming response: line: {}", line);
+            log::trace!("streaming response: {}", line);
 
             let data = serde_json::from_str::<CompletionResponse>(&line)
                 .wrap_err(format!("parsing completion response line: {}", line))?;
