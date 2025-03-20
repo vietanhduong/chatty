@@ -24,7 +24,7 @@ pub trait Backend {
     async fn health_check(&self) -> Result<()>;
     async fn list_models(&self, force: bool) -> Result<Vec<String>>;
     async fn current_model(&self) -> Option<String>;
-    async fn set_default_model(&self, model: &str) -> Result<()>;
+    async fn set_current_model(&self, model: &str) -> Result<()>;
     async fn get_completion<'a>(
         &self,
         prompt: BackendPrompt,

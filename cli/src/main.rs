@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
             .clone()
     };
 
-    backend.set_default_model(&model).await?;
+    backend.set_current_model(&model).await?;
 
     let storage = new_storage(&config)
         .await

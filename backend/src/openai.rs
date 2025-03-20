@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "openai_test.rs"]
+mod tests;
+
 use std::ops::Deref;
 use std::sync::Arc;
 use std::{fmt::Display, time};
@@ -6,7 +10,7 @@ use crate::{ArcBackend, Backend, TITLE_PROMPT};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::TryStreamExt;
-use openai_models::{BackendConnection, BackendPrompt, BackendResponse, Event};
+use openai_models::{BackendConnection, BackendPrompt, BackendResponse, Event, Message};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncBufReadExt;
@@ -17,7 +21,7 @@ use tokio_util::io::StreamReader;
 pub struct OpenAI {
     alias: String,
     endpoint: String,
-    token: Option<String>,
+    api_key: Option<String>,
     timeout: Option<time::Duration>,
 
     want_models: Vec<String>,
@@ -58,7 +62,7 @@ impl Backend for OpenAI {
             req = req.timeout(timeout);
         }
 
-        if let Some(token) = &self.token {
+        if let Some(token) = &self.api_key {
             req = req.bearer_auth(token);
         }
 
@@ -98,14 +102,10 @@ impl Backend for OpenAI {
         return default_model.clone();
     }
 
-    async fn set_default_model(&self, model: &str) -> Result<()> {
+    async fn set_current_model(&self, model: &str) -> Result<()> {
         // We will check the model against the list of available models
         // If the model is not available, we will return an error
         let models = self.list_models(false).await?;
-        if !model.is_empty() && !models.iter().any(|m| m == model) {
-            bail!("OpenAI error: Model {} is not available", model);
-        }
-
         let model = if model.is_empty() {
             models
                 .last()
@@ -114,7 +114,7 @@ impl Backend for OpenAI {
             models
                 .iter()
                 .find(|m| m == &model)
-                .ok_or_else(|| eyre::eyre!("OpenAI error: Model {} is not available", model))?
+                .ok_or_else(|| eyre::eyre!("OpenAI error: Model {} not available", model))?
         };
         let mut default_model = self.current_model.write().await;
         *default_model = Some(model.clone());
@@ -136,14 +136,7 @@ impl Backend for OpenAI {
             messages = prompt
                 .context()
                 .into_iter()
-                .map(|c| MessageRequest {
-                    role: if c.is_system() {
-                        "assistant".to_string()
-                    } else {
-                        "user".to_string()
-                    },
-                    content: c.text().to_string(),
-                })
+                .map(MessageRequest::from)
                 .collect::<Vec<_>>();
         }
 
@@ -164,8 +157,8 @@ impl Backend for OpenAI {
 
         let origin_content = prompt.text();
 
-        let init_conversation = prompt.first();
-        let content = if prompt.first() {
+        let init_conversation = prompt.context().is_empty();
+        let content = if init_conversation {
             format!("{}\n{}", prompt.text(), TITLE_PROMPT)
         } else {
             prompt.text().to_string()
@@ -195,7 +188,7 @@ impl Backend for OpenAI {
             req = req.timeout(timeout);
         }
 
-        if let Some(token) = &self.token {
+        if let Some(token) = &self.api_key {
             req = req.bearer_auth(token);
         }
 
@@ -209,7 +202,9 @@ impl Backend for OpenAI {
 
         if !res.status().is_success() {
             let http_code = res.status().as_u16();
-            let err: ErrorResponse = res.json().await.wrap_err("parsing error response")?;
+            let resp = res.text().await.wrap_err("parsing error response")?;
+            let err = serde_json::from_str::<ErrorResponse>(&resp)
+                .wrap_err(format!("parsing error response: {}", resp))?;
             let mut err = err.error;
             err.http_code = http_code;
             return Err(err.into());
@@ -229,12 +224,11 @@ impl Backend for OpenAI {
                 break;
             }
 
-            let line = line.unwrap().trim().to_string();
-            if !line.starts_with("data: ") {
-                continue;
+            let mut line = line.unwrap().trim().to_string();
+            if line.starts_with("data: ") {
+                line = line[6..].to_string();
             }
 
-            let line = line[6..].to_string();
             if line == "[DONE]" {
                 break;
             }
@@ -242,7 +236,7 @@ impl Backend for OpenAI {
             log::trace!("streaming response: line: {}", line);
 
             let data = serde_json::from_str::<CompletionResponse>(&line)
-                .wrap_err("parsing completion response")?;
+                .wrap_err(format!("parsing completion response line: {}", line))?;
 
             let c = match data.choices.get(0) {
                 Some(c) => c,
@@ -304,7 +298,7 @@ impl From<&BackendConnection> for OpenAI {
         let mut openai = OpenAI::default().with_endpoint(value.endpoint());
 
         if let Some(api_key) = value.api_key() {
-            openai.token = Some(api_key.to_string());
+            openai.api_key = Some(api_key.to_string());
         }
 
         if let Some(timeout) = value.timeout() {
@@ -335,8 +329,8 @@ impl OpenAI {
         self
     }
 
-    pub fn with_token(mut self, token: &str) -> Self {
-        self.token = Some(token.to_string());
+    pub fn with_api_key(mut self, api_key: &str) -> Self {
+        self.api_key = Some(api_key.to_string());
         self
     }
 
@@ -349,8 +343,8 @@ impl OpenAI {
         &self.endpoint
     }
 
-    pub fn token(&self) -> Option<&str> {
-        self.token.as_deref()
+    pub fn api_key(&self) -> Option<&str> {
+        self.api_key.as_deref()
     }
 
     pub fn timeout(&self) -> Option<time::Duration> {
@@ -367,7 +361,7 @@ impl Default for OpenAI {
         Self {
             alias: "OpenAI".to_string(),
             endpoint: "https://api.openai.com".to_string(),
-            token: None,
+            api_key: None,
             timeout: None,
             current_model: RwLock::new(None),
             cache_models: tokio::sync::RwLock::new(Vec::new()),
@@ -435,5 +429,18 @@ pub struct OpenAIError {
 impl Display for OpenAIError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "OpenAI error ({}): {}", self.http_code, self.message)
+    }
+}
+
+impl From<&Message> for MessageRequest {
+    fn from(value: &Message) -> Self {
+        Self {
+            role: if value.is_system() {
+                "assistant".to_string()
+            } else {
+                "user".to_string()
+            },
+            content: value.text().to_string(),
+        }
     }
 }

@@ -19,3 +19,6 @@ openai-app = { path = "../app" }
 openai-backend = { path = "../backend" }
 openai-storage = { path = "../storage" }
 openai-models = { path = "../models" }
+
+[dev-dependencies]
+mockito.workspace = true

@@ -15,4 +15,5 @@ futures.workspace = true
 log.workspace = true
 tokio-util.workspace = true
 uuid.workspace = true
+mockito.workspace = true
 openai-models = { path = "../models" }

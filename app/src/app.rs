@@ -371,12 +371,11 @@ impl<'a> App<'a> {
 
                 self.app_state.waiting_for_backend = true;
 
-                let mut prompt = BackendPrompt::new(input_str)
+                let prompt = BackendPrompt::new(input_str)
                     .with_context(self.app_state.conversation.borrow().build_context())
                     .with_model(model);
 
                 if first {
-                    prompt = prompt.with_first();
                     self.history_screen
                         .set_current_conversation(conversation_id.clone());
 

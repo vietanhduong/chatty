@@ -102,7 +102,7 @@ impl Backend for Gemini {
         model.clone()
     }
 
-    async fn set_default_model(&self, model: &str) -> Result<()> {
+    async fn set_current_model(&self, model: &str) -> Result<()> {
         // We will check the model against the list of available models
         // If the model is not available, we will return an error
         let models = self.list_models(false).await?;
@@ -162,8 +162,8 @@ impl Backend for Gemini {
             contents.pop();
         }
 
-        let init_conversation = prompt.first();
-        let content = if prompt.first() {
+        let init_conversation = prompt.context().is_empty();
+        let content = if init_conversation {
             format!("{}\n{}", prompt.text(), TITLE_PROMPT)
         } else {
             prompt.text().to_string()

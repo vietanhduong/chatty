@@ -111,7 +111,7 @@ impl ActionService<'_> {
                         }
 
                         Action::BackendSetModel(model) => {
-                            if let Err(err) = self.backend.set_default_model(&model).await {
+                            if let Err(err) = self.backend.set_current_model(&model).await {
                                 log::error!("Failed to set model: {}", err);
                                 self.send_notice(
                                     NoticeType::Error,

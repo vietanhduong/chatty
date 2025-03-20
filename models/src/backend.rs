@@ -24,7 +24,6 @@ pub struct BackendPrompt {
     text: String,
     context: Vec<Message>,
     regenerate: bool,
-    first: bool,
 }
 
 impl BackendPrompt {
@@ -34,17 +33,11 @@ impl BackendPrompt {
             text: text.into(),
             context: vec![],
             regenerate: false,
-            first: false,
         }
     }
 
     pub fn with_model(mut self, model: &str) -> Self {
         self.model = Some(model.to_string());
-        self
-    }
-
-    pub fn with_first(mut self) -> Self {
-        self.first = true;
         self
     }
 
@@ -72,10 +65,6 @@ impl BackendPrompt {
 
     pub fn regenerate(&self) -> bool {
         self.regenerate
-    }
-
-    pub fn first(&self) -> bool {
-        self.first
     }
 }
 

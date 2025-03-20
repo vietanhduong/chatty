@@ -100,7 +100,10 @@ impl Conversation {
     /// Return a vector of messages. The return vector is alway end up
     /// with a message from system
     pub fn build_context(&self) -> Vec<Message> {
-        if self.messages.is_empty() {
+        // If the conversation has less than 3 messages, return an empty vector
+        // 1 for hello message and 1 for user message so which means the conversation
+        // is not started yet. No context is needed.
+        if self.messages.len() < 3 {
             return vec![];
         }
         let mut context = self.messages.clone();

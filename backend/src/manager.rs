@@ -77,7 +77,7 @@ impl Backend for Manager {
         model.clone()
     }
 
-    async fn set_default_model(&self, model: &str) -> Result<()> {
+    async fn set_current_model(&self, model: &str) -> Result<()> {
         match self.models.keys().filter(|k| k.as_str() == model).next() {
             Some(model) => {
                 let mut lock = self.current_model.write().await;
