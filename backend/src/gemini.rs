@@ -1,10 +1,14 @@
+#[cfg(test)]
+#[path = "gemini_test.rs"]
+mod tests;
+
 use std::{fmt::Display, time};
 
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::stream::TryStreamExt;
-use openai_models::BackendResponse;
 use openai_models::{BackendConnection, BackendPrompt, Event};
+use openai_models::{BackendResponse, Message};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncBufReadExt;
@@ -23,6 +27,36 @@ pub struct Gemini {
 
     cache_models: RwLock<Vec<String>>,
     current_model: RwLock<Option<String>>,
+}
+
+impl Gemini {
+    pub fn with_endpoint(mut self, endpoint: &str) -> Self {
+        self.endpoint = endpoint.to_string();
+        self
+    }
+
+    pub fn with_api_key(mut self, api_key: &str) -> Self {
+        self.api_key = Some(api_key.to_string());
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: time::Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    pub fn with_want_models(mut self, models: Vec<String>) -> Self {
+        self.want_models = models
+            .into_iter()
+            .map(|s| format_model(s.as_str()))
+            .collect();
+        self
+    }
+
+    pub fn with_alias(mut self, alias: &str) -> Self {
+        self.alias = alias.to_string();
+        self
+    }
 }
 
 #[async_trait]
@@ -72,8 +106,6 @@ impl Backend for Gemini {
 
         let all = self.want_models.is_empty();
 
-        log::debug!("wants: {:?}", self.want_models);
-
         let mut models: Vec<String> = res
             .models
             .into_iter()
@@ -114,7 +146,7 @@ impl Backend for Gemini {
             models
                 .iter()
                 .find(|m| m == &model)
-                .ok_or_else(|| eyre::eyre!("Gemini error: Model {} is not available", model))?
+                .ok_or_else(|| eyre::eyre!("Gemini error: Model {} not available", model))?
         };
         let mut default_model = self.current_model.write().await;
         *default_model = Some(model.clone());
@@ -136,14 +168,7 @@ impl Backend for Gemini {
             contents = prompt
                 .context()
                 .into_iter()
-                .map(|c| Content {
-                    role: if c.is_system() {
-                        "model".to_string()
-                    } else {
-                        "user".to_string()
-                    },
-                    parts: vec![ContentParts::Text(c.text().to_string())],
-                })
+                .map(Content::from)
                 .collect::<Vec<_>>();
         }
 
@@ -295,19 +320,7 @@ impl From<&BackendConnection> for Gemini {
             backend.timeout = Some(timeout);
         }
 
-        backend.want_models = value
-            .models()
-            .iter()
-            .map(|m| {
-                if m.starts_with("models/") {
-                    m.to_string()
-                } else {
-                    format!("models/{m}")
-                }
-            })
-            .collect::<Vec<_>>();
-
-        backend
+        backend.with_want_models(value.models().to_vec())
     }
 }
 
@@ -372,4 +385,22 @@ impl Display for GeminiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "OpenAI error ({}): {}", self.http_code, self.message)
     }
+}
+
+impl From<&Message> for Content {
+    fn from(value: &Message) -> Self {
+        let role = if value.is_system() {
+            "model".to_string()
+        } else {
+            "user".to_string()
+        };
+        let parts = vec![ContentParts::Text(value.text().to_string())];
+        Content { role, parts }
+    }
+}
+
+fn format_model(model: &str) -> String {
+    let model = model.strip_prefix("model/").unwrap_or(model);
+    let model = model.strip_prefix("models/").unwrap_or(model);
+    format!("models/{}", model)
 }

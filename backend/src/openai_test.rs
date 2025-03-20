@@ -83,7 +83,6 @@ async fn test_set_current_model() {
     );
 
     let err = backend.set_current_model("o1-mini").await.unwrap_err();
-    println!("Error: {}", err);
     assert!(err.to_string().contains("Model o1-mini not available"));
 }
 
@@ -219,10 +218,10 @@ async fn test_get_completion_with_regenerate_response() {
         .expect("Failed to get completion");
     completion_handler.assert();
 
-    let events = collect_responses(&mut rx, time::Duration::from_secs(5), 5)
+    let events = collect_responses(&mut rx, time::Duration::from_secs(5), 6)
         .await
         .expect("Failed to collect events");
-    assert_eq!(events.len(), 5);
+    assert_eq!(events.len(), 6);
     let text = events
         .iter()
         .map(|e| e.text.clone())
