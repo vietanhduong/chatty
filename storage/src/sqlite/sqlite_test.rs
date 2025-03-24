@@ -134,10 +134,12 @@ async fn test_add_messages() {
     let messages = vec![
         Message::new_system("system", "System message")
             .with_id("msg1")
-            .with_created_at(chrono::Utc::now()),
+            .with_created_at(chrono::Utc::now())
+            .with_token_count(5),
         Message::new_user("user", "User message")
             .with_id("msg2")
-            .with_created_at(chrono::Utc::now()),
+            .with_created_at(chrono::Utc::now())
+            .with_token_count(2),
     ];
 
     let conversation = Conversation::default()
@@ -151,9 +153,10 @@ async fn test_add_messages() {
         .await
         .unwrap();
 
-    let message = Message::new_system("system", "hello")
+    let message = Message::new_user("user", "hello")
         .with_id("msg3")
-        .with_created_at(chrono::Utc::now());
+        .with_created_at(chrono::Utc::now())
+        .with_token_count(10);
 
     db.add_messages(conversation.id(), &vec![message.clone()])
         .await
@@ -167,8 +170,9 @@ async fn test_add_messages() {
     assert_eq!(actual.messages().len(), 3);
     assert_eq!(actual.messages()[2].id(), "msg3");
     assert_eq!(actual.messages()[2].text(), "hello");
-    assert_eq!(actual.messages()[2].issuer_str(), "system");
-    assert_eq!(actual.messages()[2].is_system(), true);
+    assert_eq!(actual.messages()[2].issuer_str(), "user");
+    assert_eq!(actual.messages()[2].is_system(), false);
+    assert_eq!(actual.messages()[2].token_count(), 10);
     assert_eq!(
         actual.messages()[2].created_at().timestamp_millis(),
         message.created_at().timestamp_millis()

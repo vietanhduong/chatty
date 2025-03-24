@@ -9,3 +9,4 @@ chrono.workspace = true
 serde.workspace = true
 ratatui.workspace = true
 uuid.workspace = true
+log.workspace = true

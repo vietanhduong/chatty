@@ -12,6 +12,7 @@ pub(crate) const MIGRATION: &str = r#"
         text TEXT NOT NULL,
         issuer TEXT NOT NULL,
         system INTEGER NOT NULL,
+        token_count INTEGER NOT NULL,
         created_at INTEGER NOT NULL,
         PRIMARY KEY (id, conversation_id),
         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE

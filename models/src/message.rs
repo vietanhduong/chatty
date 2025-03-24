@@ -9,6 +9,7 @@ pub struct Message {
     id: String,
     issuer: Issuer,
     text: String,
+    token_count: usize,
     created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -18,26 +19,17 @@ impl Message {
             id: chrono::Utc::now().timestamp().to_string(),
             issuer,
             text: text.into(),
+            token_count: 0,
             created_at: chrono::Utc::now(),
         }
     }
 
     pub fn new_system(system: &str, text: impl Into<String>) -> Self {
-        Self {
-            id: chrono::Utc::now().timestamp().to_string(),
-            issuer: Issuer::System(system.to_string()),
-            text: text.into(),
-            created_at: chrono::Utc::now(),
-        }
+        Self::new(Issuer::System(system.to_string()), text)
     }
 
     pub fn new_user(user: &str, text: impl Into<String>) -> Self {
-        Self {
-            id: chrono::Utc::now().timestamp().to_string(),
-            issuer: Issuer::User(user.to_string()),
-            text: text.into(),
-            created_at: chrono::Utc::now(),
-        }
+        Self::new(Issuer::User(user.to_string()), text)
     }
 
     pub fn with_id(mut self, id: impl Into<String>) -> Self {
@@ -53,6 +45,19 @@ impl Message {
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
         self.text = text.into();
         self
+    }
+
+    pub fn with_token_count(mut self, token_count: usize) -> Self {
+        self.set_token_count(token_count);
+        self
+    }
+
+    pub fn set_token_count(&mut self, token_count: usize) {
+        self.token_count = token_count;
+    }
+
+    pub fn token_count(&self) -> usize {
+        self.token_count
     }
 
     pub fn id(&self) -> &str {
@@ -86,26 +91,22 @@ impl Message {
         let text = text.into();
         self.text += &text.replace('\t', "  ");
     }
+}
 
-    pub fn codeblocks(&self) -> Vec<String> {
-        let mut codeblocks: Vec<String> = vec![];
-        let mut current_codeblock: Vec<&str> = vec![];
-        let mut in_codeblock = false;
-        for line in self.text.split('\n') {
-            let trimmed = line.trim();
-            if trimmed.starts_with("```") {
-                if in_codeblock {
-                    codeblocks.push(current_codeblock.join("\n"));
-                    current_codeblock.clear();
-                }
-                in_codeblock = !in_codeblock;
-                continue;
-            }
-            if in_codeblock {
-                current_codeblock.push(line);
-            }
-        }
+impl Issuer {
+    pub fn user() -> Self {
+        Self::User("".to_string())
+    }
 
-        codeblocks
+    pub fn user_with_name(name: impl Into<String>) -> Self {
+        Self::User(name.into())
+    }
+
+    pub fn system() -> Self {
+        Self::System("".to_string())
+    }
+
+    pub fn system_with_name(name: impl Into<String>) -> Self {
+        Self::System(name.into())
     }
 }

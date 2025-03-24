@@ -226,17 +226,36 @@ impl<'a> App<'a> {
                 }
 
                 if done {
-                    // Upsert message to the storage
-                    self.action_tx.send(Action::UpsertMessage(UpsertMessage {
-                        conversation_id: self.app_state.conversation.borrow().id().to_string(),
-                        message: self.app_state.last_message().unwrap(),
-                    }))?;
+                    let mut conversation = self.app_state.conversation.borrow_mut();
+                    let conversation_id = conversation.id().to_string();
+
                     if usage.is_some() {
+                        let usage = usage.unwrap();
+                        if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::user())) {
+                            msg.set_token_count(usage.prompt_tokens);
+                            self.action_tx.send(Action::UpsertMessage(UpsertMessage {
+                                conversation_id: conversation_id.clone(),
+                                message: msg.clone(),
+                            }))?;
+                        }
+
+                        if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::system()))
+                        {
+                            msg.set_token_count(usage.completion_tokens);
+                        }
+
+                        // If the usage is not empty, show it
                         self.notice.add_message(
-                            NoticeMessage::info(format!("Usage: {}", usage.unwrap().to_string()))
+                            NoticeMessage::info(format!("Usage: {}", usage.to_string()))
                                 .with_duration(time::Duration::from_secs(6)),
                         );
                     }
+
+                    // Upsert message to the storage
+                    self.action_tx.send(Action::UpsertMessage(UpsertMessage {
+                        conversation_id: conversation_id.clone(),
+                        message: conversation.last_message().unwrap().clone(),
+                    }))?;
                 }
             }
             Event::KeyboardCharInput(c) => {
@@ -326,11 +345,11 @@ impl<'a> App<'a> {
                     }
                 }
                 self.app_state.sync_state();
+                self.app_state.scroll.last();
 
                 let conversation = self.app_state.conversation.borrow();
                 // Resubmit the last message from user
-                let last_user_msg =
-                    conversation.last_message_of(Some(Issuer::User("".to_string())));
+                let last_user_msg = conversation.last_message_of(Some(Issuer::user()));
 
                 let input_str = if let Some(msg) = last_user_msg {
                     msg.text().to_string()

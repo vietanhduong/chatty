@@ -112,37 +112,47 @@ impl Conversation {
         return context;
     }
 
-    pub fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
-        if let Some(msg) = self.messages.last() {
-            if issuer.is_none() {
+    pub fn last_message_of_mut(&mut self, issuer: Option<Issuer>) -> Option<&mut Message> {
+        for msg in self.messages.iter_mut().rev() {
+            if filter_issuer(issuer.as_ref(), msg) {
                 return Some(msg);
-            }
-
-            let value;
-            let is_system = match msg.issuer() {
-                Issuer::System(sys) => {
-                    value = sys.to_string();
-                    true
-                }
-                Issuer::User(val) => {
-                    value = val.to_string();
-                    false
-                }
-            };
-
-            if is_system == msg.is_system() {
-                if value.is_empty() {
-                    return Some(msg);
-                }
-                return if msg.issuer_str() == value {
-                    Some(msg)
-                } else {
-                    None
-                };
             }
         }
         None
     }
+
+    pub fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
+        for msg in self.messages.iter().rev() {
+            if filter_issuer(issuer.as_ref(), msg) {
+                return Some(msg);
+            }
+        }
+        None
+    }
+}
+
+fn filter_issuer(issuer: Option<&Issuer>, msg: &Message) -> bool {
+    if issuer.is_none() {
+        return true;
+    }
+
+    let value;
+    let is_system = match issuer.unwrap() {
+        Issuer::System(sys) => {
+            value = sys.to_string();
+            true
+        }
+        Issuer::User(val) => {
+            value = val.to_string();
+            false
+        }
+    };
+
+    if is_system != msg.is_system() {
+        return false;
+    }
+
+    value.is_empty() || msg.issuer_str() == value
 }
 
 impl Default for Conversation {
