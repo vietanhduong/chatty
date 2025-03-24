@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use eyre::{Context, Result};
 use openai_app::{
     App,
@@ -6,7 +8,7 @@ use openai_app::{
     services::{ActionService, ClipboardService},
 };
 use openai_backend::new_manager;
-use openai_models::{Action, Event, storage::FilterConversation};
+use openai_models::{Action, ArcEventTx, Event, storage::FilterConversation};
 use openai_storage::new_storage;
 use openai_tui::{Command, init_logger, init_theme};
 use tokio::{sync::mpsc, task};
@@ -86,17 +88,11 @@ async fn main() -> Result<()> {
     let token = CancellationToken::new();
 
     let token_clone = token.clone();
-    let event_tx_clone = event_tx.clone();
+    let event_sender: ArcEventTx = Arc::new(event_tx);
     bg_futures.spawn(async move {
-        ActionService::new(
-            event_tx_clone,
-            &mut action_rx,
-            backend,
-            storage,
-            token_clone,
-        )
-        .start()
-        .await
+        ActionService::new(event_sender, &mut action_rx, backend, storage, token_clone)
+            .start()
+            .await
     });
 
     if let Err(err) = ClipboardService::healthcheck() {

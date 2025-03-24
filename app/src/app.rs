@@ -207,8 +207,7 @@ impl<'a> App<'a> {
             Event::BackendPromptResponse(msg) => {
                 let notify = msg.done && msg.init_conversation;
                 let done = msg.done;
-                let usage = msg.usage.clone();
-                self.app_state.handle_backend_response(msg);
+                self.app_state.handle_backend_response(&msg);
 
                 if notify {
                     self.notice.add_message(
@@ -225,38 +224,38 @@ impl<'a> App<'a> {
                     ))?;
                 }
 
-                if done {
-                    let mut conversation = self.app_state.conversation.borrow_mut();
-                    let conversation_id = conversation.id().to_string();
+                if !done {
+                    return Ok(false);
+                }
 
-                    if usage.is_some() {
-                        let usage = usage.unwrap();
-                        if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::user())) {
-                            msg.set_token_count(usage.prompt_tokens);
-                            self.action_tx.send(Action::UpsertMessage(UpsertMessage {
-                                conversation_id: conversation_id.clone(),
-                                message: msg.clone(),
-                            }))?;
-                        }
+                let mut conversation = self.app_state.conversation.borrow_mut();
+                let conversation_id = conversation.id().to_string();
 
-                        if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::system()))
-                        {
-                            msg.set_token_count(usage.completion_tokens);
-                        }
-
-                        // If the usage is not empty, show it
-                        self.notice.add_message(
-                            NoticeMessage::info(format!("Usage: {}", usage.to_string()))
-                                .with_duration(time::Duration::from_secs(6)),
-                        );
+                if let Some(ref usage) = msg.usage {
+                    if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::user())) {
+                        msg.set_token_count(usage.prompt_tokens);
+                        self.action_tx.send(Action::UpsertMessage(UpsertMessage {
+                            conversation_id: conversation_id.clone(),
+                            message: msg.clone(),
+                        }))?;
                     }
 
-                    // Upsert message to the storage
-                    self.action_tx.send(Action::UpsertMessage(UpsertMessage {
-                        conversation_id: conversation_id.clone(),
-                        message: conversation.last_message().unwrap().clone(),
-                    }))?;
+                    if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::system())) {
+                        msg.set_token_count(usage.completion_tokens);
+                    }
+
+                    // If the usage is not empty, show it
+                    self.notice.add_message(
+                        NoticeMessage::info(format!("Usage: {}", usage.to_string()))
+                            .with_duration(time::Duration::from_secs(6)),
+                    );
                 }
+
+                // Upsert message to the storage
+                self.action_tx.send(Action::UpsertMessage(UpsertMessage {
+                    conversation_id: conversation_id.clone(),
+                    message: conversation.last_message().unwrap().clone(),
+                }))?;
             }
             Event::KeyboardCharInput(c) => {
                 if !self.app_state.waiting_for_backend {

@@ -10,3 +10,6 @@ serde.workspace = true
 ratatui.workspace = true
 uuid.workspace = true
 log.workspace = true
+async-trait.workspace = true
+eyre.workspace = true
+tokio.workspace = true

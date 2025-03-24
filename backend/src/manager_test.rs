@@ -6,10 +6,12 @@ use std::sync::Arc;
 async fn test_add_connection() {
     let mut mock = MockBackend::new();
     mock.expect_name().times(1).return_const("test".to_string());
-    mock.expect_health_check().times(1).returning(|| Ok(()));
+    mock.expect_health_check()
+        .times(1)
+        .returning(|| Box::pin(async { Ok(()) }));
     mock.expect_list_models()
         .times(1)
-        .returning(|_| Ok(vec!["model1".to_string(), "model2".to_string()]));
+        .returning(|_| Box::pin(async { Ok(vec!["model1".to_string(), "model2".to_string()]) }));
     let mut manager = Manager::default();
     let result = manager.add_connection(Arc::new(mock)).await;
     assert!(result.is_ok());
@@ -27,7 +29,7 @@ async fn test_add_connection_with_error() {
     mock.expect_name().times(1).return_const("test".to_string());
     mock.expect_health_check()
         .times(1)
-        .returning(|| Err(eyre::eyre!("test error")));
+        .returning(|| Box::pin(async { Err(eyre::eyre!("test error")) }));
     let mut manager = Manager::default();
     let result = manager.add_connection(Arc::new(mock)).await;
     assert!(result.is_err());

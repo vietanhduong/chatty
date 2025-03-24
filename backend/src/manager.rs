@@ -5,9 +5,9 @@ mod tests;
 use crate::{ArcBackend, Backend};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
-use openai_models::{BackendPrompt, Event};
+use openai_models::{ArcEventTx, BackendPrompt};
 use std::collections::HashMap;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::RwLock;
 
 #[derive(Default)]
 pub struct Manager {
@@ -90,11 +90,7 @@ impl Backend for Manager {
         }
     }
 
-    async fn get_completion<'a>(
-        &self,
-        prompt: BackendPrompt,
-        event_tx: &'a mpsc::UnboundedSender<Event>,
-    ) -> Result<()> {
+    async fn get_completion(&self, prompt: BackendPrompt, event_tx: ArcEventTx) -> Result<()> {
         if self.current_model().await.is_none() {
             return Err(eyre::eyre!("no default model is set"));
         }

@@ -31,6 +31,7 @@ pub struct BackendPrompt {
     model: Option<String>,
     text: String,
     context: Vec<Message>,
+    no_generate_title: bool,
 }
 
 impl BackendPrompt {
@@ -39,7 +40,7 @@ impl BackendPrompt {
             model: None,
             text: text.into(),
             context: vec![],
-            // regenerate: false,
+            no_generate_title: false,
         }
     }
 
@@ -53,6 +54,11 @@ impl BackendPrompt {
         self
     }
 
+    pub fn with_no_generate_title(mut self) -> Self {
+        self.no_generate_title = true;
+        self
+    }
+
     pub fn model(&self) -> Option<&str> {
         self.model.as_deref()
     }
@@ -63,6 +69,10 @@ impl BackendPrompt {
 
     pub fn context(&self) -> &[Message] {
         &self.context
+    }
+
+    pub fn no_generate_title(&self) -> bool {
+        self.no_generate_title
     }
 }
 

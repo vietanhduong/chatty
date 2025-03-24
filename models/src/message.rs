@@ -16,7 +16,7 @@ pub struct Message {
 impl Message {
     pub fn new(issuer: Issuer, text: impl Into<String>) -> Self {
         Self {
-            id: chrono::Utc::now().timestamp().to_string(),
+            id: uuid::Uuid::new_v4().to_string(),
             issuer,
             text: text.into(),
             token_count: 0,

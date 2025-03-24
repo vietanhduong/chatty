@@ -1,7 +1,9 @@
+pub mod convo_compressor;
 pub mod gemini;
 pub mod manager;
 pub mod openai;
 
+pub use convo_compressor::ConvoCompressor;
 pub use gemini::Gemini;
 pub use manager::Manager;
 pub use openai::OpenAI;
@@ -11,9 +13,8 @@ use mockall::{automock, predicate::*};
 
 use async_trait::async_trait;
 use eyre::{Context, Result};
-use openai_models::{BackendKind, BackendPrompt, Event, config::BackendConfig};
+use openai_models::{ArcEventTx, BackendKind, BackendPrompt, config::BackendConfig};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 
 const TITLE_PROMPT: &str = r#"
 
@@ -21,19 +22,15 @@ const TITLE_PROMPT: &str = r#"
 This is initial message. Please give name a title for this conversation.
 The title should be placed at the top of the response, in separate line and starts with #"#;
 
-#[cfg_attr(test, automock)]
 #[async_trait]
+#[cfg_attr(test, automock)]
 pub trait Backend {
     fn name(&self) -> &str;
     async fn health_check(&self) -> Result<()>;
     async fn list_models(&self, force: bool) -> Result<Vec<String>>;
     async fn current_model(&self) -> Option<String>;
     async fn set_current_model(&self, model: &str) -> Result<()>;
-    async fn get_completion<'a>(
-        &self,
-        prompt: BackendPrompt,
-        event_tx: &'a mpsc::UnboundedSender<Event>,
-    ) -> Result<()>;
+    async fn get_completion(&self, prompt: BackendPrompt, event_tx: ArcEventTx) -> Result<()>;
 }
 
 pub type ArcBackend = Arc<dyn Backend + Send + Sync>;
