@@ -105,8 +105,8 @@ impl Conversation {
         if self.messages.len() < 3 {
             return vec![];
         }
-        let mut context = self.messages.clone();
-        if !self.messages.last().unwrap().is_system() {
+        let mut context = self.messages[1..].to_vec();
+        if !context.last().unwrap().is_system() {
             context.pop();
         }
         return context;

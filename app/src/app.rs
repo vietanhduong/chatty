@@ -207,6 +207,7 @@ impl<'a> App<'a> {
             Event::BackendPromptResponse(msg) => {
                 let notify = msg.done && msg.init_conversation;
                 let done = msg.done;
+                let usage = msg.usage.clone();
                 self.app_state.handle_backend_response(msg);
 
                 if notify {
@@ -230,6 +231,12 @@ impl<'a> App<'a> {
                         conversation_id: self.app_state.conversation.borrow().id().to_string(),
                         message: self.app_state.last_message().unwrap(),
                     }))?;
+                    if usage.is_some() {
+                        self.notice.add_message(
+                            NoticeMessage::info(format!("Usage: {}", usage.unwrap().to_string()))
+                                .with_duration(time::Duration::from_secs(6)),
+                        );
+                    }
                 }
             }
             Event::KeyboardCharInput(c) => {
@@ -292,9 +299,9 @@ impl<'a> App<'a> {
                     return Ok(false);
                 }
 
+                // Rebuild the conversation by removing all the messages from the backend
+                // and resubmit the last message from user
                 {
-                    // We pop all the message from the backend until we find the last
-                    // message from user and resubmit it to the backend
                     let mut conversation = self.app_state.conversation.borrow_mut();
 
                     let mut i = conversation.len() as i32 - 1;
@@ -335,8 +342,7 @@ impl<'a> App<'a> {
                 self.app_state.waiting_for_backend = true;
                 let prompt = BackendPrompt::new(input_str)
                     .with_model(model)
-                    .with_context(conversation.build_context())
-                    .with_regenerate();
+                    .with_context(conversation.build_context());
 
                 self.action_tx.send(Action::BackendRequest(prompt))?;
             }

@@ -17,13 +17,20 @@ pub struct BackendResponse {
     pub text: String,
     pub done: bool,
     pub init_conversation: bool,
+    pub usage: Option<BackendUsage>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct BackendUsage {
+    pub prompt_tokens: usize,
+    pub completion_tokens: usize,
+    pub total_tokens: usize,
 }
 
 pub struct BackendPrompt {
     model: Option<String>,
     text: String,
     context: Vec<Message>,
-    regenerate: bool,
 }
 
 impl BackendPrompt {
@@ -32,7 +39,7 @@ impl BackendPrompt {
             model: None,
             text: text.into(),
             context: vec![],
-            regenerate: false,
+            // regenerate: false,
         }
     }
 
@@ -46,11 +53,6 @@ impl BackendPrompt {
         self
     }
 
-    pub fn with_regenerate(mut self) -> Self {
-        self.regenerate = true;
-        self
-    }
-
     pub fn model(&self) -> Option<&str> {
         self.model.as_deref()
     }
@@ -61,10 +63,6 @@ impl BackendPrompt {
 
     pub fn context(&self) -> &[Message] {
         &self.context
-    }
-
-    pub fn regenerate(&self) -> bool {
-        self.regenerate
     }
 }
 
@@ -166,5 +164,15 @@ impl Display for BackendKind {
             BackendKind::OpenAI => write!(f, "open_ai"),
             BackendKind::Gemini => write!(f, "gemini"),
         }
+    }
+}
+
+impl Display for BackendUsage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prompt Tokens: {}, Completion Token: {}, Total: {}",
+            self.prompt_tokens, self.completion_tokens, self.total_tokens
+        )
     }
 }

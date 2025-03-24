@@ -10,7 +10,9 @@ use crate::{ArcBackend, Backend, TITLE_PROMPT};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::TryStreamExt;
-use openai_models::{BackendConnection, BackendPrompt, BackendResponse, Event, Message};
+use openai_models::{
+    BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncBufReadExt;
@@ -140,23 +142,6 @@ impl Backend for OpenAI {
                 .collect::<Vec<_>>();
         }
 
-        // If user wants to regenerate the prompt, we need to rebuild the context
-        // by remove the last assistant message until we find the last user message
-        if prompt.regenerate() && !messages.is_empty() {
-            let mut i = messages.len() as i32 - 1;
-            while i >= 0 {
-                if messages[i as usize].role == "user" {
-                    break;
-                }
-                messages.pop();
-                i -= 1;
-            }
-            // Pop the last user message, we will add it again
-            messages.pop();
-        }
-
-        let origin_content = prompt.text();
-
         let init_conversation = prompt.context().is_empty();
         let content = if init_conversation {
             format!("{}\n{}", prompt.text(), TITLE_PROMPT)
@@ -217,8 +202,9 @@ impl Backend for OpenAI {
 
         let mut line_readers = StreamReader::new(stream).lines();
 
-        let mut last_message = String::new();
         let mut message_id = String::new();
+        let mut usage: Option<BackendUsage> = None;
+
         while let Ok(line) = line_readers.next_line().await {
             if line.is_none() {
                 break;
@@ -252,6 +238,13 @@ impl Backend for OpenAI {
             }
 
             if c.finish_reason.is_some() {
+                if let Some(usage_data) = data.usage {
+                    usage = Some(BackendUsage {
+                        prompt_tokens: usage_data.prompt_tokens,
+                        completion_tokens: usage_data.completion_tokens,
+                        total_tokens: usage_data.total_tokens,
+                    });
+                }
                 break;
             }
 
@@ -260,24 +253,16 @@ impl Backend for OpenAI {
                 None => continue,
             };
 
-            last_message += &text;
             let msg = BackendResponse {
                 id: message_id.clone(),
                 model: model.clone(),
                 text,
                 done: false,
                 init_conversation,
+                usage: None,
             };
-
             event_tx.send(Event::BackendPromptResponse(msg))?;
         }
-
-        messages.last_mut().unwrap().content = origin_content.to_string();
-
-        messages.push(MessageRequest {
-            role: "assistant".to_string(),
-            content: last_message.clone(),
-        });
 
         let msg = BackendResponse {
             id: message_id,
@@ -285,6 +270,7 @@ impl Backend for OpenAI {
             text: String::new(),
             done: true,
             init_conversation,
+            usage,
         };
         event_tx.send(Event::BackendPromptResponse(msg))?;
         Ok(())
@@ -412,6 +398,14 @@ struct CompletionChoiceResponse {
 struct CompletionResponse {
     id: String,
     choices: Vec<CompletionChoiceResponse>,
+    usage: Option<CompletionUsageResponse>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct CompletionUsageResponse {
+    prompt_tokens: usize,
+    completion_tokens: usize,
+    total_tokens: usize,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]

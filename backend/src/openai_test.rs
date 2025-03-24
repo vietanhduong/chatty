@@ -1,4 +1,3 @@
-use openai_models::Message;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::*;
@@ -96,6 +95,7 @@ async fn test_get_completion() {
                 delta: CompletionDeltaResponse { content: Some(l) },
                 finish_reason: None,
             }],
+            ..Default::default()
         })
         .collect::<Vec<_>>();
 
@@ -105,6 +105,7 @@ async fn test_get_completion() {
             delta: CompletionDeltaResponse { content: None },
             finish_reason: Some("stop".to_string()),
         }],
+        ..Default::default()
     });
 
     let body = lines
@@ -147,87 +148,6 @@ async fn test_get_completion() {
     assert_eq!(events[2].text, "");
     assert_eq!(events[2].done, true);
     assert_eq!(events[2].init_conversation, true);
-}
-
-#[tokio::test]
-async fn test_get_completion_with_regenerate_response() {
-    let mut lines = ["How ", "can ", "I ", "help ", "you?"]
-        .into_iter()
-        .map(|l| CompletionResponse {
-            id: uuid::Uuid::new_v4().to_string(),
-            choices: vec![CompletionChoiceResponse {
-                delta: CompletionDeltaResponse {
-                    content: Some(l.to_string()),
-                },
-                finish_reason: None,
-            }],
-        })
-        .collect::<Vec<_>>();
-
-    lines.push(CompletionResponse {
-        id: uuid::Uuid::new_v4().to_string(),
-        choices: vec![CompletionChoiceResponse {
-            delta: CompletionDeltaResponse { content: None },
-            finish_reason: Some("stop".to_string()),
-        }],
-    });
-
-    let body = lines
-        .into_iter()
-        .map(|l| serde_json::to_string(&l).expect("Failed to serialize"))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let prompt = BackendPrompt::new("Hello")
-        .with_model("gpt-3.5-turbo")
-        .with_context(vec![
-            Message::new_user("user", "First hello"),
-            Message::new_system("gpt-3.5-turbo", "test?"),
-            Message::new_user("user", "Hello"),
-            Message::new_system("gpt-3.5-turbo", "hello"),
-        ])
-        .with_regenerate();
-
-    let expect_body_request = serde_json::to_string(&CompletionRequest {
-        model: "gpt-3.5-turbo".to_string(),
-        messages: vec![
-            (&Message::new_user("user", "First hello")).into(),
-            (&Message::new_system("gpt-3.5-turbo", "test?")).into(),
-            (&Message::new_user("user", "Hello")).into(),
-        ],
-        stream: true,
-    })
-    .expect("Failed to serialize");
-
-    let mut server = mockito::Server::new_async().await;
-    let completion_handler = server
-        .mock("POST", "/v1/chat/completions")
-        .with_status(200)
-        .match_header("Authorization", "Bearer test_token")
-        .with_body(body)
-        .match_body(expect_body_request.as_str())
-        .create();
-
-    let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
-
-    let backend = setup_backend(server.url()).await;
-
-    backend
-        .get_completion(prompt, &tx)
-        .await
-        .expect("Failed to get completion");
-    completion_handler.assert();
-
-    let events = collect_responses(&mut rx, time::Duration::from_secs(5), 6)
-        .await
-        .expect("Failed to collect events");
-    assert_eq!(events.len(), 6);
-    let text = events
-        .iter()
-        .map(|e| e.text.clone())
-        .collect::<Vec<_>>()
-        .join("");
-    assert_eq!(text, "How can I help you?");
 }
 
 async fn collect_responses(

@@ -7,7 +7,7 @@ use std::{fmt::Display, time};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::stream::TryStreamExt;
-use openai_models::{BackendConnection, BackendPrompt, Event};
+use openai_models::{BackendConnection, BackendPrompt, BackendUsage, Event};
 use openai_models::{BackendResponse, Message};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -172,21 +172,6 @@ impl Backend for Gemini {
                 .collect::<Vec<_>>();
         }
 
-        // If user wants to regenerate the prompt, we need to rebuild the context
-        // by remove the last assistant message until we find the last user message
-        if prompt.regenerate() && !contents.is_empty() {
-            let mut i = contents.len() as i32 - 1;
-            while i >= 0 {
-                if contents[i as usize].role == "user" {
-                    break;
-                }
-                contents.pop();
-                i -= 1;
-            }
-            // Pop the last user message, we will add it again
-            contents.pop();
-        }
-
         let init_conversation = prompt.context().is_empty();
         let content = if init_conversation {
             format!("{}\n{}", prompt.text(), TITLE_PROMPT)
@@ -225,68 +210,111 @@ impl Backend for Gemini {
 
         log::debug!("Sending completion request: {:?}", completion_req);
 
-        let res = builder
+        let resp = builder
             .json(&completion_req)
             .send()
             .await
             .wrap_err("sending completion request")?;
 
-        if !res.status().is_success() {
-            let http_code = res.status().as_u16();
-            let err: ErrorResponse = res.json().await.wrap_err("parsing error response")?;
+        if !resp.status().is_success() {
+            let http_code = resp.status().as_u16();
+            let err: ErrorResponse = resp.json().await.wrap_err("parsing error response")?;
             let mut err = err.error;
             err.http_code = http_code;
             return Err(err.into());
         }
 
-        let stream = res.bytes_stream().map_err(|e| {
+        let stream = resp.bytes_stream().map_err(|e| {
             let err_msg = e.to_string();
             return std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg);
         });
 
         let mut lines_reader = StreamReader::new(stream).lines();
 
-        let mut last_message = String::new();
         let message_id = uuid::Uuid::new_v4().to_string();
+        let mut line_buf: Vec<String> = Vec::new();
         while let Ok(line) = lines_reader.next_line().await {
             if line.is_none() {
                 break;
             }
 
             let cleaned_line = line.unwrap().trim().to_string();
-            if !cleaned_line.starts_with("\"text\": ") {
+            log::trace!("Received line: {}", cleaned_line);
+            // Gemini separte array object by a line with a comma
+            if cleaned_line != "," {
+                line_buf.push(cleaned_line);
                 continue;
             }
 
-            let content: GenerateContentResponse =
-                serde_json::from_str(&format!("{{ {} }}", cleaned_line))
-                    .wrap_err("unmarshalling response")?;
-
-            if content.text.is_empty() || content.text == "\n" {
+            // Process the line buffer
+            let content = process_line_buffer(&line_buf)?;
+            line_buf.clear();
+            if content.candidates.is_empty() || content.candidates[0].finish_reason.is_some() {
                 break;
             }
 
-            last_message += &content.text;
+            let text = match content.candidates[0].content.parts[0] {
+                ContentParts::Text(ref text) => text,
+                ContentParts::InlineData(ref blob) => {
+                    log::warn!("Received inline data: {:?}", blob);
+                    continue;
+                }
+            };
+
+            if text.is_empty() {
+                continue;
+            }
+
             let msg = BackendResponse {
                 id: message_id.clone(),
                 model: model.clone(),
-                text: content.text.clone(),
+                text: text.clone(),
                 done: false,
                 init_conversation,
+                usage: None,
             };
             event_tx.send(Event::BackendPromptResponse(msg))?;
         }
 
+        let content = process_line_buffer(&line_buf)?;
+        line_buf.clear();
+
+        let text = match content.candidates[0].content.parts[0] {
+            ContentParts::Text(ref text) => text.clone(),
+            ContentParts::InlineData(ref blob) => {
+                log::warn!("Received inline data: {:?}", blob);
+                String::new()
+            }
+        };
+
+        let usage = Some(BackendUsage {
+            prompt_tokens: content.usage_metadata.prompt_token_count,
+            completion_tokens: content.usage_metadata.candidates_token_count,
+            total_tokens: content.usage_metadata.total_token_count,
+        });
+
         let msg = BackendResponse {
             id: message_id,
             model: model.clone(),
-            text: String::new(),
+            text,
             done: true,
             init_conversation,
+            usage,
         };
         event_tx.send(Event::BackendPromptResponse(msg))?;
         Ok(())
     }
+}
+
+fn process_line_buffer(lines: &[String]) -> Result<GenerateContentResponse> {
+    let json_raw = lines.join("").trim().to_string();
+    let json_raw = json_raw.strip_prefix("[").unwrap_or(&json_raw).trim();
+    let json_raw = json_raw.strip_suffix("]").unwrap_or(&json_raw).trim();
+    let json_raw = json_raw.strip_suffix(",").unwrap_or(&json_raw).trim();
+
+    let resp: GenerateContentResponse =
+        serde_json::from_str(json_raw).wrap_err("unmarshalling response")?;
+    Ok(resp)
 }
 
 impl Default for Gemini {
@@ -364,7 +392,25 @@ struct CompletionRequest {
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenerateContentResponse {
-    text: String,
+    candidates: Vec<GenerateCandidate>,
+    usage_metadata: GenerateUsageMetadata,
+    model_version: String,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateCandidate {
+    content: Content,
+    finish_reason: Option<String>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateUsageMetadata {
+    prompt_token_count: usize,
+    #[serde(default)]
+    candidates_token_count: usize,
+    total_token_count: usize,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
