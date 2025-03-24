@@ -16,7 +16,6 @@ folder_path = "/etc/openai-tui/theme"
 default_model = "gpt-3.5-turbo"
 timeout = "60s"
 
-
 [[backend.connections]]
 enabled = true
 alias = "deepseek"

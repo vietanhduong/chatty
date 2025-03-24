@@ -208,7 +208,7 @@ impl Backend for Gemini {
             builder = builder.timeout(timeout);
         }
 
-        log::debug!("Sending completion request: {:?}", completion_req);
+        log::trace!("Sending completion request: {:?}", completion_req);
 
         let resp = builder
             .json(&completion_req)

@@ -177,7 +177,7 @@ impl Backend for OpenAI {
             req = req.bearer_auth(token);
         }
 
-        log::debug!("Sending completion request: {:?}", completion_req);
+        log::trace!("Sending completion request: {:?}", completion_req);
 
         let res = req
             .json(&completion_req)

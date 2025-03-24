@@ -40,7 +40,7 @@ pub struct ThemeConfig {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BackendConfig {
     default_model: Option<String>,
-    timout: Option<time::Duration>,
+    timeout: Option<time::Duration>,
     connections: Vec<BackendConnection>,
 }
 
@@ -133,7 +133,7 @@ impl BackendConfig {
     }
 
     pub fn timeout(&self) -> Option<time::Duration> {
-        self.timout
+        self.timeout
     }
 }
 
@@ -188,7 +188,7 @@ impl Default for BackendConfig {
         Self {
             default_model: None,
             connections: vec![],
-            timout: None,
+            timeout: None,
         }
     }
 }
