@@ -5,7 +5,7 @@ mod tests;
 use crate::ArcBackend;
 use eyre::{Context, Result, bail};
 use openai_models::{
-    ArcEventTx, BackendPrompt, Context as ConvoContext, Conversation, Event,
+    ArcEventTx, BackendPrompt, Context as ConvoContext, Conversation, Event, Message,
     constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH},
 };
 use std::sync::Arc;
@@ -91,24 +91,37 @@ impl Compressor {
             return Ok(None);
         }
 
-        let checkpoint = match find_checkpoint(convo, self.keep_n_messages) {
+        let end_checkpoint = match find_checkpoint(convo, self.keep_n_messages) {
             Some(checkpoint) => checkpoint,
             None => {
                 return Ok(None);
             }
         };
 
-        let last_message_id = convo.messages()[checkpoint].id();
+        let start_checkpoint = match convo.contexts().last() {
+            Some(ctx) => match convo
+                .messages()
+                .iter()
+                .position(|msg| msg.id() == ctx.last_message_id())
+            {
+                Some(index) => index + 1,
+                None => 0,
+            },
+            None => 0,
+        };
 
-        let message = convo.messages()[..checkpoint + 1]
+        let last_message_id = convo.messages()[end_checkpoint].id();
+        let mut messages = convo
+            .contexts()
             .iter()
-            .map(|msg| {
-                format!(
-                    "{}: {}",
-                    if msg.is_system() { "System" } else { "User" },
-                    msg.text()
-                )
-            })
+            .map(Message::from)
+            .collect::<Vec<_>>();
+
+        messages.extend(convo.messages()[start_checkpoint..end_checkpoint + 1].to_vec());
+
+        let message = messages
+            .iter()
+            .map(|msg| format!("{}: {}", message_categorize(msg), msg.text()))
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -164,4 +177,14 @@ fn find_checkpoint(conversation: &Conversation, keep_n_messages: usize) -> Optio
         return None;
     }
     Some(last)
+}
+
+fn message_categorize(message: &Message) -> String {
+    if message.is_context() {
+        "Context".to_string()
+    } else if message.is_system() {
+        "System".to_string()
+    } else {
+        "User".to_string()
+    }
 }

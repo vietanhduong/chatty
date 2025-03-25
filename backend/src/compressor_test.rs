@@ -1,30 +1,31 @@
 use super::*;
 use crate::MockBackend;
-use openai_models::{BackendResponse, BackendUsage, Conversation, Message};
+use openai_models::{BackendResponse, BackendUsage, Conversation, Message, message::Issuer};
 
 #[test]
 fn test_find_checkpoint() {
     let mut convo = build_convo();
     let checkpoint = find_checkpoint(&convo, 3);
-    assert_eq!(checkpoint, Some(5));
+    assert_eq!(checkpoint, Some(12));
     convo.append_message(Message::new_user("user", "How are you doing?"));
     let checkpoint = find_checkpoint(&convo, 3);
-    assert_eq!(checkpoint, Some(7));
+    assert_eq!(checkpoint, Some(14));
 }
 
 #[tokio::test]
 async fn test_compress() {
     let convo = build_convo();
 
-    let expected_message = convo.messages()[..4]
+    let mut messages = convo
+        .contexts()
         .iter()
-        .map(|msg| {
-            format!(
-                "{}: {}",
-                if msg.is_system() { "System" } else { "User" },
-                msg.text()
-            )
-        })
+        .map(Message::from)
+        .collect::<Vec<_>>();
+
+    messages.extend(convo.messages()[6..11].to_vec());
+    let expected_message = messages
+        .iter()
+        .map(|msg| format!("{}: {}", message_categorize(msg), msg.text()))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -90,40 +91,27 @@ The summary should be started with Summary: and end with a period.
     assert_eq!(context.id(), "test_id");
     assert_eq!(context.content(), "This is a compressed context");
     assert_eq!(context.token_count(), 5);
-    assert_eq!(context.last_message_id(), "4");
+    assert_eq!(context.last_message_id(), "9");
 }
 
 fn build_convo() -> Conversation {
-    Conversation::new_hello().with_messages(vec![
-        Message::new_user("user", "Hello")
-            .with_token_count(1)
-            .with_id("1"),
-        Message::new_system("assistant", "Hi! How can I help you?")
-            .with_token_count(5)
-            .with_id("2"),
-        Message::new_user("user", "Can you tell me a joke?")
-            .with_token_count(5)
-            .with_id("3"),
-        Message::new_system("assistant", "Sure! Why did the chicken cross the road?")
-            .with_token_count(7)
-            .with_id("4"),
-        Message::new_user("user", "To get to the other side!")
-            .with_token_count(5)
-            .with_id("5"),
-        Message::new_system("assistant", "Haha! That's a classic!")
-            .with_token_count(5)
-            .with_id("6"),
-        Message::new_user("user", "What's your favorite color?")
-            .with_token_count(5)
-            .with_id("7"),
-        Message::new_system("assistant", "I like blue!")
-            .with_token_count(3)
-            .with_id("8"),
-        Message::new_user("user", "Do you have any hobbies?")
-            .with_token_count(5)
-            .with_id("9"),
-        Message::new_system("assistant", "I enjoy learning new things!")
-            .with_token_count(5)
-            .with_id("10"),
-    ])
+    let mut convo = Conversation::new_hello();
+    for i in 0..=15 {
+        let issuer = if i % 2 == 0 {
+            Issuer::user_with_name("user")
+        } else {
+            Issuer::system_with_name("system")
+        };
+        convo.append_message(
+            Message::new(issuer, format!("Message {}", i))
+                .with_id(i.to_string())
+                .with_token_count(5),
+        );
+    }
+    convo.append_context(
+        ConvoContext::new("4")
+            .with_content("This is a checkpoint at 4")
+            .with_token_count(5),
+    );
+    convo
 }

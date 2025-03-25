@@ -10,7 +10,7 @@ pub struct Conversation {
     id: String,
     title: String,
     messages: Vec<Message>,
-    context: Vec<Context>,
+    contexts: Vec<Context>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -63,8 +63,8 @@ impl Conversation {
     }
 
     pub fn with_context(mut self, context: Vec<Context>) -> Self {
-        self.context = context;
-        self.context.sort_by(|a, b| {
+        self.contexts = context;
+        self.contexts.sort_by(|a, b| {
             a.created_at()
                 .partial_cmp(&b.created_at())
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -87,8 +87,8 @@ impl Conversation {
     }
 
     pub fn append_context(&mut self, context: Context) {
-        self.context.push(context);
-        self.context.sort_by(|a, b| {
+        self.contexts.push(context);
+        self.contexts.sort_by(|a, b| {
             a.created_at()
                 .partial_cmp(&b.created_at())
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -132,11 +132,11 @@ impl Conversation {
     }
 
     pub fn contexts_mut(&mut self) -> &mut Vec<Context> {
-        &mut self.context
+        &mut self.contexts
     }
 
     pub fn contexts(&self) -> &[Context] {
-        &self.context
+        &self.contexts
     }
 
     /// Return a vector of messages. The return vector is always end up
@@ -145,13 +145,13 @@ impl Conversation {
         // If the conversation has less than 3 messages, return an empty vector
         // 1 for hello message and 1 for user message so which means the conversation
         // is not started yet. No context is needed.
-        if self.messages.len() < 3 && self.context.is_empty() {
+        if self.messages.len() < 3 && self.contexts.is_empty() {
             return vec![];
         }
 
-        let mut context: Vec<Message> = self.context.iter().map(Message::from).collect();
+        let mut context: Vec<Message> = self.contexts.iter().map(Message::from).collect();
 
-        match self.context.last() {
+        match self.contexts.last() {
             Some(ctx) => {
                 // Find the index of the last message in the messages and
                 // append the next messages to the context
@@ -201,7 +201,7 @@ impl Default for Conversation {
             id: Uuid::new_v4().to_string(),
             title: "New Chat".to_string(),
             messages: vec![],
-            context: vec![],
+            contexts: vec![],
             created_at: chrono::Utc::now(),
             updated_at: None,
         }
@@ -245,11 +245,6 @@ impl Context {
 
     pub fn with_created_at(mut self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
         self.created_at = timestamp;
-        self
-    }
-
-    pub fn with_last_message_id(mut self, last_message_id: impl Into<String>) -> Self {
-        self.last_message_id = last_message_id.into();
         self
     }
 
