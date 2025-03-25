@@ -459,7 +459,7 @@ impl<'a> HistoryScreen<'a> {
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::LightBlue))
             .padding(Padding::new(1, 1, 0, 0))
-            .title(" Chat History ")
+            .title(Line::from(" Chat History ").bold())
             .title_alignment(Alignment::Center)
             .title_bottom(Line::from(instructions))
             .style(Style::default());

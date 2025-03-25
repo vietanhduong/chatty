@@ -4,7 +4,8 @@ use openai_models::Event;
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
+    text::Line,
     widgets::{Block, BorderType, Borders, Clear, Padding, Widget},
 };
 use tui_textarea::{CursorMove, TextArea};
@@ -81,7 +82,7 @@ pub fn rename_area(area: Rect, width: u16) -> Rect {
 fn build_input<'a>(text: &str) -> TextArea<'a> {
     let mut text_area = TextArea::new(vec![text.to_string()]);
     let block = Block::default()
-        .title("Rename")
+        .title(Line::from(" Rename ").bold())
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(Color::LightMagenta))

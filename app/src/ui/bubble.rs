@@ -1,6 +1,6 @@
 use openai_models::Message;
 use ratatui::{
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
 };
 use syntect::highlighting::Theme;

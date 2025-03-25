@@ -3,7 +3,7 @@ use openai_models::{Action, Event, Message};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Text},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding},
 };
@@ -101,7 +101,7 @@ impl<'a> EditScreen<'_> {
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::LightBlue))
             .padding(Padding::symmetric(1, 0))
-            .title(" Edit Mode ")
+            .title(Line::from(" Edit Mode ").bold())
             .title_alignment(Alignment::Center)
             .title_bottom(Line::from(instructions))
             .style(Style::default());

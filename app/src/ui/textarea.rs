@@ -1,5 +1,7 @@
 use ratatui::{
     layout::Alignment,
+    style::Stylize,
+    text::Line,
     widgets::{Block, BorderType, Borders, Padding},
 };
 
@@ -25,7 +27,7 @@ impl TextArea {
         let mut textarea = tui_textarea::TextArea::default();
         textarea.set_block(
             Block::default()
-                .title(self.title.clone())
+                .title(Line::from(self.title.clone()).bold())
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title_alignment(Alignment::Left)

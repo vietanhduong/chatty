@@ -104,7 +104,7 @@ impl ModelsScreen {
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::LightBlue))
             .padding(Padding::symmetric(1, 0))
-            .title(" Models ")
+            .title(Line::from(" Models ").bold())
             .title_alignment(Alignment::Center)
             .title_bottom(Line::from(instructions))
             .style(Style::default());

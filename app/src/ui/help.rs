@@ -114,7 +114,7 @@ impl<'a> HelpScreen<'_> {
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::LightBlue))
             .padding(Padding::symmetric(1, 0))
-            .title(" Help ")
+            .title(Line::from(" Help ").bold())
             .title_alignment(Alignment::Center)
             .title_bottom(Line::from(vec![
                 " ".into(),
