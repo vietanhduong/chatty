@@ -134,7 +134,7 @@ impl Conversation {
         &self.context
     }
 
-    /// Return a vector of messages. The return vector is alway end up
+    /// Return a vector of messages. The return vector is always end up
     /// with a message from system
     pub fn build_context(&self) -> Vec<Message> {
         // If the conversation has less than 3 messages, return an empty vector
@@ -283,6 +283,7 @@ impl From<&Context> for Message {
             .with_id(&value.id)
             .with_created_at(value.created_at)
             .with_token_count(value.token_count)
+            .with_context(true)
     }
 }
 

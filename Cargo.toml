@@ -13,6 +13,9 @@ repository = "https://github.com/vietanhduong/openai-tui"
 description = "A terminal-based chat client for OpenAI's GPT models."
 exclude = ["/docs/", "/.github/", "/.gitignore"]
 
+[profile.dev]
+opt-level = 0
+
 [profile.release]
 lto = true
 strip = true

@@ -11,6 +11,8 @@ pub struct Message {
     text: String,
     token_count: usize,
     created_at: chrono::DateTime<chrono::Utc>,
+    /// Indicates if the message is part of a context
+    context: bool,
 }
 
 impl Message {
@@ -21,6 +23,7 @@ impl Message {
             text: text.into(),
             token_count: 0,
             created_at: chrono::Utc::now(),
+            context: false,
         }
     }
 
@@ -30,6 +33,21 @@ impl Message {
 
     pub fn new_user(user: &str, text: impl Into<String>) -> Self {
         Self::new(Issuer::User(user.to_string()), text)
+    }
+
+    pub fn with_context(mut self, context: bool) -> Self {
+        if matches!(self.issuer, Issuer::System(_)) {
+            self.context = context;
+        }
+        self
+    }
+
+    /// Indicates if the message is part of a context. Only avaiable for
+    /// system messages. If backend receives a message is marked as context
+    ///, it should be treated as a context message. E.g: OpenAI's role should
+    /// be "system" instead of "assistant".
+    pub fn is_context(&self) -> bool {
+        self.context
     }
 
     pub fn with_id(mut self, id: impl Into<String>) -> Self {

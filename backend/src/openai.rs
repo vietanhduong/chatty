@@ -427,14 +427,16 @@ impl Display for OpenAIError {
 }
 
 impl From<&Message> for MessageRequest {
-    fn from(value: &Message) -> Self {
+    fn from(msg: &Message) -> Self {
         Self {
-            role: if value.is_system() {
+            role: if msg.is_context() {
+                "system".to_string()
+            } else if msg.is_system() {
                 "assistant".to_string()
             } else {
                 "user".to_string()
             },
-            content: value.text().to_string(),
+            content: msg.text().to_string(),
         }
     }
 }

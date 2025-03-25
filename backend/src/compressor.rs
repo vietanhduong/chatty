@@ -113,7 +113,11 @@ impl Compressor {
             .join("\n");
 
         let prompt = BackendPrompt::new(format!(
-            r#"Summarize the following conversation in a compact yet comprehensive manner. Focus on the key points, decisions, and any critical information exchanged, while omitting trivial or redundant details. Include specific actions or plans that were agreed upon. Ensure that the summary is understandable on its own, providing enough context for someone who hasn't read the entire conversation. Aim to capture the essence of the discussion while keeping the summary as concise as possible.
+            r#"Summarize the following conversation in a compact yet comprehensive manner.
+Focus on the key points, decisions, and any critical information exchanged, while omitting trivial or redundant details. Include specific actions or plans that were agreed upon.
+Ensure that the summary is understandable on its own, providing enough context for someone who hasn't read the entire conversation.
+Aim to capture the essence of the discussion while keeping the summary as concise as possible.
+The summary should be started with Summary: and end with a period.
 ---
 {}"#,
             message
