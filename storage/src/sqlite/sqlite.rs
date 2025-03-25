@@ -90,7 +90,11 @@ impl Storage for Sqlite {
 
             messages.push(Message::new(issuer, text).with_id(id).with_created_at(created_at).with_token_count(token_count));
         }
-
+        messages.sort_by(|a, b| {
+            a.created_at()
+                .timestamp_millis()
+                .cmp(&b.created_at().timestamp_millis())
+        });
         Ok(messages)
         }).await?;
         Ok(messages)
@@ -338,6 +342,11 @@ impl Sqlite {
                 );
             }
 
+            contexts.sort_by(|a, b| {
+                a.created_at()
+                    .timestamp_millis()
+                    .cmp(&b.created_at().timestamp_millis())
+            });
             Ok(contexts)
         }).await?;
         Ok(contexts)

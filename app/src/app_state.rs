@@ -46,7 +46,7 @@ impl<'a> AppState<'a> {
     pub fn add_message(&mut self, message: Message) {
         {
             let mut conversation = self.conversation.borrow_mut();
-            conversation.add_message(message);
+            conversation.append_message(message);
         }
         self.sync_state();
         self.scroll.last();
@@ -61,7 +61,7 @@ impl<'a> AppState<'a> {
             let mut conversation = self.conversation.borrow_mut();
             let last_message = conversation.last_message().unwrap();
             if !last_message.is_system() {
-                conversation.add_message(Message::new_system(&resp.model, "").with_id(&resp.id));
+                conversation.append_message(Message::new_system(&resp.model, "").with_id(&resp.id));
             }
             conversation.last_mut_message().unwrap().append(&resp.text);
         }

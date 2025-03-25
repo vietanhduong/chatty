@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "conversation_test.rs"]
+mod tests;
+
 use crate::{Message, message::Issuer};
 use uuid::Uuid;
 
@@ -72,7 +76,7 @@ impl Conversation {
         self.title = title.into();
     }
 
-    pub fn add_message(&mut self, message: Message) {
+    pub fn append_message(&mut self, message: Message) {
         self.messages.push(message);
         self.messages.sort_by(|a, b| {
             a.created_at()
@@ -81,7 +85,7 @@ impl Conversation {
         });
     }
 
-    pub fn add_context(&mut self, context: Context) {
+    pub fn append_context(&mut self, context: Context) {
         self.context.push(context);
         self.context.sort_by(|a, b| {
             a.created_at()
@@ -144,7 +148,7 @@ impl Conversation {
             return vec![];
         }
 
-        let mut context: Vec<Message> = self.context.iter().map(|ctx| ctx.into()).collect();
+        let mut context: Vec<Message> = self.context.iter().map(Message::from).collect();
 
         match self.context.last() {
             Some(ctx) => {

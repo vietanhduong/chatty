@@ -7,7 +7,7 @@ fn test_find_checkpoint() {
     let mut convo = build_convo();
     let checkpoint = find_checkpoint(&convo, 3);
     assert_eq!(checkpoint, Some(5));
-    convo.add_message(Message::new_user("user", "How are you doing?"));
+    convo.append_message(Message::new_user("user", "How are you doing?"));
     let checkpoint = find_checkpoint(&convo, 3);
     assert_eq!(checkpoint, Some(7));
 }
