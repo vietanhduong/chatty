@@ -348,6 +348,9 @@ impl<'a> HistoryScreen<'a> {
                         let storage = storage.clone();
                         let event_tx = event_tx.clone();
                         let conversation_id = conversation.borrow().id().to_string();
+                        event_tx
+                            .send(Event::ConversationDeleted(conversation_id.clone()))
+                            .ok();
                         Box::pin(async move {
                             if let Err(err) = storage.delete_conversation(&conversation_id).await {
                                 log::error!("Failed to delete conversation: {}", err);
