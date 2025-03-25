@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
-use openai_models::{
+use chatty_models::{
     Context as ConvoContext, Conversation, Message, message::Issuer, storage::FilterConversation,
 };
 use tokio_rusqlite::{Connection, OpenFlags, ToSql, named_params, params};
@@ -194,7 +194,7 @@ impl Storage for Sqlite {
     async fn add_messages(
         &self,
         conversation_id: &str,
-        messages: &[openai_models::Message],
+        messages: &[chatty_models::Message],
     ) -> Result<()> {
         let conversation_id = conversation_id.to_string();
         let messages = messages.to_vec();

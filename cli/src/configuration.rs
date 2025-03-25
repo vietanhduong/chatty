@@ -1,7 +1,7 @@
 use chrono::Local;
 use eyre::{Context, Result};
 use log::LevelFilter;
-use openai_models::configuration::Configuration;
+use chatty_models::configuration::Configuration;
 use std::{io::Write, str::FromStr};
 use syntect::highlighting::{Theme, ThemeSet};
 
@@ -80,7 +80,7 @@ pub fn basename(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use openai_models::{BackendKind, config::StorageConfig};
+    use chatty_models::{BackendKind, config::StorageConfig};
 
     use super::*;
 
@@ -92,17 +92,17 @@ mod tests {
         assert_eq!(log.level(), Some("info"));
         let log_filters = log.filters().unwrap_or_default();
         assert_eq!(log_filters.len(), 1);
-        assert_eq!(log_filters[0].module(), "openai_backend");
+        assert_eq!(log_filters[0].module(), "chatty_backend");
 
         let log_file = log.file();
         assert!(log_file.is_some());
-        assert_eq!(log_file.unwrap().path(), "/var/log/openai-tui.log");
+        assert_eq!(log_file.unwrap().path(), "/var/log/chatty.log");
         assert_eq!(log_file.unwrap().append(), true);
 
         assert_eq!(config.theme().unwrap().name(), Some("dark"));
         assert_eq!(
             config.theme().unwrap().folder_path(),
-            Some("/etc/openai-tui/theme")
+            Some("/etc/chatty/theme")
         );
 
         let backend = config.backend().unwrap();
@@ -143,7 +143,7 @@ mod tests {
 
         match storage {
             StorageConfig::Sqlite(sqlite) => {
-                assert_eq!(sqlite.path(), Some("/var/lib/openai-tui/chat.db"));
+                assert_eq!(sqlite.path(), Some("/var/lib/chatty/chat.db"));
             }
         }
     }

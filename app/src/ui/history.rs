@@ -1,7 +1,7 @@
 use chrono::{Local, Utc};
 use eyre::Result;
-use openai_models::{Conversation, Event, NoticeMessage};
-use openai_storage::ArcStorage;
+use chatty_models::{Conversation, Event, NoticeMessage};
+use chatty_storage::ArcStorage;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},

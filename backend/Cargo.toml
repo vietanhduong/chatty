@@ -1,5 +1,5 @@
 [package]
-name = "openai-backend"
+name = "chatty-backend"
 version = "0.1.0"
 edition = "2024"
 
@@ -15,7 +15,7 @@ futures.workspace = true
 log.workspace = true
 tokio-util.workspace = true
 uuid.workspace = true
-openai-models = { path = "../models" }
+chatty-models = { path = "../models" }
 
 
 [dev-dependencies]

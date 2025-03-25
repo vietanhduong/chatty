@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use openai_models::Event;
+use chatty_models::Event;
 use ratatui_macros::span;
 use std::{
     cmp::{max, min},

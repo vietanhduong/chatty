@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use eyre::Result;
-use openai_backend::ArcBackend;
-use openai_models::{Action, ArcEventTx, BackendPrompt, Event, Message, NoticeMessage, NoticeType};
+use chatty_backend::ArcBackend;
+use chatty_models::{Action, ArcEventTx, BackendPrompt, Event, Message, NoticeMessage, NoticeType};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 

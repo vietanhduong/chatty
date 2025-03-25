@@ -13,7 +13,7 @@ use mockall::{automock, predicate::*};
 
 use async_trait::async_trait;
 use eyre::{Context, Result};
-use openai_models::{ArcEventTx, BackendKind, BackendPrompt, config::BackendConfig};
+use chatty_models::{ArcEventTx, BackendKind, BackendPrompt, config::BackendConfig};
 use std::{sync::Arc, time::Duration};
 
 const TITLE_PROMPT: &str = r#"

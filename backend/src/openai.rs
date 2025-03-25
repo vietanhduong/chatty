@@ -8,11 +8,11 @@ use std::{fmt::Display, time};
 
 use crate::{ArcBackend, Backend, TITLE_PROMPT};
 use async_trait::async_trait;
-use eyre::{Context, Result, bail};
-use futures::TryStreamExt;
-use openai_models::{
+use chatty_models::{
     ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
 };
+use eyre::{Context, Result, bail};
+use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncBufReadExt;

@@ -1,6 +1,6 @@
+use chatty_models::config::Configuration;
 use clap::Parser;
 use eyre::{Context, Result};
-use openai_models::config::Configuration;
 
 use crate::load_configuration;
 
@@ -11,9 +11,9 @@ use crate::load_configuration;
     long_about = r#"A Terminal UI to interact OpenAI models
 
 Default configuration file location looks up in the following order:
-    * $XDG_CONFIG_HOME/openai-tui/config.toml
-    * $HOME/.config/openai-tui/config.toml
-    * $HOME/.openai-tui.toml
+    * $XDG_CONFIG_HOME/chatty/config.toml
+    * $HOME/.config/chatty/config.toml
+    * $HOME/.chatty.toml
 "#
 )]
 pub struct Command {
@@ -40,17 +40,17 @@ impl Command {
 }
 
 /// lookup_config_path trys to look up the config path at:
-/// * $XDG_CONFIG_HOME/openai-tui/config.toml
-/// * $HOME/.config/openai-tui/config.toml
-/// * $HOME/.openai-tui.toml
+/// * $XDG_CONFIG_HOME/chatty/config.toml
+/// * $HOME/.config/chatty/config.toml
+/// * $HOME/.chatty.toml
 fn lookup_config_path() -> Option<String> {
     let paths = &[
         format!(
-            "{}/.config/openai-tui/config.toml",
+            "{}/.config/chatty/config.toml",
             env_or_current("XDG_CONFIG_HOME")
         ),
-        format!("{}/.config/openai-tui/config.toml", env_or_current("HOME")),
-        format!("{}/.openai-tui.toml", env_or_current("HOME")),
+        format!("{}/.config/chatty/config.toml", env_or_current("HOME")),
+        format!("{}/.chatty.toml", env_or_current("HOME")),
     ];
 
     for path in paths {

@@ -1,5 +1,5 @@
 [package]
-name = "openai-tui"
+name = "chatty"
 version = "0.1.0"
 edition = "2024"
 
@@ -15,10 +15,10 @@ syntect.workspace = true
 better-panic.workspace = true
 tokio-util.workspace = true
 
-openai-app = { path = "../app" }
-openai-backend = { path = "../backend" }
-openai-storage = { path = "../storage" }
-openai-models = { path = "../models" }
+chatty-app = { path = "../app" }
+chatty-backend = { path = "../backend" }
+chatty-storage = { path = "../storage" }
+chatty-models = { path = "../models" }
 
 [dev-dependencies]
 mockito.workspace = true

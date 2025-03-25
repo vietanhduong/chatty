@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use eyre::{Context, Result};
-use openai_app::{
+use chatty::{Command, init_logger, init_theme};
+use chatty_app::{
     App,
     app::AppInitProps,
     destruct_terminal_for_panic,
     services::{ActionService, ClipboardService},
 };
-use openai_backend::{Compressor, new_manager};
-use openai_models::{Action, ArcEventTx, Event, storage::FilterConversation};
-use openai_storage::new_storage;
-use openai_tui::{Command, init_logger, init_theme};
+use chatty_backend::{Compressor, new_manager};
+use chatty_models::{Action, ArcEventTx, Event, storage::FilterConversation};
+use chatty_storage::new_storage;
+use eyre::{Context, Result};
 use tokio::{sync::mpsc, task};
 use tokio_util::sync::CancellationToken;
 

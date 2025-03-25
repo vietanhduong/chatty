@@ -1,5 +1,5 @@
 use eyre::{Context, Result};
-use openai_models::{Action, Event, Message};
+use chatty_models::{Action, Event, Message};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},

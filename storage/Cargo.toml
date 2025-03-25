@@ -1,5 +1,5 @@
 [package]
-name = "openai-storage"
+name = "chatty-storage"
 version = "0.1.0"
 edition = "2024"
 
@@ -12,4 +12,4 @@ log.workspace = true
 chrono.workspace = true
 tokio-rusqlite.workspace = true
 
-openai-models = { path = "../models" }
+chatty-models = { path = "../models" }

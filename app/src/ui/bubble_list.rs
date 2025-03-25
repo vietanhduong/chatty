@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use openai_models::Message;
+use chatty_models::Message;
 use ratatui::{buffer::Buffer, layout::Rect, text::Line};
 use syntect::highlighting::Theme;
 

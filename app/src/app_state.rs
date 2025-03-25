@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use openai_models::{BackendResponse, Conversation, Message};
+use chatty_models::{BackendResponse, Conversation, Message};
 use ratatui::layout::Rect;
 use syntect::highlighting::Theme;
 

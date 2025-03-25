@@ -1,4 +1,4 @@
-use openai_models::Event;
+use chatty_models::Event;
 use ratatui::{
     Frame,
     layout::Rect,

@@ -1,16 +1,16 @@
 [log]
 level = "info"
-filters = [{ module = "openai_backend", "level" = "debug" }]
+filters = [{ module = "chatty_backend", "level" = "debug" }]
 
-module = "openai_tui"
+module = "chatty_tui"
 
 [log.file]
-path = "/var/log/openai-tui.log"
+path = "/var/log/chatty.log"
 append = true
 
 [theme]
 name = "dark"
-folder_path = "/etc/openai-tui/theme"
+folder_path = "/etc/chatty/theme"
 
 [backend]
 default_model = "gpt-3.5-turbo"
@@ -37,4 +37,4 @@ models = ["gpt-3.5-turbo", "gpt-4"]
 
 
 [storage.sqlite]
-path = "/var/lib/openai-tui/chat.db"
+path = "/var/lib/chatty/chat.db"

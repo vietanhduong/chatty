@@ -3,11 +3,11 @@
 mod tests;
 
 use crate::ArcBackend;
-use eyre::{Context, Result, bail};
-use openai_models::{
+use chatty_models::{
     ArcEventTx, BackendPrompt, Context as ConvoContext, Conversation, Event, Message,
     constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH},
 };
+use eyre::{Context, Result, bail};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 

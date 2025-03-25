@@ -1,4 +1,4 @@
-use openai_models::Message;
+use chatty_models::Message;
 use ratatui::{
     style::{Color, Style},
     text::{Line, Span},

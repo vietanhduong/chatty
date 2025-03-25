@@ -1,6 +1,6 @@
 use std::time::{self, Duration};
 
-use openai_models::NoticeMessage;
+use chatty_models::NoticeMessage;
 use ratatui::{
     Frame,
     layout::Rect,

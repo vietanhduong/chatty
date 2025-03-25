@@ -1,6 +1,6 @@
 use super::*;
 use crate::MockBackend;
-use openai_models::{BackendResponse, BackendUsage, Conversation, Message, message::Issuer};
+use chatty_models::{BackendResponse, BackendUsage, Conversation, Message, message::Issuer};
 
 #[test]
 fn test_find_checkpoint() {

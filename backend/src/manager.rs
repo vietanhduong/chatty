@@ -5,7 +5,7 @@ mod tests;
 use crate::{ArcBackend, Backend};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
-use openai_models::{ArcEventTx, BackendPrompt};
+use chatty_models::{ArcEventTx, BackendPrompt};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 

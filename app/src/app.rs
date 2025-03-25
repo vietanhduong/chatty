@@ -5,11 +5,11 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use eyre::Result;
-use openai_backend::Compressor;
-use openai_models::{
+use chatty_backend::Compressor;
+use chatty_models::{
     Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
-use openai_storage::ArcStorage;
+use chatty_storage::ArcStorage;
 use ratatui::{
     Terminal,
     layout::{Alignment, Constraint, Direction, Layout, Margin},

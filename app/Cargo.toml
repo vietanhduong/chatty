@@ -1,5 +1,5 @@
 [package]
-name = "openai-app"
+name = "chatty-app"
 version = "0.1.0"
 edition = "2024"
 
@@ -19,6 +19,6 @@ unicode-width.workspace = true
 chrono.workspace = true
 tokio-util.workspace = true
 
-openai-backend = { path = "../backend" }
-openai-storage = { path = "../storage" }
-openai-models = { path = "../models" }
+chatty-backend = { path = "../backend" }
+chatty-storage = { path = "../storage" }
+chatty-models = { path = "../models" }

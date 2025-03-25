@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use eyre::Result;
-use openai_models::{
+use chatty_models::{
     Context, Conversation, Message,
     config::{Configuration, StorageConfig},
     storage::FilterConversation,
@@ -24,7 +24,7 @@ pub trait Storage {
     async fn add_messages(
         &self,
         conversation_id: &str,
-        message: &[openai_models::Message],
+        message: &[chatty_models::Message],
     ) -> Result<()>;
     async fn upsert_message(&self, conversation_id: &str, message: Message) -> Result<()>;
     async fn delete_messsage(&self, id: &str) -> Result<()>;

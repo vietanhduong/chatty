@@ -1,7 +1,7 @@
 use std::cmp::{max, min};
 
 use eyre::Result;
-use openai_models::{Action, Event};
+use chatty_models::{Action, Event};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Rect},

@@ -1,7 +1,7 @@
 use crossterm::event::{Event as CrosstermEvent, EventStream, MouseEventKind};
 use eyre::Result;
 use futures::{FutureExt, StreamExt};
-use openai_models::Event;
+use chatty_models::Event;
 use tokio::sync::mpsc;
 use tokio::time;
 use tui_textarea::{Input, Key};
