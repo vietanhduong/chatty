@@ -70,11 +70,6 @@ impl<'a> HelpScreen<'_> {
     /// Returns true when user hit quit (Ctrl + Q).
     pub fn handle_key_event(&mut self, event: &Event) -> bool {
         match event {
-            Event::KeyboardEsc => {
-                self.showing = false;
-                return false;
-            }
-
             Event::KeyboardF1 => {
                 self.showing = !self.showing;
                 return false;
@@ -118,7 +113,7 @@ impl<'a> HelpScreen<'_> {
             .title_alignment(Alignment::Center)
             .title_bottom(Line::from(vec![
                 " ".into(),
-                span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Esc/q"),
+                span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "q"),
                 " to close ".into(),
                 span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "↑/k/↓/j"),
                 " to move up/down ".into(),
@@ -192,19 +187,19 @@ fn build_rows<'a>(max_width: usize) -> Vec<Row<'a>> {
 
 fn build_key_bindings() -> Vec<KeyBinding> {
     vec![
-        KeyBinding::new(Input::new(Key::Esc), "Close Popup"),
+        KeyBinding::new(Input::new(Key::Char('q')), "Close Popup"),
         KeyBinding::new(Input::new(Key::F(1)), "Show Help").with_short_desc("Help"),
-        KeyBinding::new(Input::new(Key::Char('h')).ctrl(), "Show Chat History")
+        KeyBinding::new(Input::new(Key::Char('h')).ctrl(), "Show Chat [H]istory")
             .with_short_desc("History"),
-        KeyBinding::new(Input::new(Key::Char('q')).ctrl(), "Quit").with_short_desc("Quit"),
+        KeyBinding::new(Input::new(Key::Char('q')).ctrl(), "[Q]uit").with_short_desc("Quit"),
         KeyBinding::new(
             Input::new(Key::Char('c')).ctrl(),
-            "Abort Request/Clear Chat",
+            "Abort Request/[C]lear Chat",
         ),
-        KeyBinding::new(Input::new(Key::Char('r')).ctrl(), "Regenerate Response"),
-        KeyBinding::new(Input::new(Key::Char('l')).ctrl(), "List/Select Model"),
-        KeyBinding::new(Input::new(Key::Char('e')).ctrl(), "Edit Mode"),
-        KeyBinding::new(Input::new(Key::Char('n')).ctrl(), "New Chat"),
+        KeyBinding::new(Input::new(Key::Char('r')).ctrl(), "[R]egenerate Response"),
+        KeyBinding::new(Input::new(Key::Char('m')).ctrl(), "[L]ist/Select Model"),
+        KeyBinding::new(Input::new(Key::Char('e')).ctrl(), "[E]dit Mode"),
+        KeyBinding::new(Input::new(Key::Char('n')).ctrl(), "[N]ew Chat"),
         KeyBinding::new(Input::new(Key::Up), "Scroll Up"),
         KeyBinding::new(Input::new(Key::Down), "Scroll Down"),
         KeyBinding::new(Input::new(Key::Up).ctrl(), "Scroll Page Up"),

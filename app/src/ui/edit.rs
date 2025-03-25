@@ -86,7 +86,7 @@ impl<'a> EditScreen<'_> {
 
         let instructions = vec![
             " ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Esc/q"),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "q"),
             " to close, ".into(),
             span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Space"),
             " to select, ".into(),
@@ -174,10 +174,6 @@ impl<'a> EditScreen<'_> {
 
     pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
         match event {
-            Event::KeyboardEsc => {
-                self.showing = false;
-                return Ok(false);
-            }
             Event::KeyboardCtrlE => {
                 self.showing = !self.showing;
                 return Ok(false);

@@ -73,7 +73,7 @@ impl<'a> Question<'a> {
             .padding(Padding::symmetric(1, 0))
             .title_bottom(vec![
                 span!(" "),
-                span!("Esc/q").green().bold(),
+                span!("q").green().bold(),
                 span!(" to close, "),
                 span!("y").green().bold(),
                 span!(" to confirm, "),
@@ -99,9 +99,6 @@ impl<'a> Question<'a> {
 
     pub async fn handle_key_event(&mut self, event: &Event) {
         match event {
-            Event::KeyboardEsc => {
-                self.showing = false;
-            }
             Event::KeyboardCharInput(input) => match input.key {
                 Key::Char('q') => {
                     self.showing = false;

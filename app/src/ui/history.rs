@@ -284,10 +284,6 @@ impl<'a> HistoryScreen<'a> {
         }
 
         match event {
-            Event::KeyboardEsc => {
-                self.showing = false;
-                return Ok(false);
-            }
             Event::KeyboardCtrlH => {
                 self.showing = !self.showing;
                 return Ok(false);
@@ -442,7 +438,7 @@ impl<'a> HistoryScreen<'a> {
 
         let instructions: Vec<Span> = vec![
             " ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Esc"),
+            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "q"),
             " to close, ".into(),
             span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Enter"),
             " to select, ".into(),
