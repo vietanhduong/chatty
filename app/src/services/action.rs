@@ -2,27 +2,24 @@ use std::sync::Arc;
 
 use eyre::Result;
 use openai_backend::ArcBackend;
-use openai_models::{Action, BackendPrompt, Event, Message, NoticeMessage, NoticeType};
-use openai_storage::ArcStorage;
+use openai_models::{Action, ArcEventTx, BackendPrompt, Event, Message, NoticeMessage, NoticeType};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use super::ClipboardService;
 
 pub struct ActionService<'a> {
-    event_tx: mpsc::UnboundedSender<Event>,
+    event_tx: ArcEventTx,
     action_rx: &'a mut mpsc::UnboundedReceiver<Action>,
     cancel_token: CancellationToken,
     backend: ArcBackend,
-    storage: ArcStorage,
 }
 
 impl ActionService<'_> {
     pub fn new(
-        event_tx: mpsc::UnboundedSender<Event>,
+        event_tx: ArcEventTx,
         action_rx: &'_ mut mpsc::UnboundedReceiver<Action>,
         backend: ArcBackend,
-        storage: ArcStorage,
         cancel_token: CancellationToken,
     ) -> ActionService<'_> {
         ActionService {
@@ -30,7 +27,6 @@ impl ActionService<'_> {
             event_tx,
             action_rx,
             backend,
-            storage,
         }
     }
 
@@ -51,98 +47,43 @@ impl ActionService<'_> {
                         continue;
                     }
                     let event = event.unwrap();
-                    let worker_tx = self.event_tx.clone();
-                    let storage = Arc::clone(&self.storage);
+                    let worker_tx = Arc::clone(&self.event_tx);
+                    // let storage = Arc::clone(&self.storage);
                     let backend = Arc::clone(&self.backend);
                     match event {
-                        Action::RemoveMessage(id) => {
-                            if let Err(err) = storage.delete_messsage(&id).await {
-                                log::error!("Failed to delete message: {}", err);
-                                send_notice(
-                                    worker_tx,
-                                    NoticeType::Error,
-                                    format!("Failed to delete message: {}", err),
-                                );
-                                return Err(err);
-                            }
-                        }
-
-                        Action::UpsertMessage(request) => {
-                            if let Err(err) = storage
-                                .upsert_message(&request.conversation_id, request.message)
-                                .await
-                            {
-                                log::error!("Failed to append message: {}", err);
-                                send_notice(
-                                    worker_tx,
-                                    NoticeType::Error,
-                                    format!("Failed to append message: {}", err),
-                                );
-                                return Err(err);
-                            }
-                            log::debug!("Upserted message");
-                        }
-
-                        Action::RemoveConversation(id) => {
-                            if let Err(err) = storage.delete_conversation(&id).await {
-                                log::error!("Failed to delete conversation: {}", err);
-                                send_notice(
-                                    worker_tx,
-                                    NoticeType::Error,
-                                    format!("Failed to delete conversation: {}", err),
-                                );
-                                return Err(err);
-                            }
-                            worker_tx.send(Event::ConversationDeleted(id))?;
-                            log::debug!("Deleted conversation");
-                        }
-
-                        Action::UpsertConversation(conversation) => {
-                            if let Err(err) = storage.upsert_conversation(conversation).await {
-                                log::error!("Failed to upsert conversation: {}", err);
-                                send_notice(
-                                    worker_tx,
-                                    NoticeType::Error,
-                                    format!("Failed to upsert conversation: {}", err),
-                                );
-                                return Err(err);
-                            }
-                            log::debug!("Upserted conversation");
-                        }
-
                         Action::BackendSetModel(model) => {
                             if let Err(err) = self.backend.set_current_model(&model).await {
                                 log::error!("Failed to set model: {}", err);
                                 self.send_notice(
                                     NoticeType::Error,
                                     format!("Failed to set model: {}", err),
-                                );
+                                ).await;
                                 continue;
                             }
-                            worker_tx.send(Event::ModelChanged(model))?;
+                            worker_tx.send(Event::ModelChanged(model)).await?;
                         }
 
                         Action::BackendAbort => {
                             worker.abort();
-                            worker_tx.send(Event::AbortRequest)?;
+                            worker_tx.send(Event::AbortRequest).await?;
                         }
 
                         Action::BackendRequest(prompt) => {
                             worker = tokio::spawn(async move {
-                                if let Err(err) = completions(&backend, prompt, &worker_tx).await {
-                                    worker_error(err, &worker_tx)?;
+                                if let Err(err) = completions(&backend, prompt, Arc::clone(&worker_tx)).await {
+                                    worker_error(err, Arc::clone(&worker_tx)).await?;
                                 }
                                 Ok(())
                             })
                         }
 
                         Action::CopyMessages(messages) => {
-                            if let Err(err) = self.copy_messages(messages) {
+                            if let Err(err) = self.copy_messages(messages).await {
                                 log::error!("Failed to copy messages: {}", err);
                                 self.send_notice(
                                     NoticeType::Error,
                                     format!("Failed to copy messages: {}", err),
-                                );
+                                ).await;
                             }
                         }
                     }
@@ -151,17 +92,18 @@ impl ActionService<'_> {
         }
     }
 
-    fn send_notice(&self, notice_type: NoticeType, message: impl Into<String>) {
+    async fn send_notice(&self, notice_type: NoticeType, message: impl Into<String>) {
         self.event_tx
             .send(Event::Notice(
                 NoticeMessage::new(message).with_type(notice_type),
             ))
+            .await
             .unwrap_or_else(|err| {
                 log::error!("Failed to send notice: {}", err);
             });
     }
 
-    fn copy_messages(&self, messages: Vec<Message>) -> Result<()> {
+    async fn copy_messages(&self, messages: Vec<Message>) -> Result<()> {
         let mut payload = messages[0].text().to_string();
         if messages.len() > 1 {
             payload = messages
@@ -173,7 +115,8 @@ impl ActionService<'_> {
 
         ClipboardService::set(payload)?;
         self.event_tx
-            .send(Event::Notice(NoticeMessage::new("Copied to clipboard!")))?;
+            .send(Event::Notice(NoticeMessage::new("Copied to clipboard!")))
+            .await?;
         Ok(())
     }
 }
@@ -181,31 +124,19 @@ impl ActionService<'_> {
 async fn completions(
     backend: &ArcBackend,
     prompt: BackendPrompt,
-    event_tx: &mpsc::UnboundedSender<Event>,
+    event_tx: ArcEventTx,
 ) -> Result<()> {
     backend.get_completion(prompt, event_tx).await?;
     Ok(())
 }
 
-fn worker_error(err: eyre::Error, event_tx: &mpsc::UnboundedSender<Event>) -> Result<()> {
-    event_tx.send(Event::BackendMessage(Message::new_system(
-        "system",
-        format!("Error: Backend failed with the following error: \n\n {err:?}"),
-    )))?;
+async fn worker_error(err: eyre::Error, event_tx: ArcEventTx) -> Result<()> {
+    event_tx
+        .send(Event::BackendMessage(Message::new_system(
+            "system",
+            format!("Error: Backend failed with the following error: \n\n {err:?}"),
+        )))
+        .await?;
 
     Ok(())
-}
-
-fn send_notice(
-    event_tx: mpsc::UnboundedSender<Event>,
-    notice_type: NoticeType,
-    message: impl Into<String>,
-) {
-    event_tx
-        .send(Event::Notice(
-            NoticeMessage::new(message).with_type(notice_type),
-        ))
-        .unwrap_or_else(|err| {
-            log::error!("Failed to send notice: {}", err);
-        });
 }

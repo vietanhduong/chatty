@@ -6,6 +6,7 @@ pub struct Conversation {
     id: String,
     title: String,
     messages: Vec<Message>,
+    context: Vec<Context>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -49,6 +50,21 @@ impl Conversation {
 
     pub fn with_messages(mut self, messages: Vec<Message>) -> Self {
         self.messages = messages;
+        self.messages.sort_by(|a, b| {
+            a.created_at()
+                .partial_cmp(&b.created_at())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        self
+    }
+
+    pub fn with_context(mut self, context: Vec<Context>) -> Self {
+        self.context = context;
+        self.context.sort_by(|a, b| {
+            a.created_at()
+                .partial_cmp(&b.created_at())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         self
     }
 
@@ -58,6 +74,20 @@ impl Conversation {
 
     pub fn add_message(&mut self, message: Message) {
         self.messages.push(message);
+        self.messages.sort_by(|a, b| {
+            a.created_at()
+                .partial_cmp(&b.created_at())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+
+    pub fn add_context(&mut self, context: Context) {
+        self.context.push(context);
+        self.context.sort_by(|a, b| {
+            a.created_at()
+                .partial_cmp(&b.created_at())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     pub fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
@@ -96,16 +126,41 @@ impl Conversation {
         &mut self.messages
     }
 
+    pub fn contexts_mut(&mut self) -> &mut Vec<Context> {
+        &mut self.context
+    }
+
+    pub fn contexts(&self) -> &[Context] {
+        &self.context
+    }
+
     /// Return a vector of messages. The return vector is alway end up
     /// with a message from system
     pub fn build_context(&self) -> Vec<Message> {
         // If the conversation has less than 3 messages, return an empty vector
         // 1 for hello message and 1 for user message so which means the conversation
         // is not started yet. No context is needed.
-        if self.messages.len() < 3 {
+        if self.messages.len() < 3 && self.context.is_empty() {
             return vec![];
         }
-        let mut context = self.messages[1..].to_vec();
+
+        let mut context: Vec<Message> = self.context.iter().map(|ctx| ctx.into()).collect();
+
+        match self.context.last() {
+            Some(ctx) => {
+                // Find the index of the last message in the messages and
+                // append the next messages to the context
+                let last_message_index = self
+                    .messages
+                    .iter()
+                    .position(|msg| msg.id() == ctx.last_message_id())
+                    .unwrap_or(self.messages.len() - 2);
+                // Append the next messages to the context
+                context.extend(self.messages[last_message_index + 1..].to_vec());
+            }
+            None => context.extend(self.messages[1..].to_vec()),
+        }
+
         if !context.last().unwrap().is_system() {
             context.pop();
         }
@@ -128,6 +183,106 @@ impl Conversation {
             }
         }
         None
+    }
+
+    pub fn token_count(&self) -> usize {
+        self.messages.iter().map(|msg| msg.token_count()).sum()
+    }
+}
+
+impl Default for Conversation {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            title: "New Chat".to_string(),
+            messages: vec![],
+            context: vec![],
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Context {
+    id: String,
+    content: String,
+    last_message_id: String,
+    token_count: usize,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl Context {
+    pub fn new(last_message_id: &str) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: String::new(),
+            token_count: 0,
+            last_message_id: last_message_id.to_string(),
+            created_at: chrono::Utc::now(),
+        }
+    }
+
+    pub fn with_token_count(mut self, token_count: usize) -> Self {
+        self.token_count = token_count;
+        self
+    }
+
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    pub fn with_content(mut self, content: impl Into<String>) -> Self {
+        self.content = content.into();
+        self
+    }
+
+    pub fn with_created_at(mut self, timestamp: chrono::DateTime<chrono::Utc>) -> Self {
+        self.created_at = timestamp;
+        self
+    }
+
+    pub fn with_last_message_id(mut self, last_message_id: impl Into<String>) -> Self {
+        self.last_message_id = last_message_id.into();
+        self
+    }
+
+    pub fn append_content(&mut self, content: impl Into<String>) {
+        self.content.push_str(&content.into());
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    pub fn last_message_id(&self) -> &str {
+        &self.last_message_id
+    }
+
+    pub fn created_at(&self) -> chrono::DateTime<chrono::Utc> {
+        self.created_at
+    }
+
+    pub fn token_count(&self) -> usize {
+        self.token_count
+    }
+
+    pub fn set_token_count(&mut self, token_count: usize) {
+        self.token_count = token_count;
+    }
+}
+
+impl From<&Context> for Message {
+    fn from(value: &Context) -> Message {
+        Message::new_system("system", &value.content)
+            .with_id(&value.id)
+            .with_created_at(value.created_at)
+            .with_token_count(value.token_count)
     }
 }
 
@@ -153,16 +308,4 @@ fn filter_issuer(issuer: Option<&Issuer>, msg: &Message) -> bool {
     }
 
     value.is_empty() || msg.issuer_str() == value
-}
-
-impl Default for Conversation {
-    fn default() -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            title: "New Chat".to_string(),
-            messages: vec![],
-            created_at: chrono::Utc::now(),
-            updated_at: None,
-        }
-    }
 }

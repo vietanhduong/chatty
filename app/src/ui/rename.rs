@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use openai_models::Event;
 use ratatui::{
     Frame,
@@ -12,7 +14,7 @@ pub struct Rename<'a> {
     showing: bool,
     text: String,
     input: TextArea<'a>,
-    callback: Option<Box<dyn Fn(&str) + 'a>>,
+    callback: Option<Box<dyn Fn(&str) -> Pin<Box<dyn Future<Output = ()>>> + 'a>>,
 }
 
 impl<'a> Rename<'a> {
@@ -23,7 +25,7 @@ impl<'a> Rename<'a> {
 
     pub fn set_callback<F>(&mut self, callback: F)
     where
-        F: Fn(&str) + 'a,
+        F: Fn(&str) -> Pin<Box<dyn Future<Output = ()>>> + 'a,
     {
         self.callback = Some(Box::new(callback));
     }
@@ -45,7 +47,7 @@ impl<'a> Rename<'a> {
         self.input.render(area, f.buffer_mut());
     }
 
-    pub fn handle_key_event(&mut self, event: &Event) -> bool {
+    pub async fn handle_key_event(&mut self, event: &Event) -> bool {
         match event {
             Event::Quit => {
                 self.showing = false;
@@ -60,7 +62,7 @@ impl<'a> Rename<'a> {
             Event::KeyboardEnter => {
                 self.text = self.input.lines().join("\n");
                 if let Some(callback) = &self.callback {
-                    callback(&self.text);
+                    callback(&self.text).await;
                 }
                 self.showing = false;
             }

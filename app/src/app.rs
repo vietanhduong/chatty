@@ -1,14 +1,15 @@
-use std::{cell::RefCell, collections::HashMap, io, rc::Rc, time};
+use std::{cell::RefCell, collections::HashMap, io, rc::Rc, sync::Arc, time};
 
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use eyre::Result;
+use openai_backend::Compressor;
 use openai_models::{
-    Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, UpsertMessage,
-    message::Issuer,
+    Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
+use openai_storage::ArcStorage;
 use ratatui::{
     Terminal,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
@@ -43,6 +44,7 @@ pub struct AppInitProps {
 
 pub struct App<'a> {
     action_tx: mpsc::UnboundedSender<Action>,
+    event_tx: mpsc::UnboundedSender<Event>,
 
     events: EventsService<'a>,
 
@@ -53,7 +55,12 @@ pub struct App<'a> {
     history_screen: HistoryScreen<'a>,
     input: tui_textarea::TextArea<'a>,
 
+    // FIXME: Holding the entire conversation in memory is not ideal
+    // but for now, we will do it this way
     conversations: HashMap<String, Rc<RefCell<Conversation>>>,
+
+    compressor: Arc<Compressor>,
+    storage: ArcStorage,
 
     notice: Notice,
     loading: Loading<'a>,
@@ -65,6 +72,8 @@ impl<'a> App<'a> {
         action_tx: mpsc::UnboundedSender<Action>,
         event_tx: mpsc::UnboundedSender<Event>,
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
+        compressor: Arc<Compressor>,
+        storage: ArcStorage,
         init_props: AppInitProps,
     ) -> App<'a> {
         let mut conversations: HashMap<String, Rc<RefCell<Conversation>>> = init_props
@@ -78,6 +87,9 @@ impl<'a> App<'a> {
         conversations.insert(default_id.clone(), Rc::clone(&default_conversation));
 
         App {
+            event_tx: event_tx.clone(),
+            compressor,
+            storage: storage.clone(),
             edit_screen: EditScreen::new(action_tx.clone(), theme),
             action_tx: action_tx.clone(),
             events: EventsService::new(event_rx),
@@ -89,7 +101,7 @@ impl<'a> App<'a> {
                 span!(" to abort!").gray(),
             ]),
             help_screen: HelpScreen::new(),
-            history_screen: HistoryScreen::new(event_tx.clone(), action_tx.clone())
+            history_screen: HistoryScreen::new(event_tx.clone(), storage)
                 .with_conversations(conversations.iter().map(|(_, v)| Rc::clone(v)).collect())
                 .with_current_conversation(default_id),
             conversations,
@@ -135,7 +147,7 @@ impl<'a> App<'a> {
         let event = self.events.next().await?;
 
         if let Event::Quit = event {
-            self.save_last_message()?;
+            self.save_last_message().await?;
         }
 
         if let Event::ConversationDeleted(id) = event {
@@ -148,13 +160,25 @@ impl<'a> App<'a> {
             return Ok(false);
         }
 
+        if let Event::ConversationUpdated(id) = event {
+            let convo = self.storage.get_conversation(&id).await?;
+            if let Some(convo) = convo {
+                let rc = Rc::new(RefCell::new(convo));
+                self.conversations.insert(id.clone(), rc.clone());
+                if self.app_state.conversation.borrow().id() == id {
+                    self.change_conversation(rc);
+                }
+            }
+            return Ok(false);
+        }
+
         if let Event::SetConversation(id) = event {
             if self.app_state.conversation.borrow().id() == id {
                 return Ok(false);
             }
             self.change_conversation(Rc::clone(self.conversations.get(&id).unwrap()));
             self.notice.info(format!(
-                "Changed conversation to \"{}\"",
+                "Switched to: \"{}\"",
                 self.app_state.conversation.borrow().title()
             ));
             return Ok(false);
@@ -207,55 +231,63 @@ impl<'a> App<'a> {
             Event::BackendPromptResponse(msg) => {
                 let notify = msg.done && msg.init_conversation;
                 let done = msg.done;
-                let usage = msg.usage.clone();
-                self.app_state.handle_backend_response(msg);
+                self.app_state.handle_backend_response(&msg);
 
                 if notify {
                     self.notice.add_message(
                         NoticeMessage::new(format!(
-                            "Title: {}",
+                            "Updated Title: \"{}\"",
                             self.app_state.conversation.borrow().title()
                         ))
                         .with_duration(time::Duration::from_secs(5)),
                     );
 
                     // Upsert the conversation to the storage
-                    self.action_tx.send(Action::UpsertConversation(
-                        self.app_state.conversation.borrow().clone(),
-                    ))?;
+                    self.storage
+                        .upsert_conversation(self.app_state.conversation.borrow().clone())
+                        .await?;
                 }
 
-                if done {
-                    let mut conversation = self.app_state.conversation.borrow_mut();
-                    let conversation_id = conversation.id().to_string();
+                if !done {
+                    return Ok(false);
+                }
 
-                    if usage.is_some() {
-                        let usage = usage.unwrap();
-                        if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::user())) {
-                            msg.set_token_count(usage.prompt_tokens);
-                            self.action_tx.send(Action::UpsertMessage(UpsertMessage {
-                                conversation_id: conversation_id.clone(),
-                                message: msg.clone(),
-                            }))?;
-                        }
+                let mut conversation = self.app_state.conversation.borrow_mut();
+                let conversation_id = conversation.id().to_string();
 
-                        if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::system()))
-                        {
-                            msg.set_token_count(usage.completion_tokens);
-                        }
-
-                        // If the usage is not empty, show it
-                        self.notice.add_message(
-                            NoticeMessage::info(format!("Usage: {}", usage.to_string()))
-                                .with_duration(time::Duration::from_secs(6)),
-                        );
+                if let Some(ref usage) = msg.usage {
+                    if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::user())) {
+                        msg.set_token_count(usage.prompt_tokens);
+                        self.storage
+                            .upsert_message(&conversation_id, msg.clone())
+                            .await?;
                     }
 
-                    // Upsert message to the storage
-                    self.action_tx.send(Action::UpsertMessage(UpsertMessage {
-                        conversation_id: conversation_id.clone(),
-                        message: conversation.last_message().unwrap().clone(),
-                    }))?;
+                    if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::system())) {
+                        msg.set_token_count(usage.completion_tokens);
+                    }
+
+                    // If the usage is not empty, show it
+                    self.notice.add_message(
+                        NoticeMessage::info(format!("Usage: {}", usage.to_string()))
+                            .with_duration(time::Duration::from_secs(6)),
+                    );
+                }
+
+                // Upsert message to the storage
+                self.storage
+                    .upsert_message(
+                        &conversation_id,
+                        conversation.last_message().unwrap().clone(),
+                    )
+                    .await?;
+
+                // If the conversation should be compressed, we will process it
+                // in the background and notify the app when it's done to fetch
+                // the context and update the conversation. This will mitigate
+                // impact to the current conversation.
+                if self.compressor.should_compress(&conversation) {
+                    self.handle_convo_compress(&conversation_id);
                 }
             }
             Event::KeyboardCharInput(c) => {
@@ -338,9 +370,7 @@ impl<'a> App<'a> {
                             .bubble_list
                             .remove_message_by_index(i as usize);
                         // Tell the storage to remove the message
-                        self.action_tx
-                            .send(Action::RemoveMessage(con.id().to_string()))?;
-
+                        self.storage.delete_messsage(con.id()).await?;
                         i -= 1;
                     }
                 }
@@ -404,22 +434,22 @@ impl<'a> App<'a> {
                     self.history_screen
                         .set_current_conversation(conversation_id.clone());
 
-                    self.action_tx.send(Action::UpsertConversation(
-                        self.app_state.conversation.borrow().clone(),
-                    ))?;
+                    self.storage
+                        .upsert_conversation(self.app_state.conversation.borrow().clone())
+                        .await?;
 
                     // Save the first message to the storage
-                    self.action_tx.send(Action::UpsertMessage(UpsertMessage {
-                        conversation_id: conversation_id.clone(),
-                        message: self.app_state.conversation.borrow().messages()[0].clone(),
-                    }))?;
+                    self.storage
+                        .upsert_message(
+                            &conversation_id,
+                            self.app_state.conversation.borrow().messages()[0].clone(),
+                        )
+                        .await?;
                 }
 
-                self.action_tx.send(Action::UpsertMessage(UpsertMessage {
-                    conversation_id: conversation_id.clone(),
-                    message: msg.clone(),
-                }))?;
-
+                self.storage
+                    .upsert_message(&conversation_id, msg.clone())
+                    .await?;
                 self.action_tx.send(Action::BackendRequest(prompt))?;
             }
 
@@ -519,6 +549,85 @@ impl<'a> App<'a> {
         }
     }
 
+    fn handle_convo_compress(&self, conversation_id: &str) {
+        let storage = self.storage.clone();
+        let compressor = self.compressor.clone();
+        let conversation_id = conversation_id.to_string();
+        let model = self.models_screen.current_model().to_string();
+        let event_tx = self.event_tx.clone();
+        tokio::spawn(async move {
+            event_tx
+                .send(Event::Notice(NoticeMessage::warning(
+                    "Compressing conversation... Please do NOT close the app until this process is finished!"
+                )))
+                .ok();
+            let t0 = chrono::Utc::now();
+            let conversation = match storage.get_conversation(&conversation_id).await {
+                Ok(conversation) => match conversation {
+                    Some(conversation) => conversation,
+                    None => {
+                        log::warn!("Conversation not found");
+                        return;
+                    }
+                },
+                Err(err) => {
+                    log::error!("Failed to get conversation: {}", err);
+                    event_tx
+                        .send(Event::Notice(NoticeMessage::warning(format!(
+                            "Failed to get conversation: {}",
+                            err
+                        ))))
+                        .ok();
+                    return;
+                }
+            };
+
+            let context = match compressor.compress(&model, &conversation).await {
+                Ok(context) => match context {
+                    Some(context) => context,
+                    None => {
+                        log::warn!("No context found");
+                        return;
+                    }
+                },
+                Err(err) => {
+                    log::error!("Failed to compress conversation: {}", err);
+                    event_tx
+                        .send(Event::Notice(NoticeMessage::warning(format!(
+                            "Failed to compress conversation: {}",
+                            err
+                        ))))
+                        .ok();
+                    return;
+                }
+            };
+            // Push the context to the conversation
+            match storage.upsert_context(&conversation_id, context).await {
+                Ok(_) => {
+                    log::info!("Context compressed successfully");
+                    event_tx
+                        .send(Event::Notice(NoticeMessage::info(format!(
+                            "Context compressed successfully in {} seconds",
+                            (chrono::Utc::now() - t0).num_seconds()
+                        ))))
+                        .ok();
+                    event_tx
+                        .send(Event::ConversationUpdated(conversation_id))
+                        .ok();
+                }
+                Err(err) => {
+                    log::error!("Failed to save context: {}", err);
+                    event_tx
+                        .send(Event::Notice(NoticeMessage::warning(format!(
+                            "Failed to save context: {}",
+                            err
+                        ))))
+                        .ok();
+                }
+            }
+        });
+    }
+
     fn handle_new_conversation(&mut self) {
         if self.app_state.waiting_for_backend {
             self.app_state.waiting_for_backend = false;
@@ -559,17 +668,16 @@ impl<'a> App<'a> {
         default_conversation
     }
 
-    fn save_last_message(&mut self) -> Result<()> {
+    async fn save_last_message(&mut self) -> Result<()> {
         if !self.app_state.waiting_for_backend {
             // If no message is waiting, we can simply return the process
             return Ok(());
         }
         // Otherwise, let save the last message in the conversation
         let last_message = self.app_state.last_message().unwrap();
-        self.action_tx.send(Action::UpsertMessage(UpsertMessage {
-            conversation_id: self.app_state.conversation.borrow().id().to_string(),
-            message: last_message,
-        }))?;
+        self.storage
+            .upsert_message(self.app_state.conversation.borrow().id(), last_message)
+            .await?;
         Ok(())
     }
 

@@ -7,12 +7,12 @@ use std::{fmt::Display, time};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::stream::TryStreamExt;
-use openai_models::{BackendConnection, BackendPrompt, BackendUsage, Event};
+use openai_models::{ArcEventTx, BackendConnection, BackendPrompt, BackendUsage, Event};
 use openai_models::{BackendResponse, Message};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::io::AsyncBufReadExt;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::RwLock;
 use tokio_util::io::StreamReader;
 
 use crate::{Backend, TITLE_PROMPT};
@@ -153,11 +153,7 @@ impl Backend for Gemini {
         Ok(())
     }
 
-    async fn get_completion<'a>(
-        &self,
-        prompt: BackendPrompt,
-        event_tx: &'a mpsc::UnboundedSender<Event>,
-    ) -> Result<()> {
+    async fn get_completion(&self, prompt: BackendPrompt, event_tx: ArcEventTx) -> Result<()> {
         if self.current_model().await.is_none() && prompt.model().is_none() {
             bail!("no model is set");
         }
@@ -173,7 +169,7 @@ impl Backend for Gemini {
         }
 
         let init_conversation = prompt.context().is_empty();
-        let content = if init_conversation {
+        let content = if init_conversation && !prompt.no_generate_title() {
             format!("{}\n{}", prompt.text(), TITLE_PROMPT)
         } else {
             prompt.text().to_string()
@@ -273,7 +269,7 @@ impl Backend for Gemini {
                 init_conversation,
                 usage: None,
             };
-            event_tx.send(Event::BackendPromptResponse(msg))?;
+            event_tx.send(Event::BackendPromptResponse(msg)).await?;
         }
 
         let content = process_line_buffer(&line_buf)?;
@@ -301,7 +297,7 @@ impl Backend for Gemini {
             init_conversation,
             usage,
         };
-        event_tx.send(Event::BackendPromptResponse(msg))?;
+        event_tx.send(Event::BackendPromptResponse(msg)).await?;
         Ok(())
     }
 }

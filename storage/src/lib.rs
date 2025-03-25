@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use eyre::Result;
 use openai_models::{
-    Conversation, Message,
+    Context, Conversation, Message,
     config::{Configuration, StorageConfig},
     storage::FilterConversation,
 };
@@ -28,6 +28,7 @@ pub trait Storage {
     ) -> Result<()>;
     async fn upsert_message(&self, conversation_id: &str, message: Message) -> Result<()>;
     async fn delete_messsage(&self, id: &str) -> Result<()>;
+    async fn upsert_context(&self, conversation_id: &str, context: Context) -> Result<()>;
 }
 
 pub type ArcStorage = Arc<dyn Storage + Send + Sync>;

@@ -1,53 +1,21 @@
 pub mod backend;
 pub mod configuration;
+pub mod constants;
 pub mod conversation;
+pub mod event;
 pub mod message;
 pub mod storage;
 
 use std::time;
 
 use ratatui::style::Color;
-use tui_textarea::Input;
 
 pub use backend::*;
-pub use conversation::Conversation;
+pub use conversation::{Context, Conversation};
 pub use message::Message;
 
-pub use crate::configuration as config;
-
-#[derive(Debug)]
-pub enum Event {
-    Notice(NoticeMessage),
-
-    AbortRequest,
-    ModelChanged(String),
-    BackendMessage(Message),
-    BackendPromptResponse(BackendResponse),
-
-    KeyboardCharInput(Input),
-    KeyboardEsc,
-    KeyboardEnter,
-    KeyboardAltEnter,
-    KeyboardCtrlC,
-    KeyboardCtrlR,
-    KeyboardCtrlN,
-    KeyboardCtrlE,
-    KeyboardCtrlL,
-    KeyboardCtrlH,
-    KeyboardF1,
-    KeyboardPaste(String),
-
-    Quit,
-
-    UiTick,
-    UiScrollUp,
-    UiScrollDown,
-    UiScrollPageUp,
-    UiScrollPageDown,
-
-    SetConversation(String),
-    ConversationDeleted(String),
-}
+pub use configuration as config;
+pub use event::{ArcEventTx, Event, EventTx};
 
 pub enum Action {
     BackendAbort,
@@ -55,35 +23,10 @@ pub enum Action {
     BackendSetModel(String),
 
     CopyMessages(Vec<Message>),
-
-    UpsertConversation(Conversation),
-    UpsertMessage(UpsertMessage),
-    RemoveMessage(String),
-    RemoveConversation(String),
-}
-
-impl Event {
-    pub fn is_keyboard_event(&self) -> bool {
-        match self {
-            Event::KeyboardCharInput(_) => true,
-            Event::KeyboardEsc => true,
-            Event::KeyboardEnter => true,
-            Event::KeyboardAltEnter => true,
-            Event::Quit => true,
-            Event::KeyboardCtrlC => true,
-            Event::KeyboardCtrlR => true,
-            Event::KeyboardCtrlN => true,
-            Event::KeyboardCtrlE => true,
-            Event::KeyboardCtrlL => true,
-            Event::KeyboardCtrlH => true,
-            Event::KeyboardF1 => true,
-            Event::UiScrollUp => true,
-            Event::UiScrollDown => true,
-            Event::UiScrollPageUp => true,
-            Event::UiScrollPageDown => true,
-            _ => false,
-        }
-    }
+    // UpsertConversation(Conversation),
+    // UpsertMessage(UpsertMessage),
+    // RemoveMessage(String),
+    // RemoveConversation(String),
 }
 
 #[derive(Debug, Clone)]

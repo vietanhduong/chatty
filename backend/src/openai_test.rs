@@ -1,4 +1,4 @@
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 use super::*;
 
@@ -125,11 +125,12 @@ async fn test_get_completion() {
         .create();
 
     let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
+    let sender: ArcEventTx = Arc::new(tx);
 
     let backend = setup_backend(server.url()).await;
 
     backend
-        .get_completion(prompt, &tx)
+        .get_completion(prompt, sender)
         .await
         .expect("Failed to get completion");
     completion_handler.assert();

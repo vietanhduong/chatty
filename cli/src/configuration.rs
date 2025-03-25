@@ -107,6 +107,13 @@ mod tests {
 
         let backend = config.backend().unwrap();
         assert_eq!(backend.connections().len(), 2);
+        assert_eq!(backend.timeout_secs(), Some(60));
+
+        let compression = backend.context_compression();
+        assert_eq!(compression.enabled(), true);
+        assert_eq!(compression.max_tokens(), 120_000);
+        assert_eq!(compression.keep_n_messages(), 10);
+        assert_eq!(compression.max_messages(), 100);
 
         let deepseek = backend
             .connections()

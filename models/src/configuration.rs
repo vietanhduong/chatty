@@ -1,8 +1,9 @@
-use core::time;
-
 use serde::{Deserialize, Serialize};
 
-use crate::BackendConnection;
+use crate::{
+    BackendConnection,
+    constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH},
+};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Configuration {
@@ -40,8 +41,18 @@ pub struct ThemeConfig {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BackendConfig {
     default_model: Option<String>,
-    timeout: Option<time::Duration>,
+
+    context_compression: ContextCompression,
+    timeout_secs: Option<u16>,
     connections: Vec<BackendConnection>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ContextCompression {
+    enabled: bool,
+    max_tokens: usize,
+    max_messages: usize,
+    keep_n_messages: usize,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -132,8 +143,30 @@ impl BackendConfig {
         self.default_model.as_deref()
     }
 
-    pub fn timeout(&self) -> Option<time::Duration> {
-        self.timeout
+    pub fn timeout_secs(&self) -> Option<u16> {
+        self.timeout_secs
+    }
+
+    pub fn context_compression(&self) -> &ContextCompression {
+        &self.context_compression
+    }
+}
+
+impl ContextCompression {
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn max_tokens(&self) -> usize {
+        self.max_tokens
+    }
+
+    pub fn max_messages(&self) -> usize {
+        self.max_messages
+    }
+
+    pub fn keep_n_messages(&self) -> usize {
+        self.keep_n_messages
     }
 }
 
@@ -188,7 +221,19 @@ impl Default for BackendConfig {
         Self {
             default_model: None,
             connections: vec![],
-            timeout: None,
+            timeout_secs: None,
+            context_compression: ContextCompression::default(),
+        }
+    }
+}
+
+impl Default for ContextCompression {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_tokens: MAX_CONTEXT_LENGTH,
+            max_messages: MAX_CONVO_LENGTH,
+            keep_n_messages: KEEP_N_MEESAGES,
         }
     }
 }

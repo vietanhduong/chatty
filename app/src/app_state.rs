@@ -56,7 +56,7 @@ impl<'a> AppState<'a> {
         self.conversation.borrow().last_message().cloned()
     }
 
-    pub(crate) fn handle_backend_response(&mut self, resp: BackendResponse) {
+    pub(crate) fn handle_backend_response(&mut self, resp: &BackendResponse) {
         {
             let mut conversation = self.conversation.borrow_mut();
             let last_message = conversation.last_message().unwrap();
