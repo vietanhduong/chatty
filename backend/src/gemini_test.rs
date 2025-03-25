@@ -106,54 +106,8 @@ async fn test_set_current_model() {
 
 #[tokio::test]
 async fn test_get_completion() {
-    let body = r#"
-{
-  "contents": [
-    {
-      "parts": [
-        {
-          "text": "How "
-        }
-      ]
-    },
-    {
-      "parts": [
-        {
-          "text": "can "
-        }
-      ]
-    },
-    {
-      "parts": [
-        {
-          "text": "I "
-        }
-      ]
-    },
-    {
-      "parts": [
-        {
-          "text": "help "
-        }
-      ]
-    },
-    {
-      "parts": [
-        {
-          "text": "you?"
-        }
-      ]
-    },
-    {
-      "parts": [
-        {
-          "text": ""
-        }
-      ]
-    }
-  ]
-}
-    "#;
+    let body = std::fs::read_to_string("./testdata/gemini_response.json")
+        .expect("Failed to read test data");
 
     let prompt = BackendPrompt::new("Hello").with_model("gemini-2.0-flash");
 
@@ -179,10 +133,10 @@ async fn test_get_completion() {
         .expect("Failed to get completion");
     completion_handler.assert();
 
-    let events = collect_responses(&mut rx, time::Duration::from_secs(5), 6)
+    let events = collect_responses(&mut rx, time::Duration::from_secs(5), 4)
         .await
         .expect("Failed to collect events");
-    assert_eq!(events.len(), 6);
+    assert_eq!(events.len(), 4);
 
     let text = events
         .iter()
@@ -190,9 +144,9 @@ async fn test_get_completion() {
         .collect::<Vec<_>>()
         .join("");
 
-    assert_eq!(text, "How can I help you?");
+    assert_eq!(text, "This is a test");
     let last = events.last().unwrap();
-    assert_eq!(last.text, "");
+    assert_eq!(last.text, "test");
     assert_eq!(last.done, true);
     assert_eq!(last.model, "gemini-2.0-flash");
     assert_eq!(last.init_conversation, true);

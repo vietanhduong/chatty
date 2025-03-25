@@ -4,7 +4,6 @@ members = ["app", "backend", "cli", "models", "storage"]
 default-members = ["cli"]
 
 [workspace.package]
-name = "openai-tui"
 version = "0.1.0"
 edition = "2024"
 authors = ["Viet-Anh Duong <vietanhs0817@gmail.com>"]

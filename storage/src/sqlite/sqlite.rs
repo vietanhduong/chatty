@@ -57,7 +57,7 @@ impl Storage for Sqlite {
 
         let conversation = match conversations.get(id) {
             Some(conversation) => conversation.clone(),
-            None => return Err(eyre::eyre!("conversation not found")),
+            None => return Ok(None),
         };
         let messages = self.get_messages(conversation.id()).await?;
         Ok(Some(conversation.with_messages(messages)))
