@@ -1,9 +1,9 @@
-pub mod convo_compressor;
+pub mod compressor;
 pub mod gemini;
 pub mod manager;
 pub mod openai;
 
-pub use convo_compressor::ConvoCompressor;
+pub use compressor::Compressor;
 pub use gemini::Gemini;
 pub use manager::Manager;
 pub use openai::OpenAI;

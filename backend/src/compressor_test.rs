@@ -71,7 +71,7 @@ async fn test_compress() {
             })
         });
 
-    let compressor = ConvoCompressor::new(Arc::new(backend))
+    let compressor = Compressor::new(Arc::new(backend))
         .with_context_length(10)
         .with_conversation_length(10);
 

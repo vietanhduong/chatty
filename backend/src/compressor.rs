@@ -1,6 +1,6 @@
 #[cfg(test)]
-#[path = "convo_compressor_test.rs"]
-mod convo_compressor_test;
+#[path = "compressor_test.rs"]
+mod tests;
 
 use crate::ArcBackend;
 use eyre::{Context, Result, bail};
@@ -12,7 +12,7 @@ pub const MAX_CONTEXT_LENGTH: usize = 64 * 1024; // 64k tokens
 pub const MAX_CONVO_LENGTH: usize = 50; // 50 messages
 pub const KEEP_N_MEESAGES: usize = 5; // Keep last 5 messages
 
-pub struct ConvoCompressor {
+pub struct Compressor {
     max_context_length: usize,
     max_convo_length: usize,
     keep_n_messages: usize,
@@ -20,7 +20,7 @@ pub struct ConvoCompressor {
     backend: ArcBackend,
 }
 
-impl ConvoCompressor {
+impl Compressor {
     pub fn new(backend: ArcBackend) -> Self {
         Self {
             backend,
@@ -71,22 +71,22 @@ impl ConvoCompressor {
     pub async fn compress(
         &self,
         model: &str,
-        conversation: &Conversation,
+        convo: &Conversation,
     ) -> Result<Option<ConvoContext>> {
-        if !self.should_compress(conversation) {
+        if !self.should_compress(convo) {
             return Ok(None);
         }
 
-        let checkpoint = match find_checkpoint(conversation, self.keep_n_messages) {
+        let checkpoint = match find_checkpoint(convo, self.keep_n_messages) {
             Some(checkpoint) => checkpoint,
             None => {
                 return Ok(None);
             }
         };
 
-        let last_message_id = conversation.messages()[checkpoint].id();
+        let last_message_id = convo.messages()[checkpoint].id();
 
-        let message = conversation.messages()[..checkpoint + 1]
+        let message = convo.messages()[..checkpoint + 1]
             .iter()
             .map(|msg| {
                 format!(
