@@ -272,14 +272,33 @@ impl<'a> HistoryScreen<'a> {
 
     pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
         if self.rename.showing() {
-            if self.rename.handle_key_event(event).await {
-                return Ok(true);
+            match event {
+                Event::KeyboardEnter => {
+                    let text = self.rename.close().unwrap_or_default();
+                    self.on_rename(text).await
+                }
+                Event::KeyboardCtrlC | Event::KeyboardEsc => {
+                    self.rename.close();
+                }
+                _ => self.rename.handle_key_event(event),
             }
             return Ok(false);
         }
 
         if self.question.showing() {
-            self.question.handle_key_event(event).await;
+            match event {
+                Event::KeyboardCharInput(input) => match input.key {
+                    Key::Char('y') => {
+                        self.on_delete().await;
+                        self.question.close();
+                    }
+                    Key::Char('n') | Key::Char('q') => {
+                        self.question.close();
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
             return Ok(false);
         }
 
@@ -333,33 +352,7 @@ impl<'a> HistoryScreen<'a> {
                             .yellow(),
                         span!("?"),
                     ];
-                    let storage = self.storage.clone();
-                    let event_tx = self.event_tx.clone();
-                    self.question.set_question(quest);
-                    self.question.set_callback(move |confirm| {
-                        if !confirm {
-                            return Box::pin(async {});
-                        }
-
-                        let storage = storage.clone();
-                        let event_tx = event_tx.clone();
-                        let conversation_id = conversation.borrow().id().to_string();
-                        event_tx
-                            .send(Event::ConversationDeleted(conversation_id.clone()))
-                            .ok();
-                        Box::pin(async move {
-                            if let Err(err) = storage.delete_conversation(&conversation_id).await {
-                                log::error!("Failed to delete conversation: {}", err);
-                                event_tx
-                                    .send(Event::Notice(NoticeMessage::warning(format!(
-                                        "Failed to delete conversation: {}",
-                                        err
-                                    ))))
-                                    .ok();
-                            }
-                        })
-                    });
-                    self.question.toggle_showing();
+                    self.question.open(quest);
                 }
                 Key::Char('r') => {
                     if let Some(conversation) = self.get_selected_conversation() {
@@ -367,32 +360,8 @@ impl<'a> HistoryScreen<'a> {
                         if conversation.borrow().len() < 2 {
                             return Ok(false);
                         }
-
-                        let storage = self.storage.clone();
-                        self.rename.set_text(conversation.borrow().title());
-                        let event_tx = self.event_tx.clone();
-                        self.rename.set_callback(move |new_title| {
-                            if new_title.is_empty() || new_title == conversation.borrow().title() {
-                                return Box::pin(async {});
-                            }
-
-                            conversation.borrow_mut().set_title(new_title);
-                            let conversation = conversation.borrow().clone();
-                            let storage = storage.clone();
-                            let event_tx = event_tx.clone();
-                            Box::pin(async move {
-                                if let Err(err) = storage.upsert_conversation(conversation).await {
-                                    log::error!("Failed to rename conversation: {}", err);
-                                    event_tx
-                                        .send(Event::Notice(NoticeMessage::warning(format!(
-                                            "Failed to rename conversation: {}",
-                                            err
-                                        ))))
-                                        .ok();
-                                }
-                            })
-                        });
-                        self.rename.toggle_showing();
+                        let title = conversation.borrow().title().to_string();
+                        self.rename.open(title);
                     }
                 }
                 _ => {}
@@ -406,6 +375,52 @@ impl<'a> HistoryScreen<'a> {
             _ => {}
         }
         Ok(false)
+    }
+
+    async fn on_delete(&mut self) {
+        let conversation = match self.get_selected_conversation() {
+            Some(c) => c,
+            None => return,
+        };
+
+        let convo_id = conversation.borrow().id().to_string();
+        if let Err(err) = self.storage.delete_conversation(&convo_id).await {
+            log::error!("Failed to delete conversation: {}", err);
+            self.event_tx
+                .send(Event::Notice(NoticeMessage::warning(format!(
+                    "Failed to delete conversation: {}",
+                    err
+                ))))
+                .ok();
+            return;
+        }
+
+        self.event_tx
+            .send(Event::ConversationDeleted(convo_id))
+            .ok();
+    }
+
+    async fn on_rename(&mut self, new_title: String) {
+        let conversation = match self.get_selected_conversation() {
+            Some(c) => c,
+            None => return,
+        };
+
+        if new_title.is_empty() || new_title == conversation.borrow().title() {
+            return;
+        }
+
+        conversation.borrow_mut().set_title(new_title.clone());
+        let conversation = conversation.borrow().clone();
+        if let Err(err) = self.storage.upsert_conversation(conversation).await {
+            log::error!("Failed to rename conversation: {}", err);
+            self.event_tx
+                .send(Event::Notice(NoticeMessage::warning(format!(
+                    "Failed to rename conversation: {}",
+                    err
+                ))))
+                .ok();
+        }
     }
 
     pub fn get_selected_conversation_id(&self) -> Option<&str> {

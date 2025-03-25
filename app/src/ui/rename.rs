@@ -1,5 +1,3 @@
-use std::pin::Pin;
-
 use openai_models::Event;
 use ratatui::{
     Frame,
@@ -15,28 +13,26 @@ pub struct Rename<'a> {
     showing: bool,
     text: String,
     input: TextArea<'a>,
-    callback: Option<Box<dyn Fn(&str) -> Pin<Box<dyn Future<Output = ()>>> + 'a>>,
 }
 
 impl<'a> Rename<'a> {
-    pub fn set_text(&mut self, text: &str) {
-        self.text = text.to_string();
-        self.input = build_input(text);
-    }
-
-    pub fn set_callback<F>(&mut self, callback: F)
-    where
-        F: Fn(&str) -> Pin<Box<dyn Future<Output = ()>>> + 'a,
-    {
-        self.callback = Some(Box::new(callback));
-    }
-
     pub fn showing(&self) -> bool {
         self.showing
     }
 
-    pub fn toggle_showing(&mut self) {
-        self.showing = !self.showing;
+    pub fn open(&mut self, text: impl Into<String>) {
+        self.text = text.into();
+        self.input = build_input(&self.text);
+        self.showing = true;
+    }
+
+    pub fn close(&mut self) -> Option<String> {
+        if self.showing {
+            self.showing = false;
+            let text = self.input.lines().join("\n");
+            return Some(text);
+        }
+        None
     }
 
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
@@ -48,28 +44,13 @@ impl<'a> Rename<'a> {
         self.input.render(area, f.buffer_mut());
     }
 
-    pub async fn handle_key_event(&mut self, event: &Event) -> bool {
+    pub fn handle_key_event(&mut self, event: &Event) {
         match event {
-            Event::Quit => {
-                self.showing = false;
-                return true;
-            }
-            Event::KeyboardEsc | Event::KeyboardCtrlC => {
-                self.showing = false;
-            }
             Event::KeyboardCharInput(input) => {
                 self.input.input(input.clone());
             }
-            Event::KeyboardEnter => {
-                self.text = self.input.lines().join("\n");
-                if let Some(callback) = &self.callback {
-                    callback(&self.text).await;
-                }
-                self.showing = false;
-            }
             _ => {}
         }
-        return false;
     }
 }
 

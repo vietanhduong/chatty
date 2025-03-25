@@ -221,13 +221,19 @@ impl<'a> App<'a> {
             }
 
             Event::AbortRequest => {
-                self.app_state
-                    .add_message(Message::new_system("system", "Aborted!"));
+                let convo_id = self.app_state.conversation.borrow().id().to_string();
+                let message = Message::new_system("system", "Aborted!");
+                self.app_state.add_message(message.clone());
+                self.storage.upsert_message(&convo_id, message).await?;
             }
+
             Event::BackendMessage(msg) => {
-                self.app_state.add_message(msg);
+                let convo_id = self.app_state.conversation.borrow().id().to_string();
+                self.app_state.add_message(msg.clone());
+                self.storage.upsert_message(&convo_id, msg).await?;
                 self.app_state.waiting_for_backend = false;
             }
+
             Event::BackendPromptResponse(msg) => {
                 let notify = msg.done && msg.init_conversation;
                 let done = msg.done;

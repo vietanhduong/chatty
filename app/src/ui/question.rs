@@ -1,6 +1,3 @@
-use std::pin::Pin;
-
-use openai_models::Event;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -9,7 +6,6 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, Padding},
 };
 use ratatui_macros::span;
-use tui_textarea::Key;
 
 use super::helpers;
 
@@ -17,7 +13,6 @@ pub struct Question<'a> {
     showing: bool,
     question: Line<'a>,
     title: Option<Line<'a>>,
-    answer_callback: Option<Box<dyn Fn(bool) -> Pin<Box<dyn Future<Output = ()>>> + 'a>>,
 }
 
 impl<'a> Question<'a> {
@@ -26,7 +21,6 @@ impl<'a> Question<'a> {
             title: None,
             showing: false,
             question: Line::default(),
-            answer_callback: None,
         }
     }
 
@@ -39,23 +33,17 @@ impl<'a> Question<'a> {
         self.title = Some(title.into());
     }
 
-    pub fn set_question(&mut self, question: impl Into<Line<'a>>) {
-        self.question = question.into();
-    }
-
-    pub fn set_callback<F>(&mut self, callback: F)
-    where
-        F: Fn(bool) -> Pin<Box<dyn Future<Output = ()>>> + 'a,
-    {
-        self.answer_callback = Some(Box::new(callback));
-    }
-
     pub fn showing(&self) -> bool {
         self.showing
     }
 
-    pub fn toggle_showing(&mut self) {
-        self.showing = !self.showing;
+    pub fn open(&mut self, question: impl Into<Line<'a>>) {
+        self.question = question.into();
+        self.showing = true;
+    }
+
+    pub fn close(&mut self) {
+        self.showing = false;
     }
 
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
@@ -95,32 +83,6 @@ impl<'a> Question<'a> {
 
         let text = Text::from(lines);
         f.render_widget(text, inner);
-    }
-
-    pub async fn handle_key_event(&mut self, event: &Event) {
-        match event {
-            Event::KeyboardCharInput(input) => match input.key {
-                Key::Char('q') => {
-                    self.showing = false;
-                }
-
-                Key::Char('y') => {
-                    if let Some(callback) = &self.answer_callback {
-                        callback(true).await;
-                    }
-                    self.showing = false;
-                }
-
-                Key::Char('n') => {
-                    if let Some(callback) = &self.answer_callback {
-                        callback(false).await;
-                    }
-                    self.showing = false;
-                }
-                _ => {}
-            },
-            _ => {}
-        }
     }
 }
 

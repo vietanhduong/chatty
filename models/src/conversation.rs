@@ -83,6 +83,7 @@ impl Conversation {
                 .partial_cmp(&b.created_at())
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
+        self.updated_at = Some(chrono::Utc::now());
     }
 
     pub fn append_context(&mut self, context: Context) {
