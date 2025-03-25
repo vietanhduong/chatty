@@ -73,12 +73,20 @@ async fn main() -> Result<()> {
 
     let mut bg_futures = task::JoinSet::new();
 
+    let ctx_compresions = backend_config.context_compression();
+
     let mut app = App::new(
         &theme,
         action_tx.clone(),
         event_tx.clone(),
         &mut event_rx,
-        Arc::new(Compressor::new(backend.clone())),
+        Arc::new(
+            Compressor::new(backend.clone())
+                .with_context_length(ctx_compresions.max_tokens())
+                .with_conversation_length(ctx_compresions.max_messages())
+                .with_keep_n_messages(ctx_compresions.keep_n_messages())
+                .with_enabled(ctx_compresions.enabled()),
+        ),
         storage,
         AppInitProps {
             default_model: model,

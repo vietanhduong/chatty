@@ -14,7 +14,13 @@ folder_path = "/etc/openai-tui/theme"
 
 [backend]
 default_model = "gpt-3.5-turbo"
-timeout = "60s"
+timeout_secs = 60
+
+[backend.context_compression]
+enabled = true
+max_tokens = 120000
+max_messages = 100
+keep_n_messages = 10
 
 [[backend.connections]]
 enabled = true

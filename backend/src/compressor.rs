@@ -4,15 +4,15 @@ mod tests;
 
 use crate::ArcBackend;
 use eyre::{Context, Result, bail};
-use openai_models::{ArcEventTx, BackendPrompt, Context as ConvoContext, Conversation, Event};
+use openai_models::{
+    ArcEventTx, BackendPrompt, Context as ConvoContext, Conversation, Event,
+    constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH},
+};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-pub const MAX_CONTEXT_LENGTH: usize = 64 * 1024; // 64k tokens
-pub const MAX_CONVO_LENGTH: usize = 50; // 50 messages
-pub const KEEP_N_MEESAGES: usize = 5; // Keep last 5 messages
-
 pub struct Compressor {
+    enabled: bool,
     max_context_length: usize,
     max_convo_length: usize,
     keep_n_messages: usize,
@@ -23,11 +23,21 @@ pub struct Compressor {
 impl Compressor {
     pub fn new(backend: ArcBackend) -> Self {
         Self {
+            enabled: true,
             backend,
             max_context_length: MAX_CONTEXT_LENGTH,
             max_convo_length: MAX_CONVO_LENGTH,
             keep_n_messages: KEEP_N_MEESAGES,
         }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
     }
 
     pub fn with_context_length(mut self, length: usize) -> Self {
@@ -36,7 +46,7 @@ impl Compressor {
     }
 
     pub fn with_keep_n_messages(mut self, size: usize) -> Self {
-        self.keep_n_messages = size.max(5);
+        self.keep_n_messages = size.max(KEEP_N_MEESAGES);
         self
     }
 
@@ -46,6 +56,10 @@ impl Compressor {
     }
 
     pub fn should_compress(&self, conversation: &Conversation) -> bool {
+        if !self.enabled {
+            return false;
+        }
+
         if conversation.len() < self.keep_n_messages {
             return false;
         }

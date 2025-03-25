@@ -14,7 +14,7 @@ use mockall::{automock, predicate::*};
 use async_trait::async_trait;
 use eyre::{Context, Result};
 use openai_models::{ArcEventTx, BackendKind, BackendPrompt, config::BackendConfig};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 const TITLE_PROMPT: &str = r#"
 
@@ -46,13 +46,14 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     }
 
     let mut manager = manager::Manager::default();
-    let default_timeout = config.timeout();
+    let default_timeout = config.timeout_secs();
     for connection in connections {
         let backend: ArcBackend = match connection.kind() {
             BackendKind::OpenAI => {
                 let mut connection = connection.clone();
                 if connection.timeout().is_none() && default_timeout.is_some() {
-                    connection = connection.with_timeout(default_timeout.unwrap());
+                    connection = connection
+                        .with_timeout(Duration::from_secs(default_timeout.unwrap() as u64));
                 }
                 let openai: OpenAI = (&connection).into();
                 Arc::new(openai)
@@ -60,7 +61,8 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
             BackendKind::Gemini => {
                 let mut connection = connection.clone();
                 if connection.timeout().is_none() && default_timeout.is_some() {
-                    connection = connection.with_timeout(default_timeout.unwrap());
+                    connection = connection
+                        .with_timeout(Duration::from_secs(default_timeout.unwrap() as u64));
                 }
                 let gemini: Gemini = (&connection).into();
                 Arc::new(gemini)

@@ -126,6 +126,14 @@ impl Conversation {
         &mut self.messages
     }
 
+    pub fn contexts_mut(&mut self) -> &mut Vec<Context> {
+        &mut self.context
+    }
+
+    pub fn contexts(&self) -> &[Context] {
+        &self.context
+    }
+
     /// Return a vector of messages. The return vector is alway end up
     /// with a message from system
     pub fn build_context(&self) -> Vec<Message> {

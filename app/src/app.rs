@@ -44,6 +44,7 @@ pub struct AppInitProps {
 
 pub struct App<'a> {
     action_tx: mpsc::UnboundedSender<Action>,
+    event_tx: mpsc::UnboundedSender<Event>,
 
     events: EventsService<'a>,
 
@@ -54,6 +55,8 @@ pub struct App<'a> {
     history_screen: HistoryScreen<'a>,
     input: tui_textarea::TextArea<'a>,
 
+    // FIXME: Holding the entire conversation in memory is not ideal
+    // but for now, we will do it this way
     conversations: HashMap<String, Rc<RefCell<Conversation>>>,
 
     compressor: Arc<Compressor>,
@@ -84,6 +87,7 @@ impl<'a> App<'a> {
         conversations.insert(default_id.clone(), Rc::clone(&default_conversation));
 
         App {
+            event_tx: event_tx.clone(),
             compressor,
             storage: storage.clone(),
             edit_screen: EditScreen::new(action_tx.clone(), theme),
@@ -156,13 +160,25 @@ impl<'a> App<'a> {
             return Ok(false);
         }
 
+        if let Event::ConversationUpdated(id) = event {
+            let convo = self.storage.get_conversation(&id).await?;
+            if let Some(convo) = convo {
+                let rc = Rc::new(RefCell::new(convo));
+                self.conversations.insert(id.clone(), rc.clone());
+                if self.app_state.conversation.borrow().id() == id {
+                    self.change_conversation(rc);
+                }
+            }
+            return Ok(false);
+        }
+
         if let Event::SetConversation(id) = event {
             if self.app_state.conversation.borrow().id() == id {
                 return Ok(false);
             }
             self.change_conversation(Rc::clone(self.conversations.get(&id).unwrap()));
             self.notice.info(format!(
-                "Changed conversation to \"{}\"",
+                "Switched to: \"{}\"",
                 self.app_state.conversation.borrow().title()
             ));
             return Ok(false);
@@ -220,7 +236,7 @@ impl<'a> App<'a> {
                 if notify {
                     self.notice.add_message(
                         NoticeMessage::new(format!(
-                            "Updated Title: `{}`",
+                            "Updated Title: \"{}\"",
                             self.app_state.conversation.borrow().title()
                         ))
                         .with_duration(time::Duration::from_secs(5)),
@@ -265,6 +281,14 @@ impl<'a> App<'a> {
                         conversation.last_message().unwrap().clone(),
                     )
                     .await?;
+
+                // If the conversation should be compressed, we will process it
+                // in the background and notify the app when it's done to fetch
+                // the context and update the conversation. This will mitigate
+                // impact to the current conversation.
+                if self.compressor.should_compress(&conversation) {
+                    self.handle_convo_compress(&conversation_id);
+                }
             }
             Event::KeyboardCharInput(c) => {
                 if !self.app_state.waiting_for_backend {
@@ -523,6 +547,85 @@ impl<'a> App<'a> {
                 return Ok(());
             }
         }
+    }
+
+    fn handle_convo_compress(&self, conversation_id: &str) {
+        let storage = self.storage.clone();
+        let compressor = self.compressor.clone();
+        let conversation_id = conversation_id.to_string();
+        let model = self.models_screen.current_model().to_string();
+        let event_tx = self.event_tx.clone();
+        tokio::spawn(async move {
+            event_tx
+                .send(Event::Notice(NoticeMessage::warning(
+                    "Compressing conversation... Please do NOT close the app until this process is finished!"
+                )))
+                .ok();
+            let t0 = chrono::Utc::now();
+            let conversation = match storage.get_conversation(&conversation_id).await {
+                Ok(conversation) => match conversation {
+                    Some(conversation) => conversation,
+                    None => {
+                        log::warn!("Conversation not found");
+                        return;
+                    }
+                },
+                Err(err) => {
+                    log::error!("Failed to get conversation: {}", err);
+                    event_tx
+                        .send(Event::Notice(NoticeMessage::warning(format!(
+                            "Failed to get conversation: {}",
+                            err
+                        ))))
+                        .ok();
+                    return;
+                }
+            };
+
+            let context = match compressor.compress(&model, &conversation).await {
+                Ok(context) => match context {
+                    Some(context) => context,
+                    None => {
+                        log::warn!("No context found");
+                        return;
+                    }
+                },
+                Err(err) => {
+                    log::error!("Failed to compress conversation: {}", err);
+                    event_tx
+                        .send(Event::Notice(NoticeMessage::warning(format!(
+                            "Failed to compress conversation: {}",
+                            err
+                        ))))
+                        .ok();
+                    return;
+                }
+            };
+            // Push the context to the conversation
+            match storage.upsert_context(&conversation_id, context).await {
+                Ok(_) => {
+                    log::info!("Context compressed successfully");
+                    event_tx
+                        .send(Event::Notice(NoticeMessage::info(format!(
+                            "Context compressed successfully in {} seconds",
+                            (chrono::Utc::now() - t0).num_seconds()
+                        ))))
+                        .ok();
+                    event_tx
+                        .send(Event::ConversationUpdated(conversation_id))
+                        .ok();
+                }
+                Err(err) => {
+                    log::error!("Failed to save context: {}", err);
+                    event_tx
+                        .send(Event::Notice(NoticeMessage::warning(format!(
+                            "Failed to save context: {}",
+                            err
+                        ))))
+                        .ok();
+                }
+            }
+        });
     }
 
     fn handle_new_conversation(&mut self) {

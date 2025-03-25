@@ -6,7 +6,9 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
-use openai_models::{Conversation, Message, message::Issuer, storage::FilterConversation};
+use openai_models::{
+    Context as ConvoContext, Conversation, Message, message::Issuer, storage::FilterConversation,
+};
 use tokio_rusqlite::{Connection, OpenFlags, ToSql, named_params, params};
 
 use crate::Storage;
@@ -48,52 +50,16 @@ impl Sqlite {
 #[async_trait]
 impl Storage for Sqlite {
     async fn get_conversation(&self, id: &str) -> Result<Option<Conversation>> {
-        let id = id.to_string();
-        let conversation =
-            self.conn
-                .call(move |conn| {
-                    let mut stmt = conn.prepare(
-                        "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
-                    )?;
-                    let mut rows = stmt.query(params![id])?;
+        let conversations = self
+            .get_conversations(FilterConversation::default().with_id(id))
+            .await
+            .wrap_err("getting conversation")?;
 
-                    let mut conversation: Option<Conversation> = None;
-                    if let Some(row) = rows.next()? {
-                        let id: String = row.get(0)?;
-                        let title: String = row.get(1)?;
-                        let created_at: i64 = row.get(2)?;
-                        let created_at = chrono::DateTime::from_timestamp_millis(created_at)
-                            .ok_or(tokio_rusqlite::Error::Other(
-                                eyre::eyre!("invalid created_at value").into(),
-                            ))?;
-
-                        let updated_at: i64 = row.get(3)?;
-                        let updated_at = chrono::DateTime::from_timestamp_millis(updated_at)
-                            .ok_or(tokio_rusqlite::Error::Other(
-                                eyre::eyre!("invalid updated_at value").into(),
-                            ))?;
-
-                        let mut con = Conversation::default()
-                            .with_id(id)
-                            .with_title(title)
-                            .with_created_at(created_at);
-                        if updated_at.timestamp_millis() > 0 {
-                            con = con.with_updated_at(updated_at);
-                        }
-
-                        conversation = Some(con);
-                    };
-                    Ok(conversation)
-                })
-                .await?;
-
-        if conversation.is_none() {
-            return Ok(None);
-        }
-
-        let conversation = conversation.unwrap();
+        let conversation = match conversations.get(id) {
+            Some(conversation) => conversation.clone(),
+            None => return Err(eyre::eyre!("conversation not found")),
+        };
         let messages = self.get_messages(conversation.id()).await?;
-
         Ok(Some(conversation.with_messages(messages)))
     }
 
@@ -176,6 +142,8 @@ impl Storage for Sqlite {
         for (_, conversation) in &mut conversations {
             let messages = self.get_messages(conversation.id()).await?;
             conversation.messages_mut().extend(messages);
+            let ctx = self.get_contexts(conversation.id()).await?;
+            conversation.contexts_mut().extend(ctx);
         }
 
         Ok(conversations)
@@ -307,6 +275,72 @@ impl Storage for Sqlite {
             })
             .await?;
         Ok(())
+    }
+
+    async fn upsert_context(&self, conversation_id: &str, ctx: ConvoContext) -> Result<()> {
+        let conversation_id = conversation_id.to_string();
+        let ctx_id = ctx.id().to_string();
+        let affected_rows = self
+            .conn
+            .call(move |conn| {
+                Ok(conn.execute(
+                    r#"INSERT INTO contexts (id, conversation_id, last_message_id, content, token_count, created_at)
+            VALUES (:id, :conversation_id, :last_message_id, :content, :token_count, :created_at)
+            ON CONFLICT(id, conversation_id, last_message_id) DO UPDATE SET
+                content = excluded.content,
+                token_count = excluded.token_count,
+                created_at = excluded.created_at
+            "#,
+                    named_params! {
+                        ":id": ctx.id(),
+                        ":conversation_id": conversation_id,
+                        ":last_message_id": ctx.last_message_id(),
+                        ":content": ctx.content(),
+                        ":token_count":ctx.token_count() as i32,
+                        ":created_at": ctx.created_at().timestamp_millis(),
+                    },
+                )?)
+            })
+            .await?;
+
+        if affected_rows == 0 {
+            bail!("no rows updated for context with id {}", ctx_id);
+        }
+        Ok(())
+    }
+}
+
+impl Sqlite {
+    async fn get_contexts(&self, conversation_id: &str) -> Result<Vec<ConvoContext>> {
+        let conversation_id = conversation_id.to_string();
+        let contexts = self.conn.call(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, conversation_id, last_message_id, content, token_count, created_at FROM contexts WHERE conversation_id = ?",
+            )?;
+
+            let mut rows = stmt.query(params![conversation_id])?;
+            let mut contexts = vec![];
+            while let Some(row) = rows.next()? {
+                let id: String = row.get(0)?;
+                let last_message_id: String = row.get(2)?;
+                let content: String = row.get(3)?;
+                let token_count: usize = row.get(4)?;
+                let created_at: i64 = row.get(5)?;
+                let created_at =
+                    chrono::DateTime::from_timestamp_millis(created_at).ok_or(tokio_rusqlite::Error::Other(eyre::eyre!("invalid timestamp").into()))?;
+
+                contexts.push(
+                    ConvoContext::new(&last_message_id)
+                        .with_id(id)
+                        .with_content(content)
+                        .with_token_count(token_count)
+                        .with_created_at(created_at),
+                );
+            }
+
+            Ok(contexts)
+        }).await?;
+        Ok(contexts)
     }
 }
 

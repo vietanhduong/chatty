@@ -35,6 +35,7 @@ pub enum Event {
 
     SetConversation(String),
     ConversationDeleted(String),
+    ConversationUpdated(String),
 }
 
 #[async_trait::async_trait]

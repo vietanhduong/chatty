@@ -126,8 +126,8 @@ impl BackendConnection {
         self
     }
 
-    pub fn with_timeout(mut self, timeout: time::Duration) -> Self {
-        self.timeout = Some(timeout);
+    pub fn with_timeout(mut self, timeout: impl Into<time::Duration>) -> Self {
+        self.timeout = Some(timeout.into());
         self
     }
 

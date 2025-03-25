@@ -310,7 +310,14 @@ fn fake_converstations() -> Vec<Conversation> {
             .with_id(format!("test_id_{}", i))
             .with_title(format!("{} {}", title, i))
             .with_created_at(chrono::Utc::now())
-            .with_messages(messages);
+            .with_messages(messages)
+            .with_context(vec![
+                ConvoContext::new(&format!("msg4_{}", i))
+                    .with_id("ctx_01")
+                    .with_content("This is a compressed context")
+                    .with_token_count(3),
+            ]);
+
         conversations.push(conversation);
     }
     conversations
@@ -383,4 +390,39 @@ async fn test_delete_message() {
     db.delete_messsage("msg1").await.unwrap();
     let actual = db.get_messages("test_id").await.unwrap();
     assert_eq!(actual.len(), 0);
+}
+
+#[tokio::test]
+async fn test_conversation_context() {
+    let db = Sqlite::new(None).await.unwrap();
+    db.run_migration().await.unwrap();
+
+    let convo = fake_converstations();
+
+    db.upsert_conversation(convo[0].clone()).await.unwrap();
+    for msg in convo[0].messages() {
+        db.upsert_message(convo[0].id(), msg.clone()).await.unwrap();
+    }
+
+    let convo_id = convo[0].id();
+    for ctx in convo[0].contexts() {
+        db.upsert_context(convo_id, ctx.clone()).await.unwrap();
+    }
+
+    let actual = db.get_conversation(convo_id).await.unwrap();
+    assert!(actual.is_some());
+    let actual = actual.unwrap();
+    assert_eq!(actual.id(), convo_id);
+    assert_eq!(actual.contexts().len(), 1);
+    assert_eq!(actual.contexts()[0].id(), "ctx_01");
+    assert_eq!(
+        actual.contexts()[0].content(),
+        "This is a compressed context"
+    );
+    assert_eq!(actual.contexts()[0].last_message_id(), "msg4_0");
+    assert_eq!(actual.contexts()[0].token_count(), 3);
+    assert_eq!(
+        actual.contexts()[0].created_at().timestamp_millis(),
+        convo[0].contexts()[0].created_at().timestamp_millis()
+    );
 }
