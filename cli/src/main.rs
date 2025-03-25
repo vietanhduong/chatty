@@ -7,7 +7,7 @@ use openai_app::{
     destruct_terminal_for_panic,
     services::{ActionService, ClipboardService},
 };
-use openai_backend::new_manager;
+use openai_backend::{Compressor, new_manager};
 use openai_models::{Action, ArcEventTx, Event, storage::FilterConversation};
 use openai_storage::new_storage;
 use openai_tui::{Command, init_logger, init_theme};
@@ -78,6 +78,8 @@ async fn main() -> Result<()> {
         action_tx.clone(),
         event_tx.clone(),
         &mut event_rx,
+        Arc::new(Compressor::new(backend.clone())),
+        storage,
         AppInitProps {
             default_model: model,
             models,
@@ -90,7 +92,7 @@ async fn main() -> Result<()> {
     let token_clone = token.clone();
     let event_sender: ArcEventTx = Arc::new(event_tx);
     bg_futures.spawn(async move {
-        ActionService::new(event_sender, &mut action_rx, backend, storage, token_clone)
+        ActionService::new(event_sender, &mut action_rx, backend, token_clone)
             .start()
             .await
     });

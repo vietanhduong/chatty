@@ -22,11 +22,10 @@ pub enum Action {
     BackendSetModel(String),
 
     CopyMessages(Vec<Message>),
-
-    UpsertConversation(Conversation),
-    UpsertMessage(UpsertMessage),
-    RemoveMessage(String),
-    RemoveConversation(String),
+    // UpsertConversation(Conversation),
+    // UpsertMessage(UpsertMessage),
+    // RemoveMessage(String),
+    // RemoveConversation(String),
 }
 
 #[derive(Debug, Clone)]

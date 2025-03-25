@@ -1,6 +1,7 @@
 use chrono::{Local, Utc};
 use eyre::Result;
-use openai_models::{Action, Conversation, Event};
+use openai_models::{Conversation, Event, NoticeMessage};
+use openai_storage::ArcStorage;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -39,8 +40,8 @@ pub struct HistoryScreen<'a> {
     showing: bool,
 
     event_tx: mpsc::UnboundedSender<Event>,
-    action_tx: mpsc::UnboundedSender<Action>,
 
+    storage: ArcStorage,
     conversations: Vec<Rc<RefCell<Conversation>>>,
     list_items: Vec<ListItem<'a>>,
     id_map: HashMap<usize, String>,
@@ -53,13 +54,10 @@ pub struct HistoryScreen<'a> {
 }
 
 impl<'a> HistoryScreen<'a> {
-    pub fn new(
-        event_tx: mpsc::UnboundedSender<Event>,
-        action_tx: mpsc::UnboundedSender<Action>,
-    ) -> HistoryScreen<'a> {
+    pub fn new(event_tx: mpsc::UnboundedSender<Event>, storage: ArcStorage) -> HistoryScreen<'a> {
         HistoryScreen {
             event_tx,
-            action_tx,
+            storage,
             showing: false,
             conversations: vec![],
             list_items: vec![],
@@ -274,14 +272,14 @@ impl<'a> HistoryScreen<'a> {
 
     pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
         if self.rename.showing() {
-            if self.rename.handle_key_event(event) {
+            if self.rename.handle_key_event(event).await {
                 return Ok(true);
             }
             return Ok(false);
         }
 
         if self.question.showing() {
-            self.question.handle_key_event(event);
+            self.question.handle_key_event(event).await;
             return Ok(false);
         }
 
@@ -339,19 +337,28 @@ impl<'a> HistoryScreen<'a> {
                             .yellow(),
                         span!("?"),
                     ];
+                    let storage = self.storage.clone();
+                    let event_tx = self.event_tx.clone();
                     self.question.set_question(quest);
-                    let action_tx = self.action_tx.clone();
-                    let conversation_id = conversation.borrow().id().to_string();
                     self.question.set_callback(move |confirm| {
                         if !confirm {
-                            return;
+                            return Box::pin(async {});
                         }
-                        action_tx
-                            .send(Action::RemoveConversation(conversation_id.clone()))
-                            .map_err(|_| {
-                                log::error!("Failed to send delete conversation action");
-                            })
-                            .ok();
+
+                        let storage = storage.clone();
+                        let event_tx = event_tx.clone();
+                        let conversation_id = conversation.borrow().id().to_string();
+                        Box::pin(async move {
+                            if let Err(err) = storage.delete_conversation(&conversation_id).await {
+                                log::error!("Failed to delete conversation: {}", err);
+                                event_tx
+                                    .send(Event::Notice(NoticeMessage::warning(format!(
+                                        "Failed to delete conversation: {}",
+                                        err
+                                    ))))
+                                    .ok();
+                            }
+                        })
                     });
                     self.question.toggle_showing();
                 }
@@ -362,19 +369,29 @@ impl<'a> HistoryScreen<'a> {
                             return Ok(false);
                         }
 
-                        let action_tx = self.action_tx.clone();
+                        let storage = self.storage.clone();
                         self.rename.set_text(conversation.borrow().title());
+                        let event_tx = self.event_tx.clone();
                         self.rename.set_callback(move |new_title| {
                             if new_title.is_empty() || new_title == conversation.borrow().title() {
-                                return;
+                                return Box::pin(async {});
                             }
+
                             conversation.borrow_mut().set_title(new_title);
-                            action_tx
-                                .send(Action::UpsertConversation(conversation.borrow().clone()))
-                                .map_err(|_| {
-                                    log::error!("Failed to send rename conversation action");
-                                })
-                                .ok();
+                            let conversation = conversation.borrow().clone();
+                            let storage = storage.clone();
+                            let event_tx = event_tx.clone();
+                            Box::pin(async move {
+                                if let Err(err) = storage.upsert_conversation(conversation).await {
+                                    log::error!("Failed to rename conversation: {}", err);
+                                    event_tx
+                                        .send(Event::Notice(NoticeMessage::warning(format!(
+                                            "Failed to rename conversation: {}",
+                                            err
+                                        ))))
+                                        .ok();
+                                }
+                            })
                         });
                         self.rename.toggle_showing();
                     }

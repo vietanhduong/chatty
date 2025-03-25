@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use openai_models::Event;
 use ratatui::{
     Frame,
@@ -15,7 +17,7 @@ pub struct Question<'a> {
     showing: bool,
     question: Line<'a>,
     title: Option<Line<'a>>,
-    answer_callback: Option<Box<dyn Fn(bool) + 'a>>,
+    answer_callback: Option<Box<dyn Fn(bool) -> Pin<Box<dyn Future<Output = ()>>> + 'a>>,
 }
 
 impl<'a> Question<'a> {
@@ -43,7 +45,7 @@ impl<'a> Question<'a> {
 
     pub fn set_callback<F>(&mut self, callback: F)
     where
-        F: Fn(bool) + 'a,
+        F: Fn(bool) -> Pin<Box<dyn Future<Output = ()>>> + 'a,
     {
         self.answer_callback = Some(Box::new(callback));
     }
@@ -95,7 +97,7 @@ impl<'a> Question<'a> {
         f.render_widget(text, inner);
     }
 
-    pub fn handle_key_event(&mut self, event: &Event) {
+    pub async fn handle_key_event(&mut self, event: &Event) {
         match event {
             Event::KeyboardEsc => {
                 self.showing = false;
@@ -107,14 +109,14 @@ impl<'a> Question<'a> {
 
                 Key::Char('y') => {
                     if let Some(callback) = &self.answer_callback {
-                        callback(true);
+                        callback(true).await;
                     }
                     self.showing = false;
                 }
 
                 Key::Char('n') => {
                     if let Some(callback) = &self.answer_callback {
-                        callback(false);
+                        callback(false).await;
                     }
                     self.showing = false;
                 }
