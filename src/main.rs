@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     if models.is_empty() {
         eyre::bail!("No models available");
     }
-    println!("[+] Models: {:?}", models);
+    println!("[+] Loaded {} model(s)", models.len());
 
     let backend_config = config.backend().cloned().unwrap_or_default();
     let want_model = backend_config.default_model().unwrap_or_default();

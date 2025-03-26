@@ -1,4 +1,7 @@
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    collections::HashMap,
+};
 
 use crate::models::{Action, Event};
 use eyre::Result;
@@ -13,26 +16,36 @@ use ratatui_macros::span;
 use tokio::sync::mpsc;
 use tui_textarea::Key;
 
-pub struct ModelsScreen {
+use super::input_box::{self, InputBox};
+
+pub struct ModelsScreen<'a> {
     action_tx: mpsc::UnboundedSender<Action>,
     showing: bool,
     models: Vec<String>,
+    idx_map: HashMap<usize, String>,
+
     current_model: String,
     state: TableState,
+
+    search: InputBox<'a>,
+    current_search: String,
 }
 
-impl ModelsScreen {
+impl<'a> ModelsScreen<'a> {
     pub fn new(
         default_model: String,
         models: Vec<String>,
         action_tx: mpsc::UnboundedSender<Action>,
-    ) -> ModelsScreen {
+    ) -> ModelsScreen<'a> {
         ModelsScreen {
             showing: false,
             state: TableState::default().with_selected(0),
             models,
             current_model: default_model,
             action_tx,
+            search: InputBox::default().with_title(" Search "),
+            current_search: String::new(),
+            idx_map: HashMap::new(),
         }
     }
 
@@ -76,17 +89,22 @@ impl ModelsScreen {
             return Ok(());
         }
 
-        if self.current_model == self.models[index] {
+        let model = match self.idx_map.get(&index) {
+            Some(idx) => idx,
+            None => Err(eyre::eyre!("Invalid index"))?,
+        };
+
+        if self.current_model == *model {
             return Ok(());
         }
 
         self.action_tx
-            .send(Action::BackendSetModel(self.models[index].to_string()))?;
+            .send(Action::BackendSetModel(model.to_string()))?;
 
         Ok(())
     }
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+    pub fn render(&mut self, f: &mut Frame, area: Rect) {
         if !self.showing {
             return;
         }
@@ -96,7 +114,9 @@ impl ModelsScreen {
             span!("q").green().bold(),
             span!(" to close, ").white(),
             span!("Enter").green().bold(),
-            span!(" to select ").white(),
+            span!(" to select, ").white(),
+            span!("/").green().bold(),
+            span!(" to search ").white(),
         ];
 
         let block = Block::default()
@@ -108,23 +128,40 @@ impl ModelsScreen {
             .title_alignment(Alignment::Center)
             .title_bottom(Line::from(instructions))
             .style(Style::default());
-        frame.render_widget(Clear, area);
+        f.render_widget(Clear, area);
+
+        let inner = block.inner(area);
 
         let selected_row_style = Style::default()
             .add_modifier(Modifier::REVERSED)
             .add_modifier(Modifier::BOLD);
-        let rows = build_rows(&self.models, &self.current_model);
+        let rows = self.build_rows();
         let table = Table::new(rows, [Constraint::Fill(1)])
             .block(block)
             .row_highlight_style(selected_row_style);
-        frame.render_stateful_widget(table, area, &mut self.state);
+        f.render_stateful_widget(table, area, &mut self.state);
+        let search_area = input_box::build_area(inner, ((inner.width as f32 * 0.9).ceil()) as u16);
+        self.search.render(f, search_area);
     }
 
     pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
+        if self.search.showing() {
+            match event {
+                Event::KeyboardEsc | Event::KeyboardCtrlC => {
+                    self.search.close();
+                }
+                Event::KeyboardEnter => {
+                    self.current_search = self.search.close().unwrap_or_default();
+                }
+                _ => self.search.handle_key_event(event),
+            }
+
+            return Ok(false);
+        }
+
         match event {
             Event::KeyboardCtrlL => {
                 self.showing = !self.showing;
-                return Ok(false);
             }
 
             Event::Quit => {
@@ -134,22 +171,20 @@ impl ModelsScreen {
 
             Event::ModelChanged(model) => {
                 self.current_model = model.clone();
-                return Ok(false);
             }
 
             Event::KeyboardEnter => {
                 self.request_change_model()?;
                 self.showing = false;
-                return Ok(false);
             }
 
             Event::KeyboardCharInput(input) => match input.key {
                 Key::Char('j') => self.next_row(),
                 Key::Char('k') => self.prev_row(),
                 Key::Char(' ') => self.request_change_model()?,
+                Key::Char('/') => self.search.open(&self.current_search),
                 Key::Char('q') => {
                     self.showing = false;
-                    return Ok(false);
                 }
                 _ => {}
             },
@@ -161,25 +196,39 @@ impl ModelsScreen {
 
         Ok(false)
     }
-}
 
-fn build_rows<'a>(models: &'a [String], current_model: &str) -> Vec<Row<'a>> {
-    models
-        .iter()
-        .map(|model| {
-            let current = model == current_model;
-            let mut spans = vec![];
-            let mut style = Style::default();
-            let mut text = "[ ]";
-            if current {
-                style = style.add_modifier(Modifier::BOLD).red();
-                text = "[*]";
-            }
+    fn build_rows<'b>(&mut self) -> Vec<Row<'b>> {
+        self.idx_map.clear();
+        let mut index = 0;
+        self.models
+            .iter()
+            .filter(|model| {
+                if self.current_search.is_empty() {
+                    return true;
+                }
+                model
+                    .to_lowercase()
+                    .contains(&self.current_search.to_lowercase())
+            })
+            .map(|model| {
+                let current = *model == self.current_model;
+                let mut spans = vec![];
+                let mut style = Style::default();
+                let mut text = "[ ]";
+                if current {
+                    style = style.add_modifier(Modifier::BOLD).red();
+                    text = "[*]";
+                }
 
-            spans.push(Span::styled(text, style));
-            spans.push(Span::styled(" ", Style::default()));
-            spans.push(Span::styled(model, Style::default()));
-            Row::new(vec![Cell::from(Text::from(Line::from(spans)))]).height(1)
-        })
-        .collect()
+                spans.push(Span::styled(text, style));
+                spans.push(Span::styled(" ", Style::default()));
+                spans.push(Span::styled(model.to_string(), Style::default()));
+
+                self.idx_map.insert(index, model.to_string());
+                index += 1;
+
+                Row::new(vec![Cell::from(Text::from(Line::from(spans)))]).height(1)
+            })
+            .collect()
+    }
 }
