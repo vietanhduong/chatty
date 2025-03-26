@@ -40,7 +40,7 @@ pub struct HistoryScreen<'a> {
 
     storage: ArcStorage,
     conversations: Vec<Rc<RefCell<Conversation>>>,
-    list_items: Vec<ListItem<'a>>,
+    items: Vec<ListItem<'a>>,
     idx_map: HashMap<usize, String>,
 
     rename: InputBox<'a>,
@@ -50,7 +50,9 @@ pub struct HistoryScreen<'a> {
     question: Question<'a>,
 
     current_conversation: Option<String>,
-    list_state: ListState,
+    state: ListState,
+
+    last_known_width: usize,
 }
 
 impl<'a> HistoryScreen<'a> {
@@ -60,14 +62,19 @@ impl<'a> HistoryScreen<'a> {
             storage,
             showing: false,
             conversations: vec![],
-            list_items: vec![],
+
             idx_map: HashMap::new(),
             rename: InputBox::default().with_title(" Rename "),
             search: InputBox::default().with_title(" Search "),
+            question: Question::new().with_title(" Delete Conversation "),
+
             current_search: String::new(),
             current_conversation: None,
-            list_state: ListState::default(),
-            question: Question::new().with_title(" Delete Conversation "),
+
+            last_known_width: 0,
+
+            items: vec![],
+            state: ListState::default(),
         }
     }
 
@@ -113,6 +120,7 @@ impl<'a> HistoryScreen<'a> {
                 self.current_conversation = None;
             }
             self.conversations.remove(pos);
+            self.build_list_items();
         }
     }
 
@@ -123,7 +131,7 @@ impl<'a> HistoryScreen<'a> {
                 .iter()
                 .find(|(_, id)| *id == current_conversation)
                 .map(|(pos, _)| *pos);
-            self.list_state.select(pos);
+            self.state.select(pos);
         }
     }
 
@@ -150,6 +158,7 @@ impl<'a> HistoryScreen<'a> {
         // sort the conversations by last updated time descending
         self.conversations
             .sort_by(|a, b| b.borrow().updated_at().cmp(&a.borrow().updated_at()));
+        self.build_list_items();
     }
 
     pub fn current_conversation(&self) -> Option<String> {
@@ -159,58 +168,34 @@ impl<'a> HistoryScreen<'a> {
     pub fn set_current_conversation(&mut self, conversation: impl Into<String>) {
         self.current_conversation = Some(conversation.into());
         self.move_cursor_to_current();
+        self.build_list_items();
     }
 
     fn next_row(&mut self) {
         if self.conversations.is_empty() {
-            self.list_state.select(None);
+            self.state.select(None);
             return;
         }
 
-        let i = match self.list_state.selected() {
-            Some(i) => (i + 1).min(self.list_items.len() - 1),
+        let i = match self.state.selected() {
+            Some(i) => (i + 1).min(self.items.len() - 1),
             None => 0,
         };
-        // If i is not present in the index map, which means it is a group header, we need to
-        // find the next item that is not a group header
-        if self.idx_map.get(&i).is_none() {
-            let mut next = i + 1;
-            while next < self.list_items.len() && self.idx_map.get(&next).is_none() {
-                next += 1;
-            }
-            if next < self.list_items.len() {
-                self.list_state.select(Some(next));
-            }
-            // Do nothing if next is out of bounds
-            return;
-        }
-        self.list_state.select(Some(i));
+        self.state.select(Some(i));
     }
 
     fn prev_row(&mut self) {
         if self.conversations.is_empty() {
-            self.list_state.select(None);
+            self.state.select(None);
             return;
         }
 
-        let i = match self.list_state.selected() {
+        let i = match self.state.selected() {
             Some(i) => (i as isize - 1).max(0) as usize,
             None => 0,
         };
 
-        // If i is not present in the index map, which means it is a group header, we need to
-        // find the previous item that is not a group header
-        if self.idx_map.get(&i).is_none() {
-            let mut prev = i as isize - 1;
-            while prev >= 0 && self.idx_map.get(&(prev as usize)).is_none() {
-                prev -= 1;
-            }
-            if prev >= 0 {
-                self.list_state.select(Some(prev as usize));
-            }
-            return;
-        }
-        self.list_state.select(Some(i));
+        self.state.select(Some(i));
     }
 
     fn pageup(&mut self) {
@@ -227,31 +212,31 @@ impl<'a> HistoryScreen<'a> {
 
     fn first(&mut self) {
         if self.conversations.is_empty() {
-            self.list_state.select(None);
+            self.state.select(None);
             return;
         }
-        self.list_state.select(Some(0));
+        self.state.select(Some(0));
         // if the first item is a group header, we need to select the next item
         self.next_row();
     }
 
     fn last(&mut self) {
         if self.conversations.is_empty() {
-            self.list_state.select(None);
+            self.state.select(None);
             return;
         }
-        self.list_state.select(Some(self.list_items.len() - 1));
+        self.state.select(Some(self.items.len() - 1));
     }
 
-    fn build_list_items(&mut self, max_width: usize) {
-        self.list_items.clear();
+    fn build_list_items(&mut self) {
+        self.items.clear();
         self.idx_map.clear();
 
         if self.conversations.is_empty() {
-            self.list_items.push(ListItem::new(
+            self.items.push(ListItem::new(
                 Text::from(NO_CONVERSATIONS).alignment(Alignment::Center),
             ));
-            self.list_state.select(None);
+            self.state.select(None);
             return;
         }
 
@@ -280,7 +265,7 @@ impl<'a> HistoryScreen<'a> {
             });
 
         for (group, conversations) in conversations {
-            self.list_items.push(group.to_list_item());
+            self.items.push(group.to_list_item());
 
             for c in conversations {
                 let mut spans = vec![span!(c.borrow().title())];
@@ -289,56 +274,27 @@ impl<'a> HistoryScreen<'a> {
                     spans.push(Span::styled("[*]", Style::default().fg(Color::LightRed)))
                 }
 
-                let lines = utils::split_to_lines(spans, max_width - 2);
-                self.list_items.push(ListItem::new(Text::from(lines)));
+                let lines = utils::split_to_lines(spans, self.last_known_width);
+                self.items.push(ListItem::new(Text::from(lines)));
                 self.idx_map
-                    .insert(self.list_items.len() - 1, c.borrow().id().to_string());
+                    .insert(self.items.len() - 1, c.borrow().id().to_string());
             }
         }
     }
 
     pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
         if self.rename.showing() {
-            match event {
-                Event::KeyboardEnter => {
-                    let text = self.rename.close().unwrap_or_default();
-                    self.on_rename(text).await
-                }
-                Event::KeyboardCtrlC | Event::KeyboardEsc => {
-                    self.rename.close();
-                }
-                _ => self.rename.handle_key_event(event),
-            }
+            self.handle_rename_popup(event).await;
             return Ok(false);
         }
 
         if self.question.showing() {
-            match event {
-                Event::KeyboardCharInput(input) => match input.key {
-                    Key::Char('y') => {
-                        self.on_delete().await;
-                        self.question.close();
-                    }
-                    Key::Char('n') | Key::Char('q') => {
-                        self.question.close();
-                    }
-                    _ => {}
-                },
-                _ => {}
-            }
+            self.handle_question_popup(event).await;
             return Ok(false);
         }
 
         if self.search.showing() {
-            match event {
-                Event::KeyboardEsc | Event::KeyboardCtrlC => {
-                    self.search.close();
-                }
-                Event::KeyboardEnter => {
-                    self.current_search = self.search.close().unwrap_or_default();
-                }
-                _ => self.search.handle_key_event(event),
-            }
+            self.handle_search_popup(event).await;
             return Ok(false);
         }
 
@@ -353,7 +309,7 @@ impl<'a> HistoryScreen<'a> {
             }
 
             Event::KeyboardEnter => {
-                if self.list_state.selected().is_none() || self.conversations.is_empty() {
+                if self.state.selected().is_none() || self.conversations.is_empty() {
                     return Ok(false);
                 }
 
@@ -422,6 +378,47 @@ impl<'a> HistoryScreen<'a> {
         Ok(false)
     }
 
+    async fn handle_search_popup(&mut self, event: &Event) {
+        match event {
+            Event::KeyboardEsc | Event::KeyboardCtrlC => {
+                self.search.close();
+            }
+            Event::KeyboardEnter => {
+                self.current_search = self.search.close().unwrap_or_default();
+            }
+            _ => self.search.handle_key_event(event),
+        }
+    }
+
+    async fn handle_question_popup(&mut self, event: &Event) {
+        match event {
+            Event::KeyboardCharInput(input) => match input.key {
+                Key::Char('y') => {
+                    self.on_delete().await;
+                    self.question.close();
+                }
+                Key::Char('n') | Key::Char('q') => {
+                    self.question.close();
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    async fn handle_rename_popup(&mut self, event: &Event) {
+        match event {
+            Event::KeyboardEnter => {
+                let text = self.rename.close().unwrap_or_default();
+                self.on_rename(text).await
+            }
+            Event::KeyboardCtrlC | Event::KeyboardEsc => {
+                self.rename.close();
+            }
+            _ => self.rename.handle_key_event(event),
+        }
+    }
+
     async fn on_delete(&mut self) {
         let conversation = match self.get_selected_conversation() {
             Some(c) => c,
@@ -469,10 +466,10 @@ impl<'a> HistoryScreen<'a> {
     }
 
     pub fn get_selected_conversation_id(&self) -> Option<&str> {
-        if self.list_state.selected().is_none() || self.conversations.is_empty() {
+        if self.state.selected().is_none() || self.conversations.is_empty() {
             return None;
         }
-        let idx = self.list_state.selected().unwrap();
+        let idx = self.state.selected().unwrap();
         match self.idx_map.get(&idx) {
             Some(id) => Some(id),
             _ => None,
@@ -488,13 +485,6 @@ impl<'a> HistoryScreen<'a> {
     }
 
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
-        if !self.showing {
-            if !self.conversations.is_empty() && self.list_items.is_empty() {
-                self.build_list_items((area.width - 2) as usize);
-            }
-            return;
-        }
-
         let instructions: Vec<Span> = vec![
             " ".into(),
             span!("q").green().bold(),
@@ -519,14 +509,26 @@ impl<'a> HistoryScreen<'a> {
             .title_bottom(Line::from(instructions))
             .style(Style::default());
 
-        f.render_widget(Clear, area);
         let inner = block.inner(area);
-        self.build_list_items((inner.width - 2) as usize);
+        if !self.showing {
+            if !self.conversations.is_empty() && self.items.is_empty() {
+                self.last_known_width = (inner.width - 2) as usize;
+                self.build_list_items();
+            }
+            return;
+        }
 
-        let list = List::new(self.list_items.clone())
+        f.render_widget(Clear, area);
+
+        if self.last_known_width != (inner.width - 2) as usize {
+            self.last_known_width = (inner.width - 2) as usize;
+            self.build_list_items();
+        }
+
+        let list = List::new(self.items.clone())
             .block(block)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        f.render_stateful_widget(list, inner, &mut self.list_state);
+        f.render_stateful_widget(list, inner, &mut self.state);
 
         let rename_area = input_box::build_area(inner, ((inner.width as f32 * 0.8).ceil()) as u16);
         self.rename.render(f, rename_area);

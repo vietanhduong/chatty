@@ -3,7 +3,7 @@
 mod tests;
 
 use crate::backend::{ArcBackend, Backend};
-use crate::models::{ArcEventTx, BackendPrompt};
+use crate::models::{ArcEventTx, BackendPrompt, Model};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use std::collections::HashMap;
@@ -13,7 +13,7 @@ use tokio::sync::RwLock;
 pub struct Manager {
     current_model: RwLock<Option<String>>,
     connections: HashMap<String, ArcBackend>, /* Alias - Backend */
-    models: HashMap<String, String>,          /* Model - Alias  */
+    models: HashMap<String, String>,          /* Model ID - Alias  */
 }
 
 impl Manager {
@@ -35,7 +35,7 @@ impl Manager {
             .wrap_err(format!("listing model backend {}", alias))?
             .into_iter()
             .for_each(|m| {
-                self.models.insert(m, alias.clone());
+                self.models.insert(m.id().to_string(), alias.clone());
             });
 
         self.connections.insert(alias, connection);
@@ -67,10 +67,14 @@ impl Backend for Manager {
         Ok(())
     }
 
-    async fn list_models(&self, _force: bool) -> Result<Vec<String>> {
-        let mut models = self.models.keys().cloned().collect::<Vec<String>>();
+    async fn list_models(&self, _force: bool) -> Result<Vec<Model>> {
+        let mut models = self
+            .models
+            .iter()
+            .map(|(id, alias)| Model::new(id).with_provider(alias))
+            .collect::<Vec<_>>();
         // TODO(vietanhduong): Update the models and connections when force is true
-        models.sort();
+        models.sort_by(|a, b| a.id().cmp(b.id()));
         Ok(models)
     }
 

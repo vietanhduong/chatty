@@ -1,31 +1,34 @@
-use std::{
-    cmp::{max, min},
-    collections::HashMap,
-};
+use std::collections::{BTreeMap, HashMap};
 
-use crate::models::{Action, Event};
+use crate::models::{Action, Event, Model};
 use eyre::Result;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Rect},
+    layout::{Alignment, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Cell, Clear, Padding, Row, Table, TableState},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding},
 };
 use ratatui_macros::span;
 use tokio::sync::mpsc;
 use tui_textarea::Key;
 
-use super::input_box::{self, InputBox};
+use super::{
+    input_box::{self, InputBox},
+    utils,
+};
 
 pub struct ModelsScreen<'a> {
     action_tx: mpsc::UnboundedSender<Action>,
     showing: bool,
-    models: Vec<String>,
+    models: Vec<Model>,
     idx_map: HashMap<usize, String>,
 
     current_model: String,
-    state: TableState,
+    state: ListState,
+    items: Vec<ListItem<'a>>,
+
+    last_known_width: usize,
 
     search: InputBox<'a>,
     current_search: String,
@@ -34,18 +37,21 @@ pub struct ModelsScreen<'a> {
 impl<'a> ModelsScreen<'a> {
     pub fn new(
         default_model: String,
-        models: Vec<String>,
+        models: Vec<Model>,
         action_tx: mpsc::UnboundedSender<Action>,
     ) -> ModelsScreen<'a> {
         ModelsScreen {
             showing: false,
-            state: TableState::default().with_selected(0),
             models,
             current_model: default_model,
             action_tx,
             search: InputBox::default().with_title(" Search "),
             current_search: String::new(),
+            last_known_width: 0,
+
+            state: ListState::default(),
             idx_map: HashMap::new(),
+            items: vec![],
         }
     }
 
@@ -54,7 +60,11 @@ impl<'a> ModelsScreen<'a> {
     }
 
     pub fn set_current_model(&mut self, model: &str) {
+        if self.current_model == model {
+            return;
+        }
         self.current_model = model.to_string();
+        self.build_items();
     }
 
     pub fn showing(&self) -> bool {
@@ -66,21 +76,48 @@ impl<'a> ModelsScreen<'a> {
     }
 
     fn next_row(&mut self) {
-        let i = match self.state.selected() {
-            Some(i) => max(min(self.models.len() as i32 - 1, i as i32 + 1), 0),
-            None => 0,
-        } as usize;
+        if self.models.is_empty() {
+            self.state.select(None);
+            return;
+        }
 
+        let i = match self.state.selected() {
+            Some(i) => (i + 1).min(self.items.len() - 1),
+            None => 0,
+        };
         self.state.select(Some(i));
     }
 
     fn prev_row(&mut self) {
+        if self.models.is_empty() {
+            self.state.select(None);
+            return;
+        }
+
         let i = match self.state.selected() {
-            Some(i) => max(0, (i as i32) - 1),
+            Some(i) => (i as isize - 1).max(0) as usize,
             None => 0,
-        } as usize;
+        };
 
         self.state.select(Some(i));
+    }
+
+    fn first(&mut self) {
+        if self.models.is_empty() {
+            self.state.select(None);
+            return;
+        }
+        self.state.select(Some(0));
+        // if the first item is a group header, we need to select the next item
+        self.next_row();
+    }
+
+    fn last(&mut self) {
+        if self.models.is_empty() {
+            self.state.select(None);
+            return;
+        }
+        self.state.select(Some(self.items.len() - 1));
     }
 
     fn request_change_model(&mut self) -> Result<()> {
@@ -91,7 +128,7 @@ impl<'a> ModelsScreen<'a> {
 
         let model = match self.idx_map.get(&index) {
             Some(idx) => idx,
-            None => Err(eyre::eyre!("Invalid index"))?,
+            None => return Ok(()),
         };
 
         if self.current_model == *model {
@@ -132,14 +169,16 @@ impl<'a> ModelsScreen<'a> {
 
         let inner = block.inner(area);
 
-        let selected_row_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .add_modifier(Modifier::BOLD);
-        let rows = self.build_rows();
-        let table = Table::new(rows, [Constraint::Fill(1)])
+        if self.last_known_width != inner.width as usize {
+            self.last_known_width = inner.width as usize;
+            self.build_items();
+        }
+
+        let list = List::new(self.items.clone())
             .block(block)
-            .row_highlight_style(selected_row_style);
-        f.render_stateful_widget(table, area, &mut self.state);
+            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        f.render_stateful_widget(list, area, &mut self.state);
+
         let search_area = input_box::build_area(inner, ((inner.width as f32 * 0.9).ceil()) as u16);
         self.search.render(f, search_area);
     }
@@ -152,6 +191,7 @@ impl<'a> ModelsScreen<'a> {
                 }
                 Event::KeyboardEnter => {
                     self.current_search = self.search.close().unwrap_or_default();
+                    self.build_items();
                 }
                 _ => self.search.handle_key_event(event),
             }
@@ -181,6 +221,8 @@ impl<'a> ModelsScreen<'a> {
             Event::KeyboardCharInput(input) => match input.key {
                 Key::Char('j') => self.next_row(),
                 Key::Char('k') => self.prev_row(),
+                Key::Char('g') => self.first(),
+                Key::Char('G') => self.last(),
                 Key::Char(' ') => self.request_change_model()?,
                 Key::Char('/') => self.search.open(&self.current_search),
                 Key::Char('q') => {
@@ -197,9 +239,12 @@ impl<'a> ModelsScreen<'a> {
         Ok(false)
     }
 
-    fn build_rows<'b>(&mut self) -> Vec<Row<'b>> {
+    fn build_items<'b>(&mut self) {
         self.idx_map.clear();
-        let mut index = 0;
+        self.items.clear();
+
+        let mut models: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
         self.models
             .iter()
             .filter(|model| {
@@ -207,28 +252,50 @@ impl<'a> ModelsScreen<'a> {
                     return true;
                 }
                 model
+                    .id()
                     .to_lowercase()
                     .contains(&self.current_search.to_lowercase())
             })
-            .map(|model| {
-                let current = *model == self.current_model;
-                let mut spans = vec![];
-                let mut style = Style::default();
-                let mut text = "[ ]";
-                if current {
-                    style = style.add_modifier(Modifier::BOLD).red();
-                    text = "[*]";
+            .for_each(|m| {
+                let model = m.id().to_string();
+                let alias = m.provider().to_string();
+                models.entry(alias).or_insert_with(Vec::new).push(model);
+            });
+
+        for (provider, models) in models {
+            self.items.push(header_item(provider));
+
+            for model in models {
+                let mut spans = vec![span!(model)];
+                if self.current_model == model {
+                    spans.push(Span::styled(" ", Style::default()));
+                    spans.push(Span::styled("[*]", Style::default().fg(Color::LightRed)))
                 }
 
-                spans.push(Span::styled(text, style));
-                spans.push(Span::styled(" ", Style::default()));
-                spans.push(Span::styled(model.to_string(), Style::default()));
-
-                self.idx_map.insert(index, model.to_string());
-                index += 1;
-
-                Row::new(vec![Cell::from(Text::from(Line::from(spans)))]).height(1)
-            })
-            .collect()
+                let lines = utils::split_to_lines(spans, self.last_known_width - 2);
+                self.items.push(ListItem::new(Text::from(lines)));
+                self.idx_map.insert(self.items.len() - 1, model);
+            }
+        }
+        // Set the selected item with the current model if it is not already selected
+        if self.state.selected().is_none() {
+            if let Some(item) = self
+                .idx_map
+                .iter()
+                .find(|(_, model)| **model == self.current_model)
+            {
+                self.state.select(Some(*item.0));
+            }
+        }
     }
+}
+
+fn header_item<'a>(value: String) -> ListItem<'a> {
+    ListItem::new(Text::from(value).alignment(Alignment::Center).bold())
+        .style(
+            Style::default()
+                .fg(Color::Yellow)
+                .bg(Color::Rgb(26, 35, 126)),
+        )
+        .add_modifier(Modifier::BOLD)
 }

@@ -8,6 +8,12 @@ pub struct CodeContext {
     pub code: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct Model {
+    id: String,
+    provider: String,
+}
+
 #[derive(Debug)]
 pub struct BackendResponse {
     pub model: String,
@@ -158,6 +164,28 @@ impl BackendConnection {
     }
 }
 
+impl Model {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            provider: String::new(),
+        }
+    }
+
+    pub fn with_provider(mut self, provider: impl Into<String>) -> Self {
+        self.provider = provider.into();
+        self
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+}
+
 #[derive(Hash, PartialEq, Eq, Deserialize, Serialize, Debug, Clone)]
 pub enum BackendKind {
     #[serde(rename = "openai")]
@@ -181,6 +209,21 @@ impl Display for BackendUsage {
             f,
             "Prompt Tokens: {}, Completion Token: {}, Total: {}",
             self.prompt_tokens, self.completion_tokens, self.total_tokens
+        )
+    }
+}
+
+impl Display for Model {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} ({})",
+            self.id,
+            if self.provider.is_empty() {
+                "unknown"
+            } else {
+                &self.provider
+            }
         )
     }
 }

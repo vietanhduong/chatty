@@ -5,7 +5,10 @@ use super::*;
 impl OpenAI {
     async fn set_models(&self, models: Vec<String>) {
         let mut write = self.cache_models.write().await;
-        *write = models;
+        *write = models
+            .into_iter()
+            .map(|m| Model::new(m).with_provider(&self.alias))
+            .collect();
     }
 }
 
@@ -13,13 +16,13 @@ impl OpenAI {
 async fn test_list_models() {
     let body = serde_json::to_string(&ModelListResponse {
         data: vec![
-            Model {
+            ModelResponse {
                 id: "gpt-3.5-turbo".to_string(),
             },
-            Model {
+            ModelResponse {
                 id: "gpt-4".to_string(),
             },
-            Model {
+            ModelResponse {
                 id: "o1-mini".to_string(),
             },
         ],
@@ -46,8 +49,8 @@ async fn test_list_models() {
         .expect("Failed to list models");
 
     assert_eq!(res.len(), 2);
-    assert_eq!(res[0], "gpt-3.5-turbo");
-    assert_eq!(res[1], "gpt-4");
+    assert_eq!(res[0].id(), "gpt-3.5-turbo");
+    assert_eq!(res[1].id(), "gpt-4");
 
     models_handler.assert();
 
@@ -57,8 +60,8 @@ async fn test_list_models() {
         .expect("Failed to list models");
 
     assert_eq!(res.len(), 2);
-    assert_eq!(res[0], "gpt-3.5-turbo");
-    assert_eq!(res[1], "gpt-4");
+    assert_eq!(res[0].id(), "gpt-3.5-turbo");
+    assert_eq!(res[1].id(), "gpt-4");
     // Hit cache, no request to server
     models_handler.assert();
 }
