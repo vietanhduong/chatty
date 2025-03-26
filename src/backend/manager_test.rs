@@ -9,9 +9,14 @@ async fn test_add_connection() {
     mock.expect_health_check()
         .times(1)
         .returning(|| Box::pin(async { Ok(()) }));
-    mock.expect_list_models()
-        .times(1)
-        .returning(|_| Box::pin(async { Ok(vec!["model1".to_string(), "model2".to_string()]) }));
+    mock.expect_list_models().times(1).returning(|_| {
+        Box::pin(async {
+            Ok(vec![
+                Model::new("model1").with_provider("test"),
+                Model::new("model2").with_provider("test"),
+            ])
+        })
+    });
     let mut manager = Manager::default();
     let result = manager.add_connection(Arc::new(mock)).await;
     assert!(result.is_ok());

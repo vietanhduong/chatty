@@ -30,8 +30,9 @@ pub(crate) fn split_to_lines<'a>(text: impl Into<Line<'a>>, max_width: usize) ->
     let mut lines = vec![];
     let mut line = vec![];
     let mut line_char_count = 0;
-    for word in split_spans(text) {
-        if line_char_count + word.content.width() > max_width {
+    let spans = split_spans(text);
+    for word in spans {
+        if line_char_count + word.content.width() > max_width && !line.is_empty() {
             lines.push(Line::from(line));
             line = vec![];
             line_char_count = 0;
@@ -76,6 +77,9 @@ fn split_span_by_space(span: Span) -> Vec<Span> {
         spans.push(Span::styled(s[start..].to_string(), span.style));
     }
     spans
+        .into_iter()
+        .filter(|s| s.content.width() > 0)
+        .collect()
 }
 
 pub(crate) fn build_message_lines<'a, 'b, F>(

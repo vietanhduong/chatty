@@ -5,6 +5,7 @@ mod tests;
 use crate::backend::{ArcBackend, Backend, TITLE_PROMPT};
 use crate::models::{
     ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
+    Model,
 };
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
@@ -29,7 +30,7 @@ pub struct OpenAI {
 
     want_models: Vec<String>,
 
-    cache_models: RwLock<Vec<String>>,
+    cache_models: RwLock<Vec<Model>>,
     current_model: RwLock<Option<String>>,
 }
 
@@ -54,7 +55,7 @@ impl Backend for OpenAI {
         Ok(())
     }
 
-    async fn list_models(&self, force: bool) -> Result<Vec<String>> {
+    async fn list_models(&self, force: bool) -> Result<Vec<Model>> {
         if !force && !self.cache_models.read().await.is_empty() {
             return Ok(self.cache_models.read().await.clone());
         }
@@ -90,10 +91,10 @@ impl Backend for OpenAI {
             .data
             .into_iter()
             .filter(|m| all || self.want_models.contains(&m.id))
-            .map(|m| m.id)
+            .map(|m| Model::new(m.id).with_provider(&self.alias))
             .collect::<Vec<_>>();
 
-        models.sort();
+        models.sort_by(|a, b| a.id().cmp(b.id()));
 
         let mut cached = self.cache_models.write().await;
         *cached = models.clone();
@@ -116,11 +117,11 @@ impl Backend for OpenAI {
         } else {
             models
                 .iter()
-                .find(|m| m == &model)
+                .find(|m| m.id() == model)
                 .ok_or_else(|| eyre::eyre!("model {} not available", model))?
         };
         let mut default_model = self.current_model.write().await;
-        *default_model = Some(model.clone());
+        *default_model = Some(model.id().to_string());
         Ok(())
     }
 
@@ -352,13 +353,13 @@ impl Default for OpenAI {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct Model {
+struct ModelResponse {
     id: String,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ModelListResponse {
-    data: Vec<Model>,
+    data: Vec<ModelResponse>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -171,19 +171,6 @@ impl<'a> HistoryScreen<'a> {
             Some(i) => (i + 1).min(self.list_items.len() - 1),
             None => 0,
         };
-        // If i is not present in the index map, which means it is a group header, we need to
-        // find the next item that is not a group header
-        if self.idx_map.get(&i).is_none() {
-            let mut next = i + 1;
-            while next < self.list_items.len() && self.idx_map.get(&next).is_none() {
-                next += 1;
-            }
-            if next < self.list_items.len() {
-                self.list_state.select(Some(next));
-            }
-            // Do nothing if next is out of bounds
-            return;
-        }
         self.list_state.select(Some(i));
     }
 
@@ -198,18 +185,6 @@ impl<'a> HistoryScreen<'a> {
             None => 0,
         };
 
-        // If i is not present in the index map, which means it is a group header, we need to
-        // find the previous item that is not a group header
-        if self.idx_map.get(&i).is_none() {
-            let mut prev = i as isize - 1;
-            while prev >= 0 && self.idx_map.get(&(prev as usize)).is_none() {
-                prev -= 1;
-            }
-            if prev >= 0 {
-                self.list_state.select(Some(prev as usize));
-            }
-            return;
-        }
         self.list_state.select(Some(i));
     }
 

@@ -8,7 +8,10 @@ use super::*;
 impl Gemini {
     async fn set_models(&self, models: Vec<String>) {
         let mut write = self.cache_models.write().await;
-        *write = models;
+        *write = models
+            .into_iter()
+            .map(|m| Model::new(m).with_provider(&self.alias))
+            .collect();
     }
 }
 
@@ -16,19 +19,19 @@ impl Gemini {
 async fn test_list_models() {
     let body = serde_json::to_string(&ModelListResponse {
         models: vec![
-            Model {
+            ModelResponse {
                 name: "models/gemini-2.0-flash".to_string(),
                 supported_generation_methods: vec!["generateContent".to_string()],
             },
-            Model {
+            ModelResponse {
                 name: "models/gemini-2.0-flash-lite".to_string(),
                 supported_generation_methods: vec!["generateContent".to_string()],
             },
-            Model {
+            ModelResponse {
                 name: "models/gemini-1.5-flash".to_string(),
                 supported_generation_methods: vec!["generateContent".to_string()],
             },
-            Model {
+            ModelResponse {
                 name: "models/gemini-2.1-flash".to_string(),
                 supported_generation_methods: vec!["chat".to_string()],
             },
@@ -62,8 +65,8 @@ async fn test_list_models() {
         .expect("Failed to list models");
 
     assert_eq!(res.len(), 2);
-    assert_eq!(res[0], "gemini-2.0-flash");
-    assert_eq!(res[1], "gemini-2.0-flash-lite");
+    assert_eq!(res[0].id(), "gemini-2.0-flash");
+    assert_eq!(res[1].id(), "gemini-2.0-flash-lite");
 
     models_handler.assert();
 
@@ -73,8 +76,8 @@ async fn test_list_models() {
         .expect("Failed to list models");
 
     assert_eq!(res.len(), 2);
-    assert_eq!(res[0], "gemini-2.0-flash");
-    assert_eq!(res[1], "gemini-2.0-flash-lite");
+    assert_eq!(res[0].id(), "gemini-2.0-flash");
+    assert_eq!(res[1].id(), "gemini-2.0-flash-lite");
     // Hit cache, no request to server
     models_handler.assert();
 }

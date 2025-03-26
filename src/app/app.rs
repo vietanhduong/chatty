@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, io, rc::Rc, sync::Arc, time};
 
 use crate::backend::Compressor;
+use crate::models::Model;
 use crate::models::{
     Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
@@ -36,7 +37,7 @@ use crate::{
 const MIN_WIDTH: u16 = 80;
 
 pub struct AppInitProps {
-    pub models: Vec<String>,
+    pub models: Vec<Model>,
     pub default_model: String,
     pub conversations: HashMap<String, Conversation>,
 }

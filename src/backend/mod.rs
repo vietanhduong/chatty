@@ -11,7 +11,7 @@ pub use openai::OpenAI;
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 
-use crate::models::{ArcEventTx, BackendConfig, BackendKind, BackendPrompt};
+use crate::models::{ArcEventTx, BackendConfig, BackendKind, BackendPrompt, Model};
 use async_trait::async_trait;
 use eyre::{Context, Result};
 use std::{sync::Arc, time::Duration};
@@ -27,7 +27,7 @@ The title should be placed at the top of the response, in separate line and star
 pub trait Backend {
     fn name(&self) -> &str;
     async fn health_check(&self) -> Result<()>;
-    async fn list_models(&self, force: bool) -> Result<Vec<String>>;
+    async fn list_models(&self, force: bool) -> Result<Vec<Model>>;
     async fn current_model(&self) -> Option<String>;
     async fn set_current_model(&self, model: &str) -> Result<()>;
     async fn get_completion(&self, prompt: BackendPrompt, event_tx: ArcEventTx) -> Result<()>;

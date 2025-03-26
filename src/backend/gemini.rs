@@ -6,6 +6,7 @@ use std::{fmt::Display, time};
 
 use crate::models::{
     ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
+    Model,
 };
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
@@ -26,7 +27,7 @@ pub struct Gemini {
 
     want_models: Vec<String>,
 
-    cache_models: RwLock<Vec<String>>,
+    cache_models: RwLock<Vec<Model>>,
     current_model: RwLock<Option<String>>,
 }
 
@@ -81,7 +82,7 @@ impl Backend for Gemini {
         Ok(())
     }
 
-    async fn list_models(&self, force: bool) -> Result<Vec<String>> {
+    async fn list_models(&self, force: bool) -> Result<Vec<Model>> {
         if !force && self.cache_models.read().await.len() > 0 {
             return Ok(self.cache_models.read().await.clone());
         }
@@ -107,7 +108,7 @@ impl Backend for Gemini {
 
         let all = self.want_models.is_empty();
 
-        let mut models: Vec<String> = res
+        let mut models = res
             .models
             .into_iter()
             .filter(|m| {
@@ -116,14 +117,17 @@ impl Backend for Gemini {
                     && (all || self.want_models.contains(&m.name))
             })
             .map(|m| {
-                m.name
-                    .strip_prefix("models/")
-                    .unwrap_or(&m.name)
-                    .to_string()
+                Model::new(
+                    m.name
+                        .strip_prefix("models/")
+                        .unwrap_or(&m.name)
+                        .to_string(),
+                )
+                .with_provider(&self.alias)
             })
-            .collect();
+            .collect::<Vec<_>>();
 
-        models.sort();
+        models.sort_by(|a, b| a.id().cmp(b.id()));
 
         let mut cache = self.cache_models.write().await;
         *cache = models.clone();
@@ -146,11 +150,11 @@ impl Backend for Gemini {
         } else {
             models
                 .iter()
-                .find(|m| m == &model)
+                .find(|m| m.id() == model)
                 .ok_or_else(|| eyre::eyre!("model {} not available", model))?
         };
         let mut default_model = self.current_model.write().await;
-        *default_model = Some(model.clone());
+        *default_model = Some(model.id().to_string());
         Ok(())
     }
 
@@ -351,14 +355,14 @@ impl From<&BackendConnection> for Gemini {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Model {
+struct ModelResponse {
     name: String,
     supported_generation_methods: Vec<String>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ModelListResponse {
-    models: Vec<Model>,
+    models: Vec<ModelResponse>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

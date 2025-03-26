@@ -52,19 +52,19 @@ async fn main() -> Result<()> {
     } else {
         models
             .iter()
-            .find(|m| m.as_str() == want_model)
+            .find(|m| m.id() == want_model)
             .unwrap_or_else(|| {
                 log::warn!(
                     "Model {} not found, using default ({})",
                     want_model,
-                    models[0]
+                    models[0].id()
                 );
                 &models[0]
             })
             .clone()
     };
 
-    backend.set_current_model(&model).await?;
+    backend.set_current_model(model.id()).await?;
     println!("[+] Set current model to {}", model);
 
     println!("[+] Initializing storage...");
@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
         ),
         storage,
         AppInitProps {
-            default_model: model,
+            default_model: model.id().to_string(),
             models,
             conversations,
         },
