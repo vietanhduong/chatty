@@ -1,9 +1,5 @@
-[workspace]
-resolver = "2"
-members = ["app", "backend", "cli", "models", "storage"]
-default-members = ["cli"]
-
-[workspace.package]
+[package]
+name = "chatty"
 version = "0.1.0"
 edition = "2024"
 authors = ["Viet-Anh Duong <vietanhs0817@gmail.com>"]
@@ -23,7 +19,7 @@ codegen-units = 1
 panic = 'abort'
 
 
-[workspace.dependencies]
+[dependencies]
 crossterm = { version = "0.28.1", features = [
     "bracketed-paste",
     "event-stream",
@@ -63,5 +59,8 @@ unicode-width = "0.2.0"
 uuid = { version = "1.15.1", features = ["v4"] }
 tokio-rusqlite = { version = "0.6.0", features = ["bundled"] }
 better-panic = "0.3.0"
+regex = "1.11.1"
+
+[dev-dependencies]
 mockito = "1.7.0"
 mockall = "0.13.1"

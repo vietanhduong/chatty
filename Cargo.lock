@@ -316,93 +316,34 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 name = "chatty"
 version = "0.1.0"
 dependencies = [
+ "arboard",
+ "async-trait",
  "better-panic",
- "chatty-app",
- "chatty-backend",
- "chatty-models",
- "chatty-storage",
  "chrono",
  "clap",
- "env_logger",
- "eyre",
- "log",
- "mockito",
- "syntect",
- "tokio",
- "tokio-util",
- "toml",
-]
-
-[[package]]
-name = "chatty-app"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "chatty-backend",
- "chatty-models",
- "chatty-storage",
- "chrono",
  "crossterm",
- "eyre",
- "futures",
- "log",
- "once_cell",
- "ratatui",
- "ratatui-macros",
- "syntect",
- "tokio",
- "tokio-util",
- "tui-textarea",
- "unicode-width 0.2.0",
-]
-
-[[package]]
-name = "chatty-backend"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chatty-models",
+ "env_logger",
  "eyre",
  "futures",
  "log",
  "mockall",
  "mockito",
+ "once_cell",
+ "ratatui",
+ "ratatui-macros",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
+ "syntect",
  "thiserror 2.0.12",
  "tokio",
- "tokio-util",
- "uuid",
-]
-
-[[package]]
-name = "chatty-models"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chrono",
- "eyre",
- "log",
- "ratatui",
- "serde",
- "tokio",
- "tui-textarea",
- "uuid",
-]
-
-[[package]]
-name = "chatty-storage"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "chatty-models",
- "chrono",
- "eyre",
- "futures",
- "log",
- "tokio",
  "tokio-rusqlite",
+ "tokio-util",
+ "toml",
+ "tui-textarea",
+ "unicode-width 0.2.0",
+ "uuid",
 ]
 
 [[package]]
@@ -2300,9 +2241,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.0"
+version = "0.103.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0aa4eeac2588ffff23e9d7a7e9b3f971c5fb5b7ebc9452745e0c232c64f83b2f"
+checksum = "fef8b8769aaccf73098557a87cd1816b4f9c7c16811c9c77142aa695c16f2c03"
 dependencies = [
  "ring",
  "rustls-pki-types",
