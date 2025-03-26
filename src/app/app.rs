@@ -240,18 +240,14 @@ impl<'a> App<'a> {
                 self.app_state.handle_backend_response(&msg);
 
                 if notify {
+                    let title = self.app_state.conversation.borrow().title().to_string();
                     self.notice.add_message(
-                        NoticeMessage::new(format!(
-                            "Updated Title: \"{}\"",
-                            self.app_state.conversation.borrow().title()
-                        ))
-                        .with_duration(time::Duration::from_secs(5)),
+                        NoticeMessage::new(format!("Updated Title: \"{}\"", title))
+                            .with_duration(time::Duration::from_secs(5)),
                     );
 
                     // Upsert the conversation to the storage
-                    self.storage
-                        .upsert_conversation(self.app_state.conversation.borrow().clone())
-                        .await?;
+                    self.history_screen.rename_conversation(title).await;
                 }
 
                 if !done {

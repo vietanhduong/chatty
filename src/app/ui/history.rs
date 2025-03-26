@@ -410,7 +410,7 @@ impl<'a> HistoryScreen<'a> {
         match event {
             Event::KeyboardEnter => {
                 let text = self.rename.close().unwrap_or_default();
-                self.on_rename(text).await
+                self.rename_conversation(text).await;
             }
             Event::KeyboardCtrlC | Event::KeyboardEsc => {
                 self.rename.close();
@@ -442,17 +442,18 @@ impl<'a> HistoryScreen<'a> {
             .ok();
     }
 
-    async fn on_rename(&mut self, new_title: String) {
+    pub async fn rename_conversation(&mut self, new_title: String) {
         let conversation = match self.get_selected_conversation() {
             Some(c) => c,
             None => return,
         };
 
-        if new_title.is_empty() || new_title == conversation.borrow().title() {
+        if new_title.is_empty() {
             return;
         }
 
         conversation.borrow_mut().set_title(new_title.clone());
+        self.build_list_items();
         let conversation = conversation.borrow().clone();
         if let Err(err) = self.storage.upsert_conversation(conversation).await {
             log::error!("Failed to rename conversation: {}", err);

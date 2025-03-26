@@ -120,25 +120,25 @@ impl<'a> ModelsScreen<'a> {
         self.state.select(Some(self.items.len() - 1));
     }
 
-    fn request_change_model(&mut self) -> Result<()> {
+    fn request_change_model(&mut self) -> Result<bool> {
         let index = self.state.selected().unwrap_or(0);
         if index >= self.models.len() {
-            return Ok(());
+            return Ok(false);
         }
 
         let model = match self.idx_map.get(&index) {
             Some(idx) => idx,
-            None => return Ok(()),
+            None => return Ok(false),
         };
 
         if self.current_model == *model {
-            return Ok(());
+            return Ok(false);
         }
 
         self.action_tx
             .send(Action::BackendSetModel(model.to_string()))?;
 
-        Ok(())
+        Ok(true)
     }
 
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
@@ -214,8 +214,7 @@ impl<'a> ModelsScreen<'a> {
             }
 
             Event::KeyboardEnter => {
-                self.request_change_model()?;
-                self.showing = false;
+                self.showing = !self.request_change_model()?;
             }
 
             Event::KeyboardCharInput(input) => match input.key {
@@ -223,7 +222,6 @@ impl<'a> ModelsScreen<'a> {
                 Key::Char('k') => self.prev_row(),
                 Key::Char('g') => self.first(),
                 Key::Char('G') => self.last(),
-                Key::Char(' ') => self.request_change_model()?,
                 Key::Char('/') => self.search.open(&self.current_search),
                 Key::Char('q') => {
                     self.showing = false;
