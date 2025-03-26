@@ -185,9 +185,9 @@ impl<'a> Bubble<'_> {
 
     fn highlighted_span(&self, text: String) -> Span<'a> {
         let color = if self.message.is_system() {
-            Color::Yellow
+            Color::Rgb(255, 140, 105)
         } else {
-            Color::LightGreen
+            Color::Rgb(64, 224, 208)
         };
         Span::styled(
             text,
