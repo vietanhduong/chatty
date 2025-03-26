@@ -1,4 +1,7 @@
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    collections::HashMap,
+};
 
 use crate::models::{Action, Event};
 use eyre::Result;
@@ -19,6 +22,8 @@ pub struct ModelsScreen<'a> {
     action_tx: mpsc::UnboundedSender<Action>,
     showing: bool,
     models: Vec<String>,
+    idx_map: HashMap<usize, String>,
+
     current_model: String,
     state: TableState,
 
@@ -40,6 +45,7 @@ impl<'a> ModelsScreen<'a> {
             action_tx,
             search: InputBox::default().with_title(" Search "),
             current_search: String::new(),
+            idx_map: HashMap::new(),
         }
     }
 
@@ -83,25 +89,17 @@ impl<'a> ModelsScreen<'a> {
             return Ok(());
         }
 
-        let models = self
-            .models
-            .iter()
-            .filter(|model| {
-                if self.current_search.is_empty() {
-                    return true;
-                }
-                model
-                    .to_lowercase()
-                    .contains(&self.current_search.to_lowercase())
-            })
-            .collect::<Vec<_>>();
+        let model = match self.idx_map.get(&index) {
+            Some(idx) => idx,
+            None => Err(eyre::eyre!("Invalid index"))?,
+        };
 
-        if self.current_model == *models[index] {
+        if self.current_model == *model {
             return Ok(());
         }
 
         self.action_tx
-            .send(Action::BackendSetModel(models[index].to_string()))?;
+            .send(Action::BackendSetModel(model.to_string()))?;
 
         Ok(())
     }
@@ -137,7 +135,7 @@ impl<'a> ModelsScreen<'a> {
         let selected_row_style = Style::default()
             .add_modifier(Modifier::REVERSED)
             .add_modifier(Modifier::BOLD);
-        let rows = build_rows(&self.models, &self.current_model, &self.current_search);
+        let rows = self.build_rows();
         let table = Table::new(rows, [Constraint::Fill(1)])
             .block(block)
             .row_highlight_style(selected_row_style);
@@ -164,7 +162,6 @@ impl<'a> ModelsScreen<'a> {
         match event {
             Event::KeyboardCtrlL => {
                 self.showing = !self.showing;
-                return Ok(false);
             }
 
             Event::Quit => {
@@ -174,26 +171,20 @@ impl<'a> ModelsScreen<'a> {
 
             Event::ModelChanged(model) => {
                 self.current_model = model.clone();
-                return Ok(false);
             }
 
             Event::KeyboardEnter => {
                 self.request_change_model()?;
                 self.showing = false;
-                return Ok(false);
             }
 
             Event::KeyboardCharInput(input) => match input.key {
                 Key::Char('j') => self.next_row(),
                 Key::Char('k') => self.prev_row(),
                 Key::Char(' ') => self.request_change_model()?,
-                Key::Char('/') => {
-                    self.search.open(&self.current_search);
-                    return Ok(false);
-                }
+                Key::Char('/') => self.search.open(&self.current_search),
                 Key::Char('q') => {
                     self.showing = false;
-                    return Ok(false);
                 }
                 _ => {}
             },
@@ -205,31 +196,39 @@ impl<'a> ModelsScreen<'a> {
 
         Ok(false)
     }
-}
 
-fn build_rows<'a>(models: &'a [String], current_model: &str, search_text: &str) -> Vec<Row<'a>> {
-    models
-        .iter()
-        .filter(|model| {
-            if search_text.is_empty() {
-                return true;
-            }
-            model.to_lowercase().contains(&search_text.to_lowercase())
-        })
-        .map(|model| {
-            let current = model == current_model;
-            let mut spans = vec![];
-            let mut style = Style::default();
-            let mut text = "[ ]";
-            if current {
-                style = style.add_modifier(Modifier::BOLD).red();
-                text = "[*]";
-            }
+    fn build_rows<'b>(&mut self) -> Vec<Row<'b>> {
+        self.idx_map.clear();
+        let mut index = 0;
+        self.models
+            .iter()
+            .filter(|model| {
+                if self.current_search.is_empty() {
+                    return true;
+                }
+                model
+                    .to_lowercase()
+                    .contains(&self.current_search.to_lowercase())
+            })
+            .map(|model| {
+                let current = *model == self.current_model;
+                let mut spans = vec![];
+                let mut style = Style::default();
+                let mut text = "[ ]";
+                if current {
+                    style = style.add_modifier(Modifier::BOLD).red();
+                    text = "[*]";
+                }
 
-            spans.push(Span::styled(text, style));
-            spans.push(Span::styled(" ", Style::default()));
-            spans.push(Span::styled(model, Style::default()));
-            Row::new(vec![Cell::from(Text::from(Line::from(spans)))]).height(1)
-        })
-        .collect()
+                spans.push(Span::styled(text, style));
+                spans.push(Span::styled(" ", Style::default()));
+                spans.push(Span::styled(model.to_string(), Style::default()));
+
+                self.idx_map.insert(index, model.to_string());
+                index += 1;
+
+                Row::new(vec![Cell::from(Text::from(Line::from(spans)))]).height(1)
+            })
+            .collect()
+    }
 }

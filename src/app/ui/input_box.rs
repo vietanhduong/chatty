@@ -106,6 +106,6 @@ impl Default for InputBox<'_> {
 
 pub fn build_area(area: Rect, width: u16) -> Rect {
     let x = area.x + (area.width - width) / 2;
-    let y = area.y + (area.height - 1) / 2;
+    let y = area.y + (area.height - (area.height as f32 * 0.7).ceil() as u16) / 2;
     Rect::new(x, y, width, 3)
 }

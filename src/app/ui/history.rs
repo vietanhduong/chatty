@@ -41,9 +41,12 @@ pub struct HistoryScreen<'a> {
     storage: ArcStorage,
     conversations: Vec<Rc<RefCell<Conversation>>>,
     list_items: Vec<ListItem<'a>>,
-    id_map: HashMap<usize, String>,
+    idx_map: HashMap<usize, String>,
 
     rename: InputBox<'a>,
+    search: InputBox<'a>,
+    current_search: String,
+
     question: Question<'a>,
 
     current_conversation: Option<String>,
@@ -58,8 +61,10 @@ impl<'a> HistoryScreen<'a> {
             showing: false,
             conversations: vec![],
             list_items: vec![],
-            id_map: HashMap::new(),
+            idx_map: HashMap::new(),
             rename: InputBox::default().with_title(" Rename "),
+            search: InputBox::default().with_title(" Search "),
+            current_search: String::new(),
             current_conversation: None,
             list_state: ListState::default(),
             question: Question::new().with_title(" Delete Conversation "),
@@ -114,7 +119,7 @@ impl<'a> HistoryScreen<'a> {
     fn move_cursor_to_current(&mut self) {
         if let Some(current_conversation) = self.current_conversation.as_ref() {
             let pos = self
-                .id_map
+                .idx_map
                 .iter()
                 .find(|(_, id)| *id == current_conversation)
                 .map(|(pos, _)| *pos);
@@ -168,9 +173,9 @@ impl<'a> HistoryScreen<'a> {
         };
         // If i is not present in the index map, which means it is a group header, we need to
         // find the next item that is not a group header
-        if self.id_map.get(&i).is_none() {
+        if self.idx_map.get(&i).is_none() {
             let mut next = i + 1;
-            while next < self.list_items.len() && self.id_map.get(&next).is_none() {
+            while next < self.list_items.len() && self.idx_map.get(&next).is_none() {
                 next += 1;
             }
             if next < self.list_items.len() {
@@ -195,9 +200,9 @@ impl<'a> HistoryScreen<'a> {
 
         // If i is not present in the index map, which means it is a group header, we need to
         // find the previous item that is not a group header
-        if self.id_map.get(&i).is_none() {
+        if self.idx_map.get(&i).is_none() {
             let mut prev = i as isize - 1;
-            while prev >= 0 && self.id_map.get(&(prev as usize)).is_none() {
+            while prev >= 0 && self.idx_map.get(&(prev as usize)).is_none() {
                 prev -= 1;
             }
             if prev >= 0 {
@@ -240,7 +245,7 @@ impl<'a> HistoryScreen<'a> {
 
     fn build_list_items(&mut self, max_width: usize) {
         self.list_items.clear();
-        self.id_map.clear();
+        self.idx_map.clear();
 
         if self.conversations.is_empty() {
             self.list_items.push(ListItem::new(
@@ -254,14 +259,25 @@ impl<'a> HistoryScreen<'a> {
             BTreeMap::new();
 
         let now = Utc::now();
-        for conversation in &self.conversations {
-            let group = categorize_conversation(now, conversation);
+        self.conversations
+            .iter()
+            .filter(|c| {
+                if self.current_search.is_empty() {
+                    return true;
+                }
+                c.borrow()
+                    .title()
+                    .to_lowercase()
+                    .contains(&self.current_search.to_lowercase())
+            })
+            .for_each(|c| {
+                let group = categorize_conversation(now, c);
 
-            conversations
-                .entry(group)
-                .or_insert_with(Vec::new)
-                .push(conversation.clone());
-        }
+                conversations
+                    .entry(group)
+                    .or_insert_with(Vec::new)
+                    .push(c.clone());
+            });
 
         for (group, conversations) in conversations {
             self.list_items.push(group.to_list_item());
@@ -275,7 +291,7 @@ impl<'a> HistoryScreen<'a> {
 
                 let lines = utils::split_to_lines(spans, max_width - 2);
                 self.list_items.push(ListItem::new(Text::from(lines)));
-                self.id_map
+                self.idx_map
                     .insert(self.list_items.len() - 1, c.borrow().id().to_string());
             }
         }
@@ -313,6 +329,19 @@ impl<'a> HistoryScreen<'a> {
             return Ok(false);
         }
 
+        if self.search.showing() {
+            match event {
+                Event::KeyboardEsc | Event::KeyboardCtrlC => {
+                    self.search.close();
+                }
+                Event::KeyboardEnter => {
+                    self.current_search = self.search.close().unwrap_or_default();
+                }
+                _ => self.search.handle_key_event(event),
+            }
+            return Ok(false);
+        }
+
         match event {
             Event::KeyboardCtrlH => {
                 self.showing = !self.showing;
@@ -344,10 +373,13 @@ impl<'a> HistoryScreen<'a> {
                 Key::Char('k') => self.prev_row(),
                 Key::Char('g') => self.first(),
                 Key::Char('G') => self.last(),
+
                 Key::Char('q') => {
                     self.showing = false;
-                    return Ok(false);
                 }
+
+                Key::Char('/') => self.search.open(self.current_search.clone()),
+
                 Key::Char('d') => {
                     let conversation = match self.get_selected_conversation() {
                         Some(c) => c,
@@ -441,8 +473,7 @@ impl<'a> HistoryScreen<'a> {
             return None;
         }
         let idx = self.list_state.selected().unwrap();
-
-        match self.id_map.get(&idx) {
+        match self.idx_map.get(&idx) {
             Some(id) => Some(id),
             _ => None,
         }
@@ -474,6 +505,8 @@ impl<'a> HistoryScreen<'a> {
             span!(" to delete, ").white(),
             span!("r").green().bold(),
             span!(" to rename ").white(),
+            span!("/").green().bold(),
+            span!(" to search ").white(),
         ];
 
         let block = Block::default()
@@ -499,6 +532,8 @@ impl<'a> HistoryScreen<'a> {
         self.rename.render(f, rename_area);
 
         self.question.render(f, inner);
+        let search_area = input_box::build_area(inner, ((inner.width as f32 * 0.8).ceil()) as u16);
+        self.search.render(f, search_area);
     }
 }
 
