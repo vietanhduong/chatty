@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use tui_textarea::Key;
 use unicode_width::UnicodeWidthStr;
 
-use super::helpers;
+use super::utils;
 
 pub struct EditScreen<'a> {
     showing: bool,
@@ -158,7 +158,7 @@ impl<'a> EditScreen<'_> {
         }
 
         let message = &self.messages[i].msg;
-        let lines = helpers::build_message_lines(
+        let lines = utils::build_message_lines(
             message.text(),
             area.width as usize - 5,
             self.theme,

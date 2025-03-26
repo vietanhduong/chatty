@@ -7,7 +7,7 @@ use ratatui::{
 };
 use ratatui_macros::span;
 
-use super::helpers;
+use super::utils;
 
 pub struct Question<'a> {
     showing: bool,
@@ -52,7 +52,7 @@ impl<'a> Question<'a> {
         }
 
         let max_width = (area.width as f32 * 0.8).ceil() as u16;
-        let lines = helpers::split_to_lines(self.question.spans.clone(), (max_width - 2) as usize);
+        let lines = utils::split_to_lines(self.question.spans.clone(), (max_width - 2) as usize);
         let area = build_area(area, max_width, lines.len() as u16 + 2);
 
         let mut block = Block::default()

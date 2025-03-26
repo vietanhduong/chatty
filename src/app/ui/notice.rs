@@ -1,16 +1,16 @@
 use std::time::{self, Duration};
 
-use crate::models::NoticeMessage;
+use super::utils;
+use crate::models::{NoticeMessage, NoticeType};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::{List, ListItem},
 };
+use ratatui_macros::span;
 use unicode_width::UnicodeWidthStr;
-
-use super::helpers;
 
 struct MessageWrapper {
     value: NoticeMessage,
@@ -100,11 +100,7 @@ fn build_list_items<'a>(
     let mut current_height = 0;
 
     for item in notices {
-        let lines = build_bubble(
-            item.value.message(),
-            max_width,
-            item.value.message_type().color(),
-        );
+        let lines = build_bubble(item.value.message(), max_width, item.value.message_type());
 
         current_height += lines.len();
         if current_height > max_height {
@@ -117,7 +113,7 @@ fn build_list_items<'a>(
     items
 }
 
-fn build_bubble<'a>(message: &str, max_width: usize, border_color: Color) -> Vec<Line<'a>> {
+fn build_bubble<'a>(message: &str, max_width: usize, notice_type: &NoticeType) -> Vec<Line<'a>> {
     // build lines from message based on max_width
     let mut lines = vec![];
 
@@ -135,10 +131,16 @@ fn build_bubble<'a>(message: &str, max_width: usize, border_color: Color) -> Vec
         lines.push(line.trim().to_string());
     }
 
-    wrap_bubble(lines, max_width, border_color)
+    wrap_bubble(lines, max_width, notice_type)
 }
 
-fn wrap_bubble<'a>(lines: Vec<String>, max_width: usize, border_color: Color) -> Vec<Line<'a>> {
+fn wrap_bubble<'a>(
+    lines: Vec<String>,
+    max_width: usize,
+    notice_type: &NoticeType,
+) -> Vec<Line<'a>> {
+    let border_color = notice_type.border_color();
+    let text_color = notice_type.text_color();
     let top_bar = highlight_line(
         format!("╭{}╮", ["─"].repeat(max_width).join("")),
         border_color,
@@ -150,8 +152,11 @@ fn wrap_bubble<'a>(lines: Vec<String>, max_width: usize, border_color: Color) ->
 
     let mut wrapped_lines = vec![top_bar];
     for line in lines {
-        let fill = helpers::repeat_from_substactions(" ", vec![max_width - 2, line.width()]);
-        wrapped_lines.push(highlight_line(format!("│ {line}{fill} │"), border_color));
+        let mut wrapped_spans = vec![highlight_span("│ ".to_string(), border_color)];
+        wrapped_spans.push(span!(line).fg(text_color));
+        let fill = utils::repeat_from_substactions(" ", vec![max_width - 2, line.width()]);
+        wrapped_spans.push(highlight_span(format!("{fill} │"), border_color));
+        wrapped_lines.push(Line::from(wrapped_spans));
     }
 
     wrapped_lines.push(bottom_bar);

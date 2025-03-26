@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "utils_test.rs"]
+mod tests;
+
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
     style::Style,
@@ -22,47 +26,67 @@ pub(crate) fn notice_area(area: Rect, percent_width: u16) -> Rect {
     area
 }
 
-pub(crate) fn split_to_lines<'a>(text: Vec<Span<'a>>, max_width: usize) -> Vec<Line<'a>> {
+pub(crate) fn split_to_lines<'a>(text: impl Into<Line<'a>>, max_width: usize) -> Vec<Line<'a>> {
     let mut lines = vec![];
     let mut line = vec![];
     let mut line_char_count = 0;
-    for word in split_spans(text, " ") {
-        if line_char_count + word.content.len() > max_width - 2 {
+    for word in split_spans(text) {
+        if line_char_count + word.content.width() > max_width {
             lines.push(Line::from(line));
             line = vec![];
             line_char_count = 0;
         }
-        line_char_count += word.width() + 1;
+        line_char_count += word.width();
         line.push(word);
-        line.push(Span::raw(" "));
     }
     if !line.is_empty() {
-        line.pop(); // remove the last space
         lines.push(Line::from(line));
     }
     lines
 }
 
-fn split_spans<'a>(input: Vec<Span<'a>>, delim: &str) -> Vec<Span<'a>> {
+fn split_spans<'a>(input: impl Into<Line<'a>>) -> Vec<Span<'a>> {
     let mut spans = vec![];
-    for item in input.into_iter() {
-        spans.extend(
-            item.content
-                .split(delim)
-                .into_iter()
-                .map(|word| Span::styled(word.to_string(), item.style.clone()))
-                .collect::<Vec<_>>(),
-        );
+    input.into().spans.into_iter().for_each(|item| {
+        spans.extend(split_span_by_space(item));
+    });
+    spans
+}
+
+fn split_span_by_space(span: Span) -> Vec<Span> {
+    let mut spans = vec![];
+    let s = span.content.to_string();
+    let mut in_word = false;
+    let mut start = 0;
+    for (i, c) in s.char_indices() {
+        if c == ' ' {
+            if in_word {
+                spans.push(Span::styled(s[start..i].to_string(), span.style));
+                in_word = false;
+            }
+            let space_end = i + c.len_utf8();
+            spans.push(Span::styled(s[i..space_end].to_string(), span.style));
+            start = space_end;
+        } else if !in_word {
+            start = i;
+            in_word = true;
+        }
+    }
+    if in_word {
+        spans.push(Span::styled(s[start..].to_string(), span.style));
     }
     spans
 }
 
-pub(crate) fn build_message_lines<'a, 'b>(
+pub(crate) fn build_message_lines<'a, 'b, F>(
     content: &'b str,
     max_width: usize,
     theme: &'a Theme,
-    format_spans: impl Fn(Vec<Span<'a>>) -> Line<'a>,
-) -> Vec<Line<'a>> {
+    format_spans: F,
+) -> Vec<Line<'a>>
+where
+    F: Fn(Line<'a>) -> Line<'a>,
+{
     let mut highlight = HighlightLines::new(Syntaxes::get("text"), theme);
     let mut in_codeblock = false;
     let mut lines: Vec<Line> = vec![];
@@ -107,34 +131,12 @@ pub(crate) fn build_message_lines<'a, 'b>(
             spans = vec![Span::styled(line.to_owned(), Style::default())];
         }
 
-        let mut split_spans = vec![];
-        let mut line_char_count = 0;
-
-        for span in spans {
-            if span.content.width() + line_char_count <= max_width {
-                line_char_count += span.content.width();
-                split_spans.push(span);
-                continue;
-            }
-
-            let mut word_set: Vec<&str> = vec![];
-            for word in span.content.split(' ') {
-                if word.len() + line_char_count > max_width {
-                    split_spans.push(Span::styled(word_set.join(" "), span.style));
-                    lines.push(format_spans(split_spans));
-                    split_spans = vec![];
-                    word_set = vec![];
-                    line_char_count = 0;
-                }
-
-                word_set.push(word);
-                line_char_count += word.len() + 1;
-            }
-
-            split_spans.push(Span::styled(word_set.join(" "), span.style));
-        }
-
-        lines.push(format_spans(split_spans));
+        lines.extend(
+            split_to_lines(spans, max_width)
+                .into_iter()
+                .map(|l| format_spans(l))
+                .collect::<Vec<_>>(),
+        );
     }
     lines
 }

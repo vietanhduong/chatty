@@ -99,11 +99,19 @@ impl NoticeMessage {
 }
 
 impl NoticeType {
-    pub fn color(&self) -> Color {
+    pub fn border_color(&self) -> Color {
         match self {
-            NoticeType::Info => Color::LightBlue,
-            NoticeType::Warning => Color::Yellow,
-            NoticeType::Error => Color::Red,
+            NoticeType::Info => Color::Rgb(30, 136, 229),
+            NoticeType::Warning => Color::Rgb(251, 140, 0),
+            NoticeType::Error => Color::Rgb(211, 47, 47),
+        }
+    }
+
+    pub fn text_color(&self) -> Color {
+        match self {
+            NoticeType::Info => Color::Rgb(144, 202, 249),
+            NoticeType::Warning => Color::Rgb(255, 213, 79),
+            NoticeType::Error => Color::Rgb(255, 138, 128),
         }
     }
 }

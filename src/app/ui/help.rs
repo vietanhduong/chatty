@@ -14,7 +14,7 @@ use ratatui::{
 };
 use tui_textarea::Key;
 
-use super::helpers;
+use super::utils;
 
 pub const KEY_BINDINGS: Lazy<Vec<KeyBinding>> = Lazy::new(build_key_bindings);
 const ROW_HEIGHT: usize = 1;
@@ -172,14 +172,7 @@ fn build_rows<'a>(max_width: usize) -> Vec<Row<'a>> {
     let mut rows = vec![];
     for binding in KEY_BINDINGS.iter() {
         let key = Cell::from(binding.key().to_string()).style(Style::default());
-        let desc = helpers::split_to_lines(
-            binding
-                .long_description()
-                .split(' ')
-                .map(|s| s.to_string().into())
-                .collect(),
-            max_width,
-        );
+        let desc = utils::split_to_lines(binding.long_description().to_string(), max_width - 2);
         rows.push(Row::new(vec![key, Cell::from(Text::from(desc))]).height(ROW_HEIGHT as u16));
     }
     rows

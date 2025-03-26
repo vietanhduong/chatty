@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "bubble_test.rs"]
+mod tests;
+
 use crate::models::Message;
 use ratatui::{
     style::{Color, Style},
@@ -6,7 +10,7 @@ use ratatui::{
 use syntect::highlighting::Theme;
 use unicode_width::UnicodeWidthStr;
 
-use super::helpers;
+use super::utils;
 
 pub const DEFAULT_PADDING: usize = 8;
 pub const DEFAULT_BORDER_ELEMENTS_LEN: usize = 5;
@@ -69,10 +73,9 @@ impl<'a> Bubble<'_> {
     pub fn as_lines(&mut self, theme: &'a Theme) -> Vec<Line<'a>> {
         let max_line_len = self.get_max_line_length();
 
-        let lines =
-            helpers::build_message_lines(self.message.text(), max_line_len, theme, |spans| {
-                self.format_spans(spans, max_line_len)
-            });
+        let lines = utils::build_message_lines(self.message.text(), max_line_len, theme, |line| {
+            self.format_spans(line.spans, max_line_len)
+        });
 
         self.wrap_lines_in_bubble(lines, max_line_len)
     }
@@ -99,10 +102,8 @@ impl<'a> Bubble<'_> {
                 .repeat(max_line_len - date.to_string().width() - 1)
                 .join("")
         );
-        let bar_padding = helpers::repeat_from_substactions(
-            " ",
-            vec![self.max_width, max_line_len, self.padding],
-        );
+        let bar_padding =
+            utils::repeat_from_substactions(" ", vec![self.max_width, max_line_len, self.padding]);
 
         if self.message.is_system() {
             let mut res = vec![self.highlighted_line(format!("{top_bar}{bar_padding}"))];
@@ -161,7 +162,7 @@ impl<'a> Bubble<'_> {
 
     fn format_spans(&self, mut spans: Vec<Span<'a>>, max_line_len: usize) -> Line<'a> {
         let line_str_len: usize = spans.iter().map(|e| return e.content.width()).sum();
-        let fill = helpers::repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
+        let fill = utils::repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
         let formatted_line_len = line_str_len + fill.len() + self.padding;
 
         let mut wrapped_spans = vec![self.highlighted_span("│ ".to_string())];
@@ -169,7 +170,7 @@ impl<'a> Bubble<'_> {
         wrapped_spans.push(self.highlighted_span(format!("{fill} │")));
 
         let outer_padding =
-            helpers::repeat_from_substactions(" ", vec![self.max_width, formatted_line_len]);
+            utils::repeat_from_substactions(" ", vec![self.max_width, formatted_line_len]);
 
         if self.message.is_system() {
             // Left alignment

@@ -20,9 +20,9 @@ use tokio::sync::mpsc;
 use tui_textarea::Key;
 
 use super::{
-    helpers,
     question::Question,
     rename::{self, Rename},
+    utils,
 };
 
 const NO_CONVERSATIONS: &str = "No conversations found";
@@ -223,6 +223,24 @@ impl<'a> HistoryScreen<'a> {
         }
     }
 
+    fn first(&mut self) {
+        if self.conversations.is_empty() {
+            self.list_state.select(None);
+            return;
+        }
+        self.list_state.select(Some(0));
+        // if the first item is a group header, we need to select the next item
+        self.next_row();
+    }
+
+    fn last(&mut self) {
+        if self.conversations.is_empty() {
+            self.list_state.select(None);
+            return;
+        }
+        self.list_state.select(Some(self.list_items.len() - 1));
+    }
+
     fn build_list_items(&mut self, max_width: usize) {
         self.list_items.clear();
         self.id_map.clear();
@@ -252,17 +270,13 @@ impl<'a> HistoryScreen<'a> {
             self.list_items.push(group.to_list_item());
 
             for c in conversations {
-                let mut spans = c
-                    .borrow()
-                    .title()
-                    .split(' ')
-                    .map(|s| Span::raw(s.to_string()))
-                    .collect::<Vec<_>>();
+                let mut spans = vec![span!(c.borrow().title())];
                 if self.current_conversation.as_deref() == Some(c.borrow().id()) {
+                    spans.push(Span::styled(" ", Style::default()));
                     spans.push(Span::styled("[*]", Style::default().fg(Color::LightRed)))
                 }
 
-                let lines = helpers::split_to_lines(spans, max_width);
+                let lines = utils::split_to_lines(spans, max_width - 2);
                 self.list_items.push(ListItem::new(Text::from(lines)));
                 self.id_map
                     .insert(self.list_items.len() - 1, c.borrow().id().to_string());
@@ -331,6 +345,8 @@ impl<'a> HistoryScreen<'a> {
             Event::KeyboardCharInput(input) => match input.key {
                 Key::Char('j') => self.next_row(),
                 Key::Char('k') => self.prev_row(),
+                Key::Char('g') => self.first(),
+                Key::Char('G') => self.last(),
                 Key::Char('q') => {
                     self.showing = false;
                     return Ok(false);
@@ -460,9 +476,7 @@ impl<'a> HistoryScreen<'a> {
             span!("d").green().bold(),
             span!(" to delete, ").white(),
             span!("r").green().bold(),
-            span!(" to rename, ").white(),
-            span!("↑/k/↓/j").green().bold(),
-            span!(" to move up/down ").white(),
+            span!(" to rename ").white(),
         ];
 
         let block = Block::default()

@@ -2,7 +2,6 @@ pub mod bubble;
 pub mod bubble_list;
 pub mod edit;
 pub mod help;
-pub(crate) mod helpers;
 pub mod history;
 pub mod loading;
 pub mod models;
@@ -12,6 +11,7 @@ pub mod rename;
 pub mod scroll;
 pub mod syntaxes;
 pub mod textarea;
+pub(crate) mod utils;
 
 pub use bubble::Bubble;
 pub use bubble_list::BubbleList;

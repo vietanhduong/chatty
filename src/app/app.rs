@@ -10,19 +10,16 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
 use eyre::Result;
+use ratatui::crossterm::{
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
 use ratatui::{
     Terminal,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
     prelude::{Backend, CrosstermBackend},
     style::Stylize,
     widgets::{Paragraph, Scrollbar, ScrollbarOrientation},
-};
-use ratatui::{
-    crossterm::{
-        execute,
-        terminal::{disable_raw_mode, enable_raw_mode},
-    },
-    text::Span,
 };
 use ratatui_macros::span;
 use syntect::highlighting::Theme;
@@ -32,7 +29,7 @@ use crate::{
     app::app_state::AppState,
     app::services::EventsService,
     app::ui::{
-        EditScreen, HelpScreen, HistoryScreen, Loading, ModelsScreen, Notice, TextArea, helpers,
+        EditScreen, HelpScreen, HistoryScreen, Loading, ModelsScreen, Notice, TextArea, utils,
     },
 };
 
@@ -475,16 +472,12 @@ impl<'a> App<'a> {
             let current_width = f.area().width;
             if !is_line_width_sufficient(current_width) {
                 f.render_widget(
-                    Paragraph::new(helpers::split_to_lines(
+                    Paragraph::new(utils::split_to_lines(
                         format!(
                             "I'm too small, make me bigger! I need at least {} cells (current: {})",
                             MIN_WIDTH, current_width
-                        )
-                        .as_str()
-                        .split(' ')
-                        .map(Span::raw)
-                        .collect::<Vec<_>>(),
-                        current_width as usize,
+                        ),
+                        (current_width - 2) as usize,
                     ))
                     .alignment(Alignment::Left),
                     f.area(),
@@ -533,17 +526,17 @@ impl<'a> App<'a> {
             }
 
             self.help_screen
-                .render(f, helpers::popup_area(f.area(), 40, 30));
+                .render(f, utils::popup_area(f.area(), 40, 30));
 
             self.models_screen
-                .render(f, helpers::popup_area(f.area(), 30, 60));
+                .render(f, utils::popup_area(f.area(), 30, 60));
 
             self.edit_screen
-                .render(f, helpers::popup_area(f.area(), 70, 90));
+                .render(f, utils::popup_area(f.area(), 70, 90));
             self.history_screen
-                .render(f, helpers::popup_area(f.area(), 70, 90));
+                .render(f, utils::popup_area(f.area(), 70, 90));
 
-            self.notice.render(f, helpers::notice_area(f.area(), 30));
+            self.notice.render(f, utils::notice_area(f.area(), 30));
         })?;
         Ok(())
     }
