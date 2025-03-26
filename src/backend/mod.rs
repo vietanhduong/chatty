@@ -74,6 +74,7 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
             .add_connection(backend)
             .await
             .wrap_err(format!("adding connection: {}", name))?;
+        println!("  [+] Added backend: {}", name);
         log::debug!("Added backend connection: {}", name);
     }
     Ok(Arc::new(manager))

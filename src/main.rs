@@ -23,20 +23,26 @@ async fn main() -> Result<()> {
 
     let config = Command::get_config()?;
     init_logger(&config)?;
+    println!("[+] Logger initialized");
 
     let theme = init_theme(&config)?;
+    println!("[+] Theme initialized");
 
     if config.backend().is_none() {
         eyre::bail!("No backend configured");
     }
 
+    println!("[+] Initializing backend...");
     let backend = new_manager(config.backend().unwrap()).await?;
     backend.health_check().await?;
+    println!("[+] Backend is healthy");
 
+    println!("[+] Listing models...");
     let models = backend.list_models(false).await?;
     if models.is_empty() {
         eyre::bail!("No models available");
     }
+    println!("[+] Models: {:?}", models);
 
     let backend_config = config.backend().cloned().unwrap_or_default();
     let want_model = backend_config.default_model().unwrap_or_default();
@@ -59,14 +65,19 @@ async fn main() -> Result<()> {
     };
 
     backend.set_current_model(&model).await?;
+    println!("[+] Set current model to {}", model);
 
+    println!("[+] Initializing storage...");
     let storage = new_storage(&config)
         .await
         .wrap_err("initializing storage")?;
+    println!("[+] Storage initialized");
 
+    println!("[+] Fetching conversations...");
     let conversations = storage
         .get_conversations(FilterConversation::default())
         .await?;
+    println!("[+] Conversations fetched");
 
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
