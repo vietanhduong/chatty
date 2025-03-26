@@ -108,11 +108,17 @@ async fn test_get_completion() {
         ..Default::default()
     });
 
-    let body = lines
+    let mut lines = lines
         .into_iter()
-        .map(|l| serde_json::to_string(&l).expect("Failed to serialize"))
-        .collect::<Vec<_>>()
-        .join("\n");
+        .map(|l| {
+            format!(
+                "data: {}",
+                serde_json::to_string(&l).expect("Failed to serialize")
+            )
+        })
+        .collect::<Vec<_>>();
+    lines.push("data: [DONE]".to_string());
+    let body = lines.join("\n");
 
     let prompt = BackendPrompt::new("Hello").with_model("gpt-3.5-turbo");
 

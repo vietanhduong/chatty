@@ -19,11 +19,8 @@ use std::{
 use tokio::sync::mpsc;
 use tui_textarea::Key;
 
-use super::{
-    question::Question,
-    rename::{self, Rename},
-    utils,
-};
+use super::input_box::{self, InputBox};
+use super::{question::Question, utils};
 
 const NO_CONVERSATIONS: &str = "No conversations found";
 
@@ -46,7 +43,7 @@ pub struct HistoryScreen<'a> {
     list_items: Vec<ListItem<'a>>,
     id_map: HashMap<usize, String>,
 
-    rename: Rename<'a>,
+    rename: InputBox<'a>,
     question: Question<'a>,
 
     current_conversation: Option<String>,
@@ -62,7 +59,7 @@ impl<'a> HistoryScreen<'a> {
             conversations: vec![],
             list_items: vec![],
             id_map: HashMap::new(),
-            rename: Rename::default(),
+            rename: InputBox::default().with_title(" Rename "),
             current_conversation: None,
             list_state: ListState::default(),
             question: Question::new().with_title(" Delete Conversation "),
@@ -498,7 +495,7 @@ impl<'a> HistoryScreen<'a> {
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
         f.render_stateful_widget(list, inner, &mut self.list_state);
 
-        let rename_area = rename::rename_area(inner, ((inner.width as f32 * 0.8).ceil()) as u16);
+        let rename_area = input_box::build_area(inner, ((inner.width as f32 * 0.8).ceil()) as u16);
         self.rename.render(f, rename_area);
 
         self.question.render(f, inner);

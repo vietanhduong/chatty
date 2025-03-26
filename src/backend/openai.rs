@@ -18,6 +18,8 @@ use tokio::io::AsyncBufReadExt;
 use tokio::sync::RwLock;
 use tokio_util::io::StreamReader;
 
+use super::user_agent;
+
 #[derive(Debug)]
 pub struct OpenAI {
     alias: String,
@@ -162,7 +164,8 @@ impl Backend for OpenAI {
 
         let mut req = reqwest::Client::new()
             .post(format!("{}/v1/chat/completions", self.endpoint))
-            .header("Content-Type", "application/json");
+            .header("Content-Type", "application/json")
+            .header("User-Agent", user_agent());
 
         if let Some(timeout) = self.timeout {
             req = req.timeout(timeout);
@@ -206,19 +209,15 @@ impl Backend for OpenAI {
             }
 
             let mut line = line.unwrap().trim().to_string();
-            if line.starts_with("data: ") {
-                line = line[6..].to_string();
-            }
-
-            if line.ends_with(": keep-alive") || line.is_empty() {
+            log::trace!("streaming response: {}", line);
+            if !line.starts_with("data: ") {
                 continue;
             }
 
+            line = line[6..].to_string();
             if line == "[DONE]" {
                 break;
             }
-
-            log::trace!("streaming response: {}", line);
 
             let data = serde_json::from_str::<CompletionResponse>(&line)
                 .wrap_err(format!("parsing completion response line: {}", line))?;
@@ -230,17 +229,6 @@ impl Backend for OpenAI {
 
             if message_id.is_empty() {
                 message_id = data.id;
-            }
-
-            if c.finish_reason.is_some() {
-                if let Some(usage_data) = data.usage {
-                    usage = Some(BackendUsage {
-                        prompt_tokens: usage_data.prompt_tokens,
-                        completion_tokens: usage_data.completion_tokens,
-                        total_tokens: usage_data.total_tokens,
-                    });
-                }
-                break;
             }
 
             let text = match c.delta.content {
@@ -257,6 +245,14 @@ impl Backend for OpenAI {
                 usage: None,
             };
             event_tx.send(Event::BackendPromptResponse(msg)).await?;
+
+            if let Some(usage_data) = data.usage {
+                usage = Some(BackendUsage {
+                    prompt_tokens: usage_data.prompt_tokens,
+                    completion_tokens: usage_data.completion_tokens,
+                    total_tokens: usage_data.total_tokens,
+                });
+            }
         }
 
         let msg = BackendResponse {

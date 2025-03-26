@@ -79,3 +79,9 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     }
     Ok(Arc::new(manager))
 }
+
+fn user_agent() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let user_agent = format!("chatty/{}", version);
+    user_agent
+}

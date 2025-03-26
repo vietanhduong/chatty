@@ -48,7 +48,7 @@ pub struct App<'a> {
     events: EventsService<'a>,
 
     app_state: AppState<'a>,
-    models_screen: ModelsScreen,
+    models_screen: ModelsScreen<'a>,
     help_screen: HelpScreen<'a>,
     edit_screen: EditScreen<'a>,
     history_screen: HistoryScreen<'a>,
@@ -529,7 +529,7 @@ impl<'a> App<'a> {
                 .render(f, utils::popup_area(f.area(), 40, 30));
 
             self.models_screen
-                .render(f, utils::popup_area(f.area(), 30, 60));
+                .render(f, utils::popup_area(f.area(), 40, 60));
 
             self.edit_screen
                 .render(f, utils::popup_area(f.area(), 70, 90));

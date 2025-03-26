@@ -25,7 +25,10 @@ pub fn init_logger(config: &Configuration) -> Result<()> {
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(file.append())
-                .open(file.path())
+                .open(
+                    resolve_path(file.path())
+                        .wrap_err(format!("resolving log file path {}", file.path()))?,
+                )
                 .wrap_err(format!("opening log file {}", file.path()))?,
         )
     } else {
