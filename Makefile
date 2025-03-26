@@ -32,4 +32,9 @@ install: build
 	@install -m 0755 -d $(DESTDIR)$(BINDIR)
 	@install -m 0755 $(target_dir)/chatty $(DESTDIR)$(BINDIR)
 
+clean:
+	@echo "Cleaning project..."
+	@cargo clean
+	@echo "Clean complete."
+
 all: install
