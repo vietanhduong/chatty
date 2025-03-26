@@ -453,16 +453,16 @@ impl<'a> HistoryScreen<'a> {
 
         let instructions: Vec<Span> = vec![
             " ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "q"),
-            " to close, ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Enter"),
-            " to select, ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "d"),
-            " to delete, ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "r"),
-            " to rename, ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "↑/k/↓/j"),
-            " to move up/down ".into(),
+            span!("q").green().bold(),
+            span!(" to close, ").white(),
+            span!("Enter").green().bold(),
+            span!(" to select, ").white(),
+            span!("d").green().bold(),
+            span!(" to delete, ").white(),
+            span!("r").green().bold(),
+            span!(" to rename, ").white(),
+            span!("↑/k/↓/j").green().bold(),
+            span!(" to move up/down ").white(),
         ];
 
         let block = Block::default()
@@ -511,7 +511,11 @@ impl ConversationGroup {
     }
     fn to_list_item<'b>(&self) -> ListItem<'b> {
         ListItem::new(self.to_text())
-            .style(Style::default().fg(Color::White).bg(Color::LightBlue))
+            .style(
+                Style::default()
+                    .fg(Color::Yellow)
+                    .bg(Color::Rgb(26, 35, 126)),
+            )
             .add_modifier(Modifier::BOLD)
     }
 }

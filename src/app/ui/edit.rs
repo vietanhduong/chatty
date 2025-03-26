@@ -1,5 +1,5 @@
-use eyre::{Context, Result};
 use crate::models::{Action, Event, Message};
+use eyre::{Context, Result};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -85,15 +85,15 @@ impl<'a> EditScreen<'_> {
         }
 
         let instructions = vec![
-            " ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "q"),
-            " to close, ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Space"),
-            " to select, ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "y"),
-            " to copy selected, ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "c"),
-            " to quick copy ".into(),
+            span!(" "),
+            span!("q").green().bold(),
+            span!(" to close, ").white(),
+            span!("Space").green().bold(),
+            span!(" to select, ").white(),
+            span!("y").green().bold(),
+            span!(" to copy selected, ").white(),
+            span!("c").green().bold(),
+            span!(" to quick copy ").white(),
         ];
 
         let block = Block::default()
@@ -237,9 +237,16 @@ fn build_list_items<'a>(messages: &[SelectedMessage], max_width: usize) -> Vec<L
     messages
         .iter()
         .map(|item| {
+            let mut spans = vec![];
+            if item.selected {
+                spans.push(span!(Style::default().fg(Color::Red); "[*]"));
+            } else {
+                spans.push(span!(Style::default(); "[ ]"));
+            }
+            spans.push(span!(Style::default(); " "));
+
             let mut content = format!(
-                "[{}] {}: {}",
-                if item.selected { "x" } else { " " },
+                "{}: {}",
                 if item.msg.is_system() { "S" } else { "U" },
                 item.msg.text()
             );
@@ -251,7 +258,8 @@ fn build_list_items<'a>(messages: &[SelectedMessage], max_width: usize) -> Vec<L
                 content = truncated;
             }
 
-            let text = Text::from(Line::from(content));
+            spans.push(span!(Style::default(); content));
+            let text = Text::from(Line::from(spans));
             ListItem::new(text)
         })
         .collect()

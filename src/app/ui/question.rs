@@ -62,11 +62,11 @@ impl<'a> Question<'a> {
             .title_bottom(vec![
                 span!(" "),
                 span!("q").green().bold(),
-                span!(" to close, "),
+                span!(" to close, ").white(),
                 span!("y").green().bold(),
-                span!(" to confirm, "),
+                span!(" to confirm, ").white(),
                 span!("n").green().bold(),
-                span!(" to cancel "),
+                span!(" to cancel ").white(),
             ])
             .title_alignment(Alignment::Center)
             .border_style(Style::default().light_blue());

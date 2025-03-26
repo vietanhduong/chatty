@@ -1,5 +1,5 @@
-use once_cell::sync::Lazy;
 use crate::models::Event;
+use once_cell::sync::Lazy;
 use ratatui_macros::span;
 use std::{
     cmp::{max, min},
@@ -113,10 +113,10 @@ impl<'a> HelpScreen<'_> {
             .title_alignment(Alignment::Center)
             .title_bottom(Line::from(vec![
                 " ".into(),
-                span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "q"),
-                " to close ".into(),
-                span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "↑/k/↓/j"),
-                " to move up/down ".into(),
+                span!("q").green().bold(),
+                span!(" to close, ").white(),
+                span!("↑/k/↓/j").green().bold(),
+                span!(" to move up/down ").white(),
             ]))
             .style(Style::default());
         frame.render_widget(Clear, area);

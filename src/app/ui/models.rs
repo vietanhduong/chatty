@@ -1,7 +1,7 @@
 use std::cmp::{max, min};
 
-use eyre::Result;
 use crate::models::{Action, Event};
+use eyre::Result;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Rect},
@@ -93,10 +93,10 @@ impl ModelsScreen {
 
         let instructions = vec![
             " ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "q"),
-            " to close, ".into(),
-            span!(Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD); "Enter"),
-            " to select, ".into(),
+            span!("q").green().bold(),
+            span!(" to close, ").white(),
+            span!("Enter").green().bold(),
+            span!(" to select ").white(),
         ];
 
         let block = Block::default()
