@@ -7,8 +7,6 @@ pub const MAX_CONVO_LENGTH: usize = 50; // 50 messages
 /// Keep N lastest messages and compress the rest
 pub const KEEP_N_MEESAGES: usize = 5; // Keep last 5 messages
 
-pub const MAX_OUTPUT_TOKENS: usize = 4096; // 4k tokens
-
 pub const HELLO_MESSAGE: &str = "Hello! How can I help you? 😊";
 
 pub const LOG_FILE_PATH: &str = "/tmp/chatty.log";

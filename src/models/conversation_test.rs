@@ -57,30 +57,6 @@ fn test_conversation_build_context() {
 }
 
 #[test]
-fn test_conversation_build_context_with_truncation() {
-    let mut config = Configuration::default();
-    config.context.truncation.enabled = true;
-    config.context.truncation.max_tokens = 15;
-    config.backend.max_output_tokens = 5;
-    Configuration::init(config).expect("failed to init default config");
-
-    let mut convo = Conversation::new_hello();
-
-    convo.append_message(Message::new_user("user", "Hello, world!").with_token_count(2));
-    convo.append_message(Message::new_system("system", "Hello, user!").with_token_count(2));
-    convo.append_message(Message::new_user("user", "How are you?").with_token_count(3));
-    convo
-        .append_message(Message::new_system("system", "I am fine, thank you!").with_token_count(5));
-    convo.append_message(Message::new_user("user", "What about you?").with_token_count(3));
-    convo.append_message(Message::new_system("system", "I am fine too!").with_token_count(5));
-    convo.append_message(Message::new_user("user", "No, i'm not ok").with_token_count(4));
-    convo.append_message(Message::new_system("system", "urmom").with_token_count(1));
-
-    let context = convo.build_context();
-    assert_eq!(context.len(), 3);
-}
-
-#[test]
 pub fn test_conversation_last_message_of() {
     let mut convo = Conversation::new_hello();
 

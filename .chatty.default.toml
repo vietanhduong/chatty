@@ -24,7 +24,6 @@ folder_path = ""
 
 [backend]
 default_model = ""
-max_output_tokens = 4096
 
 [context.compression]
 enabled = false
@@ -38,7 +37,7 @@ keep_n_messages = 10
 [context.truncation]
 enabled = false
 # If the total no. tokens in the current context is greater than
-# context.truncation.max_tokens + backend.max_output_tokens
+# context.truncation.max_tokens + backend.connections.max_output_tokens
 # then the context will be truncated to fit the limit
 max_tokens = 65_536
 
@@ -47,6 +46,7 @@ max_tokens = 65_536
 #enabled = false
 #alias = "OpenAI"
 #kind = "openai"    # openai or gemini
+#max_output_tokens = None
 #endpoint = ""
 #api_key = ""
 

@@ -82,14 +82,22 @@ impl BackendPrompt {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BackendConnection {
+    #[serde(default)]
     enabled: bool,
     kind: BackendKind,
+    #[serde(default)]
     alias: Option<String>,
+    #[serde(default)]
     endpoint: String,
+    #[serde(default)]
     api_key: Option<String>,
+    #[serde(default)]
     timeout: Option<time::Duration>,
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[serde(default)]
     models: Vec<String>,
+
+    #[serde(default)]
+    max_output_tokens: Option<usize>,
 }
 
 impl BackendConnection {
@@ -102,6 +110,7 @@ impl BackendConnection {
             api_key: None,
             timeout: None,
             models: Vec::new(),
+            max_output_tokens: None,
         }
     }
 
@@ -161,6 +170,10 @@ impl BackendConnection {
 
     pub fn enabled(&self) -> bool {
         self.enabled
+    }
+
+    pub fn max_output_tokens(&self) -> Option<usize> {
+        self.max_output_tokens
     }
 }
 

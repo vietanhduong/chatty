@@ -1,9 +1,5 @@
 use super::constants::*;
 
-pub(crate) fn max_output_tokens() -> usize {
-    MAX_OUTPUT_TOKENS
-}
-
 pub(crate) fn hello_message() -> Option<String> {
     Some(HELLO_MESSAGE.to_string())
 }

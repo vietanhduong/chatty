@@ -7,7 +7,7 @@ use crate::models::BackendConnection;
 #[allow(unused_imports)]
 use super::CONFIG;
 
-use super::constants::{HELLO_MESSAGE, LOG_FILE_PATH, MAX_OUTPUT_TOKENS};
+use super::constants::{HELLO_MESSAGE, LOG_FILE_PATH};
 use super::defaults::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -114,9 +114,6 @@ pub struct ThemeConfig {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BackendConfig {
-    #[serde(default = "max_output_tokens")]
-    pub max_output_tokens: usize,
-
     #[serde(default)]
     pub default_model: Option<String>,
 
@@ -212,7 +209,6 @@ impl Default for ThemeConfig {
 impl Default for BackendConfig {
     fn default() -> Self {
         Self {
-            max_output_tokens: MAX_OUTPUT_TOKENS,
             default_model: None,
             connections: vec![],
             timeout_secs: None,

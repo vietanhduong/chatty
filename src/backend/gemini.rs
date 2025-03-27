@@ -5,6 +5,7 @@ mod tests;
 use std::{fmt::Display, time};
 
 use crate::{
+    backend::utils::context_truncation,
     config::user_agent,
     models::{
         ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event,
@@ -32,6 +33,8 @@ pub struct Gemini {
 
     cache_models: RwLock<Vec<Model>>,
     current_model: RwLock<Option<String>>,
+
+    max_output_tokens: Option<usize>,
 }
 
 impl Gemini {
@@ -179,16 +182,6 @@ impl Backend for Gemini {
             bail!("no model is set");
         }
 
-        let mut contents: Vec<Content> = vec![];
-        if !prompt.context().is_empty() {
-            // FIXME: This approach might not be optimized for large contexts
-            contents = prompt
-                .context()
-                .into_iter()
-                .map(Content::from)
-                .collect::<Vec<_>>();
-        }
-
         let init_conversation = prompt.context().is_empty();
         let content = if init_conversation && !prompt.no_generate_title() {
             format!("{}\n{}", prompt.text(), TITLE_PROMPT)
@@ -196,17 +189,29 @@ impl Backend for Gemini {
             prompt.text().to_string()
         };
 
-        contents.push(Content {
-            role: "user".to_string(),
-            parts: vec![ContentParts::Text(content)],
-        });
+        let mut messages = prompt.context().to_vec();
+        messages.push(Message::new_user("user", content));
+
+        if let Some(max_output_tokens) = self.max_output_tokens {
+            context_truncation(&mut messages, max_output_tokens);
+        }
+
+        let contents = messages
+            .into_iter()
+            .map(|m| Content::from(&m))
+            .collect::<Vec<_>>();
 
         let model = match prompt.model() {
             Some(model) => model.to_string(),
             None => self.current_model().await.unwrap(),
         };
 
-        let completion_req = CompletionRequest { contents };
+        let completion_req = CompletionRequest {
+            contents,
+            generation_config: Some(GenerationConfig {
+                max_output_tokens: self.max_output_tokens,
+            }),
+        };
 
         let mut params = vec![];
         if let Some(key) = &self.api_key {
@@ -339,6 +344,7 @@ fn process_line_buffer(lines: &[String]) -> Result<GenerateContentResponse> {
 impl Default for Gemini {
     fn default() -> Self {
         Gemini {
+            max_output_tokens: None,
             alias: "Gemini".to_string(),
             endpoint: "https://generativelanguage.googleapis.com/v1beta".to_string(),
             api_key: None,
@@ -366,6 +372,8 @@ impl From<&BackendConnection> for Gemini {
         if let Some(timeout) = value.timeout() {
             backend.timeout = Some(timeout);
         }
+
+        backend.max_output_tokens = value.max_output_tokens();
 
         backend.with_want_models(value.models().to_vec())
     }
@@ -405,8 +413,16 @@ struct Content {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CompletionRequest {
     contents: Vec<Content>,
+    generation_config: Option<GenerationConfig>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerationConfig {
+    max_output_tokens: Option<usize>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

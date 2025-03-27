@@ -2,6 +2,7 @@
 #[path = "openai_test.rs"]
 mod tests;
 
+use crate::backend::utils::context_truncation;
 use crate::backend::{ArcBackend, Backend, TITLE_PROMPT};
 use crate::config::user_agent;
 use crate::models::{
@@ -31,6 +32,8 @@ pub struct OpenAI {
 
     cache_models: RwLock<Vec<Model>>,
     current_model: RwLock<Option<String>>,
+
+    max_output_tokens: Option<usize>,
 }
 
 #[async_trait]
@@ -131,16 +134,6 @@ impl Backend for OpenAI {
             bail!("no model is set");
         }
 
-        let mut messages: Vec<MessageRequest> = vec![];
-        if !prompt.context().is_empty() {
-            // FIXME: This approach might not be optimized for large contexts
-            messages = prompt
-                .context()
-                .into_iter()
-                .map(MessageRequest::from)
-                .collect::<Vec<_>>();
-        }
-
         let init_conversation = prompt.context().is_empty();
         let content = if init_conversation && !prompt.no_generate_title() {
             format!("{}\n{}", prompt.text(), TITLE_PROMPT)
@@ -148,10 +141,17 @@ impl Backend for OpenAI {
             prompt.text().to_string()
         };
 
-        messages.push(MessageRequest {
-            role: "user".to_string(),
-            content,
-        });
+        let mut messages = prompt.context().to_vec();
+        messages.push(Message::new_user("user", content));
+
+        if let Some(max_output_tokens) = self.max_output_tokens {
+            context_truncation(&mut messages, max_output_tokens);
+        }
+
+        let messages = messages
+            .into_iter()
+            .map(|m| MessageRequest::from(&m))
+            .collect::<Vec<_>>();
 
         let model = match prompt.model() {
             Some(model) => model.to_string(),
@@ -162,6 +162,7 @@ impl Backend for OpenAI {
             model: model.clone(),
             messages: messages.clone(),
             stream: true,
+            max_completion_tokens: self.max_output_tokens,
         };
 
         let mut req = reqwest::Client::new()
@@ -292,6 +293,8 @@ impl From<&BackendConnection> for OpenAI {
             openai.alias = alias.to_string();
         }
 
+        openai.max_output_tokens = value.max_output_tokens();
+
         openai.want_models = value.models().to_vec();
         openai
     }
@@ -342,6 +345,7 @@ impl OpenAI {
 impl Default for OpenAI {
     fn default() -> Self {
         Self {
+            max_output_tokens: None,
             alias: "OpenAI".to_string(),
             endpoint: "https://api.openai.com".to_string(),
             api_key: None,
@@ -374,6 +378,7 @@ struct CompletionRequest {
     model: String,
     messages: Vec<MessageRequest>,
     stream: bool,
+    max_completion_tokens: Option<usize>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

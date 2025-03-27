@@ -173,8 +173,6 @@ impl Conversation {
             None => context.extend(self.messages[1..].to_vec()),
         }
 
-        context_truncation(&mut context);
-
         if !context.last().unwrap().is_system() {
             context.pop();
         }
@@ -319,25 +317,4 @@ fn filter_issuer(issuer: Option<&Issuer>, msg: &Message) -> bool {
     }
 
     value.is_empty() || msg.issuer_str() == value
-}
-
-fn context_truncation(context: &mut Vec<Message>) {
-    if !Configuration::instance().context.truncation.enabled {
-        return;
-    }
-
-    let max_tokens = Configuration::instance().context.truncation.max_tokens;
-    let max_output_tokens = Configuration::instance().backend.max_output_tokens;
-    let mut current_tokens = context.iter().map(|msg| msg.token_count()).sum::<usize>();
-    if current_tokens + max_output_tokens <= max_tokens {
-        return;
-    }
-
-    while current_tokens + max_output_tokens > max_tokens {
-        if context.len() < 2 {
-            break;
-        }
-        let msg = context.remove(0);
-        current_tokens -= msg.token_count();
-    }
 }
