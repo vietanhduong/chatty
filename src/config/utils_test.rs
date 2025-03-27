@@ -1,5 +1,8 @@
 use crate::{
-    config::{StorageConfig, constants::MAX_CONTEXT_LENGTH},
+    config::{
+        StorageConfig,
+        constants::{LOG_FILE_PATH, MAX_CONTEXT_LENGTH},
+    },
     models::BackendKind,
 };
 
@@ -15,10 +18,9 @@ fn test_load_configuration() {
     assert_eq!(log_filters.len(), 1);
     assert_eq!(log_filters[0].module.as_deref(), Some("backend"));
 
-    let log_file = log.file.as_ref();
-    assert!(log_file.is_some());
-    assert_eq!(log_file.unwrap().path, "/var/log/chatty.log");
-    assert_eq!(log_file.unwrap().append, true);
+    let log_file = &log.file;
+    assert_eq!(log_file.path, "/var/logs/chatty.log");
+    assert_eq!(log_file.append, true);
 
     assert_eq!(config.theme.name.as_deref(), Some("dark"));
     assert_eq!(
@@ -76,8 +78,7 @@ fn test_load_configuration_with_some_default_fields() {
 
     let log = &config.log;
     assert_eq!(log.level.as_deref(), Some("info"));
-    assert_eq!(log.file.is_none(), true);
-    assert_eq!(log.filters.is_none(), true);
+    assert_eq!(log.file.path, LOG_FILE_PATH);
 
     let truncation = &config.context.truncation;
     assert_eq!(truncation.enabled, true);

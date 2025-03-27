@@ -19,20 +19,17 @@ pub fn load_configuration(config_path: &str) -> Result<Configuration> {
 }
 
 pub fn init_logger(config: &LogConfig) -> Result<()> {
-    let log_file: Box<dyn std::io::Write + Send + 'static> = if let Some(ref file) = config.file {
-        Box::new(
-            std::fs::OpenOptions::new()
-                .create(true)
-                .append(file.append)
-                .open(
-                    resolve_path(&file.path)
-                        .wrap_err(format!("resolving log file path {}", file.path))?,
-                )
-                .wrap_err(format!("opening log file {}", file.path))?,
-        )
-    } else {
-        Box::new(std::io::stderr())
-    };
+    let path = resolve_path(&config.file.path)
+        .wrap_err(format!("resolving log file path {}", config.file.path))?;
+    init_log_dir(&path)?;
+    let log_file = Box::new(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(config.file.append)
+            .open(&path)
+            .wrap_err(format!("opening log file {}", path))?,
+    );
 
     let raw_level = config.level.as_deref().unwrap_or("info");
     let log_level = LevelFilter::from_str(raw_level)?;
@@ -139,4 +136,13 @@ pub fn lookup_config_path() -> Option<String> {
 
 fn env_or_current(key: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| ".".to_string())
+}
+
+fn init_log_dir(path: &str) -> Result<()> {
+    // Create parent dirs
+    let dir = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    std::fs::create_dir_all(dir).wrap_err(format!("creating directory {}", dir.display()))?;
+    Ok(())
 }

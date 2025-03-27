@@ -5,7 +5,7 @@ filters = [{ module = "backend", "level" = "debug" }]
 module = "chatty"
 
 [log.file]
-path = "/var/log/chatty.log"
+path = "/var/logs/chatty.log"
 append = true
 
 [theme]

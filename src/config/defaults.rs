@@ -23,3 +23,7 @@ pub(crate) fn keep_n_messages() -> usize {
 pub(crate) fn log_level() -> Option<String> {
     Some("info".to_string())
 }
+
+pub(crate) fn log_file_path() -> String {
+    LOG_FILE_PATH.to_string()
+}

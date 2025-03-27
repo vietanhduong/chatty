@@ -7,7 +7,7 @@ use crate::models::BackendConnection;
 #[allow(unused_imports)]
 use super::CONFIG;
 
-use super::constants::{HELLO_MESSAGE, MAX_OUTPUT_TOKENS};
+use super::constants::{HELLO_MESSAGE, LOG_FILE_PATH, MAX_OUTPUT_TOKENS};
 use super::defaults::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -82,7 +82,7 @@ pub struct LogConfig {
     pub filters: Option<Vec<LogFilter>>,
 
     #[serde(default)]
-    pub file: Option<LogFile>,
+    pub file: LogFile,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -96,7 +96,7 @@ pub struct LogFilter {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct LogFile {
-    #[serde(default)]
+    #[serde(default = "log_file_path")]
     pub path: String,
 
     #[serde(default)]
@@ -185,8 +185,17 @@ impl Default for LogConfig {
     fn default() -> Self {
         Self {
             level: Some("info".to_string()),
-            file: None,
+            file: LogFile::default(),
             filters: None,
+        }
+    }
+}
+
+impl Default for LogFile {
+    fn default() -> Self {
+        Self {
+            path: LOG_FILE_PATH.to_string(),
+            append: false,
         }
     }
 }
