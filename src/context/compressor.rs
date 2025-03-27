@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 
 pub struct Compressor {
     enabled: bool,
+
     max_context_length: usize,
     max_convo_length: usize,
     keep_n_messages: usize,
@@ -23,7 +24,7 @@ pub struct Compressor {
 impl Compressor {
     pub fn new(backend: ArcBackend) -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             backend,
             max_context_length: MAX_CONTEXT_LENGTH,
             max_convo_length: MAX_CONVO_LENGTH,
@@ -56,11 +57,7 @@ impl Compressor {
     }
 
     pub fn should_compress(&self, conversation: &Conversation) -> bool {
-        if !self.enabled {
-            return false;
-        }
-
-        if conversation.len() < self.keep_n_messages {
+        if !self.enabled || conversation.len() < self.keep_n_messages {
             return false;
         }
 

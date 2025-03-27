@@ -19,30 +19,30 @@ pub fn load_configuration(config_path: &str) -> Result<Configuration> {
 }
 
 pub fn init_logger(config: &LogConfig) -> Result<()> {
-    let log_file: Box<dyn std::io::Write + Send + 'static> = if let Some(file) = config.file() {
+    let log_file: Box<dyn std::io::Write + Send + 'static> = if let Some(ref file) = config.file {
         Box::new(
             std::fs::OpenOptions::new()
                 .create(true)
-                .append(file.append())
+                .append(file.append)
                 .open(
-                    resolve_path(file.path())
-                        .wrap_err(format!("resolving log file path {}", file.path()))?,
+                    resolve_path(&file.path)
+                        .wrap_err(format!("resolving log file path {}", file.path))?,
                 )
-                .wrap_err(format!("opening log file {}", file.path()))?,
+                .wrap_err(format!("opening log file {}", file.path))?,
         )
     } else {
         Box::new(std::io::stderr())
     };
 
-    let raw_level = config.level().unwrap_or("info");
+    let raw_level = config.level.as_deref().unwrap_or("info");
     let log_level = LevelFilter::from_str(raw_level)?;
 
     let mut builder = env_logger::Builder::new();
 
-    for filter in config.filters().unwrap_or_default() {
-        let module_level =
-            LevelFilter::from_str(filter.level().unwrap_or(raw_level)).unwrap_or(log_level.clone());
-        builder.filter(Some(filter.module()), module_level);
+    for filter in config.filters.as_deref().unwrap_or_default() {
+        let module_level = LevelFilter::from_str(filter.level.as_deref().unwrap_or(raw_level))
+            .unwrap_or(log_level.clone());
+        builder.filter(filter.module.as_deref(), module_level);
     }
 
     builder
@@ -65,14 +65,14 @@ pub fn init_logger(config: &LogConfig) -> Result<()> {
 }
 
 pub fn init_theme(config: &ThemeConfig) -> Result<Theme> {
-    let themes = match config.folder_path() {
+    let themes = match config.folder_path.as_deref() {
         Some(path) => {
             ThemeSet::load_from_folder(path).wrap_err(format!("loading theme from {}", path))?
         }
         None => syntect::highlighting::ThemeSet::load_defaults(),
     };
 
-    let theme_name = config.name().unwrap_or_default();
+    let theme_name = config.name.as_deref().unwrap_or_default();
     let theme = themes
         .themes
         .get(theme_name)

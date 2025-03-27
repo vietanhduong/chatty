@@ -4,78 +4,127 @@ use serde::{Deserialize, Serialize};
 use crate::config::constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
 use crate::models::BackendConnection;
 
+#[allow(unused_imports)]
 use super::CONFIG;
-use super::constants::HELLO_MESSAGE;
+
+use super::constants::{HELLO_MESSAGE, MAX_OUTPUT_TOKENS};
+use super::defaults::*;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Configuration {
     #[serde(default)]
-    general: General,
+    pub general: GeneralConfig,
 
     #[serde(default)]
-    log: LogConfig,
+    pub log: LogConfig,
 
     #[serde(default)]
-    theme: ThemeConfig,
-
-    backend: Option<BackendConfig>,
+    pub theme: ThemeConfig,
 
     #[serde(default)]
-    storage: StorageConfig,
+    pub backend: BackendConfig,
+
+    #[serde(default)]
+    pub storage: StorageConfig,
+
+    #[serde(default)]
+    pub context: ContextConfig,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct General {
-    hello_message: Option<String>,
-    show_usage: Option<bool>,
+pub struct GeneralConfig {
+    #[serde(default = "hello_message")]
+    pub hello_message: Option<String>,
+
+    #[serde(default)]
+    pub show_usage: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct LogConfig {
-    level: Option<String>,
-    filters: Option<Vec<LogFilter>>,
-    file: Option<LogFile>,
-}
+pub struct ContextConfig {
+    #[serde(default)]
+    pub compression: ContextCompression,
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct LogFilter {
-    module: String,
-    level: Option<String>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct LogFile {
-    path: String,
-    append: bool,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct ThemeConfig {
-    name: Option<String>,
-    folder_path: Option<String>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct BackendConfig {
-    default_model: Option<String>,
-
-    context_compression: ContextCompression,
-    timeout_secs: Option<u16>,
-    connections: Vec<BackendConnection>,
+    #[serde(default)]
+    pub truncation: TokenTruncation,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ContextCompression {
-    enabled: bool,
-    max_tokens: usize,
-    max_messages: usize,
-    keep_n_messages: usize,
+    #[serde(default)]
+    pub enabled: bool,
+
+    #[serde(default = "max_context_length")]
+    pub max_tokens: usize,
+
+    #[serde(default = "max_convo_length")]
+    pub max_messages: usize,
+
+    #[serde(default = "keep_n_messages")]
+    pub keep_n_messages: usize,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct OpenAIBackend {
-    endpoint: Option<String>,
-    api_key: Option<String>,
+pub struct TokenTruncation {
+    #[serde(default)]
+    pub enabled: bool,
+
+    #[serde(default = "max_context_length")]
+    pub max_tokens: usize,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LogConfig {
+    #[serde(default = "log_level")]
+    pub level: Option<String>,
+
+    #[serde(default)]
+    pub filters: Option<Vec<LogFilter>>,
+
+    #[serde(default)]
+    pub file: Option<LogFile>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LogFilter {
+    #[serde(default)]
+    pub module: Option<String>,
+
+    #[serde(default)]
+    pub level: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct LogFile {
+    #[serde(default)]
+    pub path: String,
+
+    #[serde(default)]
+    pub append: bool,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ThemeConfig {
+    #[serde(default)]
+    pub name: Option<String>,
+
+    #[serde(default)]
+    pub folder_path: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct BackendConfig {
+    #[serde(default = "max_output_tokens")]
+    pub max_output_tokens: usize,
+
+    #[serde(default)]
+    pub default_model: Option<String>,
+
+    #[serde(default)]
+    pub timeout_secs: Option<u16>,
+
+    #[serde(default)]
+    pub connections: Vec<BackendConnection>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -86,14 +135,16 @@ pub enum StorageConfig {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct SqliteStorage {
-    path: Option<String>,
+    pub path: Option<String>,
 }
 
 impl Configuration {
+    #[cfg(not(test))]
     pub fn instance() -> &'static Configuration {
         CONFIG.get().expect("Config not initialized")
     }
 
+    #[cfg(not(test))]
     pub fn init(config: Configuration) -> Result<()> {
         CONFIG
             .set(config)
@@ -101,130 +152,19 @@ impl Configuration {
         Ok(())
     }
 
-    pub fn log(&self) -> &LogConfig {
-        &self.log
+    #[cfg(test)]
+    pub fn instance() -> &'static Configuration {
+        use super::TEST_CONFIG;
+        TEST_CONFIG.with(|config| *config.borrow())
     }
 
-    pub fn theme(&self) -> &ThemeConfig {
-        &self.theme
-    }
-
-    pub fn backend(&self) -> Option<&BackendConfig> {
-        self.backend.as_ref()
-    }
-
-    pub fn storage(&self) -> &StorageConfig {
-        &self.storage
-    }
-
-    pub fn general(&self) -> &General {
-        &self.general
-    }
-}
-
-impl General {
-    pub fn hello_message(&self) -> Option<&str> {
-        self.hello_message.as_deref()
-    }
-
-    pub fn show_usage(&self) -> Option<bool> {
-        self.show_usage
-    }
-}
-
-impl LogConfig {
-    pub fn level(&self) -> Option<&str> {
-        self.level.as_deref()
-    }
-
-    pub fn file(&self) -> Option<&LogFile> {
-        self.file.as_ref()
-    }
-
-    pub fn filters(&self) -> Option<&[LogFilter]> {
-        self.filters.as_deref()
-    }
-}
-
-impl LogFilter {
-    pub fn module(&self) -> &str {
-        &self.module
-    }
-
-    pub fn level(&self) -> Option<&str> {
-        self.level.as_deref()
-    }
-}
-
-impl LogFile {
-    pub fn path(&self) -> &str {
-        &self.path
-    }
-
-    pub fn append(&self) -> bool {
-        self.append
-    }
-}
-
-impl ThemeConfig {
-    pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
-    }
-
-    pub fn folder_path(&self) -> Option<&str> {
-        self.folder_path.as_deref()
-    }
-}
-
-impl BackendConfig {
-    pub fn connections(&self) -> &[BackendConnection] {
-        &self.connections
-    }
-
-    pub fn default_model(&self) -> Option<&str> {
-        self.default_model.as_deref()
-    }
-
-    pub fn timeout_secs(&self) -> Option<u16> {
-        self.timeout_secs
-    }
-
-    pub fn context_compression(&self) -> &ContextCompression {
-        &self.context_compression
-    }
-}
-
-impl ContextCompression {
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
-    pub fn max_tokens(&self) -> usize {
-        self.max_tokens
-    }
-
-    pub fn max_messages(&self) -> usize {
-        self.max_messages
-    }
-
-    pub fn keep_n_messages(&self) -> usize {
-        self.keep_n_messages
-    }
-}
-
-impl OpenAIBackend {
-    pub fn endpoint(&self) -> Option<&str> {
-        self.endpoint.as_deref()
-    }
-
-    pub fn api_key(&self) -> Option<&str> {
-        self.api_key.as_deref()
-    }
-}
-
-impl SqliteStorage {
-    pub fn path(&self) -> Option<&str> {
-        self.path.as_deref()
+    #[cfg(test)]
+    pub fn init(config: Configuration) -> Result<()> {
+        use super::TEST_CONFIG;
+        TEST_CONFIG.with(|test_config| {
+            *test_config.borrow_mut() = Box::leak(Box::new(config));
+        });
+        Ok(())
     }
 }
 
@@ -233,9 +173,10 @@ impl Default for Configuration {
         Self {
             log: LogConfig::default(),
             theme: ThemeConfig::default(),
-            backend: Some(BackendConfig::default()),
+            backend: BackendConfig::default(),
             storage: StorageConfig::default(),
-            general: General::default(),
+            general: GeneralConfig::default(),
+            context: ContextConfig::default(),
         }
     }
 }
@@ -262,10 +203,10 @@ impl Default for ThemeConfig {
 impl Default for BackendConfig {
     fn default() -> Self {
         Self {
+            max_output_tokens: MAX_OUTPUT_TOKENS,
             default_model: None,
             connections: vec![],
             timeout_secs: None,
-            context_compression: ContextCompression::default(),
         }
     }
 }
@@ -281,11 +222,20 @@ impl Default for ContextCompression {
     }
 }
 
-impl Default for OpenAIBackend {
+impl Default for TokenTruncation {
     fn default() -> Self {
         Self {
-            endpoint: Some("https://api.openapi.com".to_string()),
-            api_key: None,
+            enabled: false,
+            max_tokens: MAX_CONTEXT_LENGTH,
+        }
+    }
+}
+
+impl Default for ContextConfig {
+    fn default() -> Self {
+        Self {
+            compression: ContextCompression::default(),
+            truncation: TokenTruncation::default(),
         }
     }
 }
@@ -302,7 +252,7 @@ impl Default for SqliteStorage {
     }
 }
 
-impl Default for General {
+impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             hello_message: Some(HELLO_MESSAGE.to_string()),

@@ -1,9 +1,7 @@
-pub mod compressor;
 pub mod gemini;
 pub mod manager;
 pub mod openai;
 
-pub use compressor::Compressor;
 pub use gemini::Gemini;
 pub use manager::Manager;
 pub use openai::OpenAI;
@@ -40,7 +38,7 @@ pub type ArcBackend = Arc<dyn Backend + Send + Sync>;
 
 pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     let connections = config
-        .connections()
+        .connections
         .iter()
         .filter(|c| c.enabled())
         .collect::<Vec<_>>();
@@ -49,7 +47,7 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     }
 
     let mut manager = manager::Manager::default();
-    let default_timeout = config.timeout_secs();
+    let default_timeout = config.timeout_secs;
     for connection in connections {
         let backend: ArcBackend = match connection.kind() {
             BackendKind::OpenAI => {

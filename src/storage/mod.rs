@@ -30,7 +30,9 @@ pub type ArcStorage = Arc<dyn Storage + Send + Sync>;
 
 pub async fn new_storage(config: &StorageConfig) -> Result<ArcStorage> {
     let storage = match config {
-        StorageConfig::Sqlite(sqlite_config) => Arc::new(Sqlite::new(sqlite_config.path()).await?),
+        StorageConfig::Sqlite(sqlite_config) => {
+            Arc::new(Sqlite::new(sqlite_config.path.as_deref()).await?)
+        }
     };
     Ok(storage)
 }

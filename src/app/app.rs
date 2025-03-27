@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, io, rc::Rc, sync::Arc, time};
 
-use crate::backend::Compressor;
 use crate::config::Configuration;
+use crate::context::Compressor;
 use crate::models::Model;
 use crate::models::{
     Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
@@ -271,8 +271,8 @@ impl<'a> App<'a> {
                     }
 
                     if Configuration::instance()
-                        .general()
-                        .show_usage()
+                        .general
+                        .show_usage
                         .unwrap_or_default()
                     {
                         self.notice.add_message(

@@ -78,7 +78,8 @@ The summary should be started with Summary: and end with a period.
 
     let compressor = Compressor::new(Arc::new(backend))
         .with_context_length(10)
-        .with_conversation_length(10);
+        .with_conversation_length(10)
+        .with_enabled(true);
 
     assert!(compressor.should_compress(&convo));
 

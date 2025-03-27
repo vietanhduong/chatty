@@ -1,4 +1,7 @@
-use crate::{config::StorageConfig, models::BackendKind};
+use crate::{
+    config::{StorageConfig, constants::MAX_CONTEXT_LENGTH},
+    models::BackendKind,
+};
 
 use super::*;
 
@@ -6,32 +9,35 @@ use super::*;
 fn test_load_configuration() {
     let config = load_configuration("./testdata/config.toml").expect("failed to load config");
 
-    let log = config.log();
-    assert_eq!(log.level(), Some("info"));
-    let log_filters = log.filters().unwrap_or_default();
+    let log = &config.log;
+    assert_eq!(log.level.as_deref(), Some("info"));
+    let log_filters = log.filters.as_deref().unwrap_or_default();
     assert_eq!(log_filters.len(), 1);
-    assert_eq!(log_filters[0].module(), "backend");
+    assert_eq!(log_filters[0].module.as_deref(), Some("backend"));
 
-    let log_file = log.file();
+    let log_file = log.file.as_ref();
     assert!(log_file.is_some());
-    assert_eq!(log_file.unwrap().path(), "/var/log/chatty.log");
-    assert_eq!(log_file.unwrap().append(), true);
+    assert_eq!(log_file.unwrap().path, "/var/log/chatty.log");
+    assert_eq!(log_file.unwrap().append, true);
 
-    assert_eq!(config.theme().name(), Some("dark"));
-    assert_eq!(config.theme().folder_path(), Some("/etc/chatty/theme"));
+    assert_eq!(config.theme.name.as_deref(), Some("dark"));
+    assert_eq!(
+        config.theme.folder_path.as_deref(),
+        Some("/etc/chatty/theme")
+    );
 
-    let backend = config.backend().unwrap();
-    assert_eq!(backend.connections().len(), 2);
-    assert_eq!(backend.timeout_secs(), Some(60));
+    let backend = config.backend;
+    assert_eq!(backend.connections.len(), 2);
+    assert_eq!(backend.timeout_secs, Some(60));
 
-    let compression = backend.context_compression();
-    assert_eq!(compression.enabled(), true);
-    assert_eq!(compression.max_tokens(), 120_000);
-    assert_eq!(compression.keep_n_messages(), 10);
-    assert_eq!(compression.max_messages(), 100);
+    let compression = &config.context.compression;
+    assert_eq!(compression.enabled, true);
+    assert_eq!(compression.max_tokens, 120_000);
+    assert_eq!(compression.keep_n_messages, 10);
+    assert_eq!(compression.max_messages, 100);
 
     let deepseek = backend
-        .connections()
+        .connections
         .iter()
         .find(|c| c.alias() == Some("deepseek"))
         .unwrap();
@@ -41,7 +47,7 @@ fn test_load_configuration() {
     assert_eq!(deepseek.endpoint(), "https://api.deepseek.com");
 
     let openai = backend
-        .connections()
+        .connections
         .iter()
         .find(|c| c.alias() == Some("openai"))
         .unwrap();
@@ -51,14 +57,14 @@ fn test_load_configuration() {
     assert_eq!(openai.endpoint(), "https://api.openai.com");
     assert_eq!(openai.models(), &["gpt-3.5-turbo", "gpt-4"]);
 
-    let model = backend.default_model().unwrap();
+    let model = backend.default_model.as_deref().unwrap();
     assert_eq!(model, "gpt-3.5-turbo");
 
-    let storage = config.storage();
+    let storage = &config.storage;
 
     match storage {
         StorageConfig::Sqlite(sqlite) => {
-            assert_eq!(sqlite.path(), Some("/var/lib/chatty/chat.db"));
+            assert_eq!(sqlite.path.as_deref(), Some("/var/lib/chatty/chat.db"));
         }
     }
 }
@@ -68,10 +74,14 @@ fn test_load_configuration_with_some_default_fields() {
     let config =
         load_configuration("./testdata/config_with_default.toml").expect("failed to load config");
 
-    let log = config.log();
-    assert_eq!(log.level(), Some("info"));
-    assert_eq!(log.file().is_none(), true);
-    assert_eq!(log.filters().is_none(), true);
+    let log = &config.log;
+    assert_eq!(log.level.as_deref(), Some("info"));
+    assert_eq!(log.file.is_none(), true);
+    assert_eq!(log.filters.is_none(), true);
+
+    let truncation = &config.context.truncation;
+    assert_eq!(truncation.enabled, true);
+    assert_eq!(truncation.max_tokens, MAX_CONTEXT_LENGTH);
 }
 
 #[test]

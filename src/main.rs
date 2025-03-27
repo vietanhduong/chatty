@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use chatty::backend::{Compressor, new_manager};
+use chatty::backend::new_manager;
 use chatty::config::{init_logger, init_theme};
+use chatty::context::Compressor;
 use chatty::models::{Action, ArcEventTx, Event, storage::FilterConversation};
 use chatty::storage::new_storage;
 use chatty::{
@@ -31,18 +32,18 @@ async fn main() -> Result<()> {
     }));
 
     let config = cmd.get_config()?;
-    init_logger(config.log())?;
+    init_logger(&config.log)?;
     println!("[+] Logger initialized");
 
-    let theme = init_theme(config.theme())?;
+    let theme = init_theme(&config.theme)?;
     println!("[+] Theme initialized");
 
-    if config.backend().is_none() {
+    if config.backend.connections.is_empty() {
         eyre::bail!("No backend configured");
     }
 
     println!("[+] Initializing backend...");
-    let backend = new_manager(config.backend().unwrap()).await?;
+    let backend = new_manager(&config.backend).await?;
     backend.health_check().await?;
     println!("[+] Backend is healthy");
 
@@ -53,8 +54,7 @@ async fn main() -> Result<()> {
     }
     println!("[+] Loaded {} model(s)", models.len());
 
-    let backend_config = config.backend().cloned().unwrap_or_default();
-    let want_model = backend_config.default_model().unwrap_or_default();
+    let want_model = config.backend.default_model.as_deref().unwrap_or_default();
 
     let model = if want_model.is_empty() {
         models[0].clone()
@@ -77,7 +77,7 @@ async fn main() -> Result<()> {
     println!("[+] Set current model to {}", model);
 
     println!("[+] Initializing storage...");
-    let storage = new_storage(config.storage())
+    let storage = new_storage(&config.storage)
         .await
         .wrap_err("initializing storage")?;
     println!("[+] Storage initialized");
@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
 
     let mut bg_futures = task::JoinSet::new();
 
-    let ctx_compresions = backend_config.context_compression();
+    let ctx_compress_config = &config.context.compression;
 
     let mut app = App::new(
         &theme,
@@ -102,10 +102,10 @@ async fn main() -> Result<()> {
         &mut event_rx,
         Arc::new(
             Compressor::new(backend.clone())
-                .with_context_length(ctx_compresions.max_tokens())
-                .with_conversation_length(ctx_compresions.max_messages())
-                .with_keep_n_messages(ctx_compresions.keep_n_messages())
-                .with_enabled(ctx_compresions.enabled()),
+                .with_context_length(ctx_compress_config.max_tokens)
+                .with_conversation_length(ctx_compress_config.max_messages)
+                .with_keep_n_messages(ctx_compress_config.keep_n_messages)
+                .with_enabled(ctx_compress_config.enabled),
         ),
         storage,
         AppInitProps {

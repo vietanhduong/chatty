@@ -24,8 +24,9 @@ impl Conversation {
         conversation.messages.push(Message::new_system(
             "system",
             Configuration::instance()
-                .general()
-                .hello_message()
+                .general
+                .hello_message
+                .as_deref()
                 .unwrap_or(HELLO_MESSAGE),
         ));
         conversation
@@ -175,6 +176,31 @@ impl Conversation {
         if !context.last().unwrap().is_system() {
             context.pop();
         }
+
+        if !Configuration::instance().context.truncation.enabled {
+            return context;
+        }
+
+        let mut current_tokens = context.iter().map(|msg| msg.token_count()).sum::<usize>();
+        let max_tokens = Configuration::instance().context.truncation.max_tokens;
+        let max_output_tokens = Configuration::instance().backend.max_output_tokens;
+
+        if current_tokens + max_output_tokens <= max_tokens {
+            return context;
+        }
+
+        while current_tokens + max_output_tokens > max_tokens {
+            if context.len() < 2 {
+                break;
+            }
+            let msg = context.remove(0);
+            current_tokens -= msg.token_count();
+        }
+
+        if !context.last().unwrap().is_system() {
+            context.pop();
+        }
+
         return context;
     }
 

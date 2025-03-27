@@ -1,9 +1,13 @@
 pub mod constants;
+pub(crate) mod defaults;
 pub mod models;
 pub mod utils;
 
 pub use models::*;
 pub use utils::*;
+
+#[cfg(test)]
+use std::cell::RefCell;
 
 use std::sync::OnceLock;
 
@@ -22,4 +26,10 @@ pub fn version() -> String {
     format!("{} version: {} {}", APP_NAME, VERSION, GIT_SHA)
 }
 
+#[allow(dead_code)]
 static CONFIG: OnceLock<Configuration> = OnceLock::new();
+
+#[cfg(test)]
+thread_local! {
+    static TEST_CONFIG: RefCell<&'static Configuration> = RefCell::new(Box::leak(Box::new(Configuration::default())))
+}

@@ -12,15 +12,15 @@ append = true
 name = "dark"
 folder_path = "/etc/chatty/theme"
 
-[backend]
-default_model = "gpt-3.5-turbo"
-timeout_secs = 60
-
-[backend.context_compression]
+[context.compression]
 enabled = true
 max_tokens = 120000
 max_messages = 100
 keep_n_messages = 10
+
+[backend]
+default_model = "gpt-3.5-turbo"
+timeout_secs = 60
 
 [[backend.connections]]
 enabled = true

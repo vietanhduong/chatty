@@ -25,6 +25,8 @@ kind = "openai"
 endpoint = "https://api.openai.com"
 models = ["gpt-3.5-turbo", "gpt-4"]
 
-
 [storage.sqlite]
 path = "/var/lib/chatty/chat.db"
+
+[context.truncation]
+enabled = true
