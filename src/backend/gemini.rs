@@ -4,9 +4,12 @@ mod tests;
 
 use std::{fmt::Display, time};
 
-use crate::models::{
-    ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
-    Model,
+use crate::{
+    config::user_agent,
+    models::{
+        ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event,
+        Message, Model,
+    },
 };
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
@@ -98,7 +101,9 @@ impl Backend for Gemini {
         )
         .wrap_err("parsing url")?;
 
-        let mut builder = reqwest::Client::new().get(url);
+        let mut builder = reqwest::Client::new()
+            .get(url)
+            .header("User-Agent", user_agent());
 
         if let Some(timeout) = &self.timeout {
             builder = builder.timeout(*timeout);
@@ -203,7 +208,9 @@ impl Backend for Gemini {
         )
         .wrap_err("parsing url")?;
 
-        let mut builder = reqwest::Client::new().post(url);
+        let mut builder = reqwest::Client::new()
+            .post(url)
+            .header("User-Agent", user_agent());
 
         if let Some(timeout) = self.timeout {
             builder = builder.timeout(timeout);

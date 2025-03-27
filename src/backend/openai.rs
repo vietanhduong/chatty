@@ -3,6 +3,7 @@
 mod tests;
 
 use crate::backend::{ArcBackend, Backend, TITLE_PROMPT};
+use crate::config::user_agent;
 use crate::models::{
     ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
     Model,
@@ -18,8 +19,6 @@ use thiserror::Error;
 use tokio::io::AsyncBufReadExt;
 use tokio::sync::RwLock;
 use tokio_util::io::StreamReader;
-
-use super::user_agent;
 
 #[derive(Debug)]
 pub struct OpenAI {
@@ -60,7 +59,9 @@ impl Backend for OpenAI {
             return Ok(self.cache_models.read().await.clone());
         }
 
-        let mut req = reqwest::Client::new().get(format!("{}/v1/models", self.endpoint));
+        let mut req = reqwest::Client::new()
+            .get(format!("{}/v1/models", self.endpoint))
+            .header("User-Agent", user_agent());
 
         if let Some(timeout) = self.timeout {
             req = req.timeout(timeout);

@@ -11,7 +11,10 @@ pub use openai::OpenAI;
 #[cfg(test)]
 use mockall::{automock, predicate::*};
 
-use crate::models::{ArcEventTx, BackendConfig, BackendKind, BackendPrompt, Model};
+use crate::{
+    config::BackendConfig,
+    models::{ArcEventTx, BackendKind, BackendPrompt, Model},
+};
 use async_trait::async_trait;
 use eyre::{Context, Result};
 use std::{sync::Arc, time::Duration};
@@ -78,10 +81,4 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
         log::debug!("Added backend connection: {}", name);
     }
     Ok(Arc::new(manager))
-}
-
-fn user_agent() -> String {
-    let version = env!("CARGO_PKG_VERSION");
-    let user_agent = format!("chatty/{}", version);
-    user_agent
 }

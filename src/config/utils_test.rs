@@ -1,5 +1,6 @@
+use crate::{config::StorageConfig, models::BackendKind};
+
 use super::*;
-use crate::models::{BackendKind, StorageConfig};
 
 #[test]
 fn test_load_configuration() {

@@ -1,27 +1,36 @@
 use std::sync::Arc;
 
-use chatty::app::{
-    App,
-    app::AppInitProps,
-    destruct_terminal_for_panic,
-    services::{ActionService, ClipboardService},
-};
 use chatty::backend::{Compressor, new_manager};
-use chatty::cli::{Command, init_logger, init_theme};
+use chatty::config::{init_logger, init_theme};
 use chatty::models::{Action, ArcEventTx, Event, storage::FilterConversation};
 use chatty::storage::new_storage;
+use chatty::{
+    app::{
+        App,
+        app::AppInitProps,
+        destruct_terminal_for_panic,
+        services::{ActionService, ClipboardService},
+    },
+    cli::Command,
+};
 use eyre::{Context, Result};
 use tokio::{sync::mpsc, task};
 use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cmd = Command::new();
+    if cmd.version() {
+        cmd.print_version();
+        return Ok(());
+    }
+
     std::panic::set_hook(Box::new(|panic_info| {
         destruct_terminal_for_panic();
         better_panic::Settings::auto().create_panic_handler()(panic_info);
     }));
 
-    let config = Command::get_config()?;
+    let config = cmd.get_config()?;
     init_logger(&config)?;
     println!("[+] Logger initialized");
 
@@ -68,7 +77,7 @@ async fn main() -> Result<()> {
     println!("[+] Set current model to {}", model);
 
     println!("[+] Initializing storage...");
-    let storage = new_storage(&config)
+    let storage = new_storage(config.storage())
         .await
         .wrap_err("initializing storage")?;
     println!("[+] Storage initialized");

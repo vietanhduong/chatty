@@ -10,6 +10,9 @@ TEST_FLAGS ?= -j4
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
 
+GIT_SHA ?= $(shell git rev-parse HEAD)
+export GIT_SHA
+
 .PHONY: clean test install build
 
 ifeq ($(PROFILE),dev)

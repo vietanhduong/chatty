@@ -5,7 +5,7 @@ mod tests;
 use std::collections::HashMap;
 
 use crate::{
-    cli::resolve_path,
+    config::resolve_path,
     models::{
         Context as ConvoContext, Conversation, Message, message::Issuer,
         storage::FilterConversation,

@@ -2,8 +2,9 @@ pub mod sqlite;
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::models::{
-    Configuration, Context, Conversation, Message, StorageConfig, storage::FilterConversation,
+use crate::{
+    config::StorageConfig,
+    models::{Context, Conversation, Message, storage::FilterConversation},
 };
 use async_trait::async_trait;
 use eyre::Result;
@@ -27,9 +28,8 @@ pub trait Storage {
 
 pub type ArcStorage = Arc<dyn Storage + Send + Sync>;
 
-pub async fn new_storage(config: &Configuration) -> Result<ArcStorage> {
-    let storage_config = config.storage().cloned().unwrap_or_default();
-
+pub async fn new_storage(config: Option<&StorageConfig>) -> Result<ArcStorage> {
+    let storage_config = config.cloned().unwrap_or_default();
     let storage = match storage_config {
         StorageConfig::Sqlite(sqlite_config) => Arc::new(Sqlite::new(sqlite_config.path()).await?),
     };

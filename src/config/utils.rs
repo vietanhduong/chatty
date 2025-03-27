@@ -1,14 +1,15 @@
 #[cfg(test)]
-#[path = "config_test.rs"]
+#[path = "utils_test.rs"]
 mod tests;
 
-use crate::models::Configuration;
 use chrono::Local;
 use eyre::{Context, Result};
 use log::LevelFilter;
 use regex::Regex;
 use std::{io::Write, str::FromStr};
 use syntect::highlighting::{Theme, ThemeSet};
+
+use super::Configuration;
 
 pub fn load_configuration(config_path: &str) -> Result<Configuration> {
     let config =
@@ -115,4 +116,30 @@ pub fn resolve_path(path: &str) -> Result<String> {
     // Resolve the path to an absolute path
     let path = std::path::absolute(ret.as_str()).wrap_err(format!("resolving path {}", ret))?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// lookup_config_path trys to look up the config path at:
+/// * $XDG_CONFIG_HOME/chatty/config.toml
+/// * $HOME/.config/chatty/config.toml
+/// * $HOME/.chatty.toml
+pub fn lookup_config_path() -> Option<String> {
+    let paths = &[
+        format!(
+            "{}/.config/chatty/config.toml",
+            env_or_current("XDG_CONFIG_HOME")
+        ),
+        format!("{}/.config/chatty/config.toml", env_or_current("HOME")),
+        format!("{}/.chatty.toml", env_or_current("HOME")),
+    ];
+
+    for path in paths {
+        if std::path::Path::new(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+    None
+}
+
+fn env_or_current(key: &str) -> String {
+    std::env::var(key).unwrap_or_else(|_| ".".to_string())
 }
