@@ -42,6 +42,9 @@ impl<'a> EditScreen<'_> {
                 selected: false,
             })
             .collect();
+        // Sort the messages by the created time descending
+        self.messages
+            .sort_by(|a, b| b.msg.created_at().cmp(&a.msg.created_at()));
         if !self.messages.is_empty() {
             self.list_state.select(Some(0));
         }
@@ -123,12 +126,12 @@ impl<'a> EditScreen<'_> {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .padding(Padding::symmetric(1, 0))
-            .title(" Messages ")
+            .title(" Messages (Newer First) ")
             .title_alignment(Alignment::Left)
             .style(Style::default());
-        // frame.render_widget(block, area);
-        let max_width = area.width as usize;
-        let messages = build_list_items(&self.messages, max_width);
+        let inner = block.inner(area);
+        let max_width = inner.width as usize;
+        let messages = build_list_items(&self.messages, max_width - 2);
         let list = List::new(messages)
             .block(block)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
@@ -193,12 +196,14 @@ impl<'a> EditScreen<'_> {
                     }
                 }
                 Key::Char('y') => {
-                    let selected_messages: Vec<Message> = self
+                    let mut selected_messages: Vec<Message> = self
                         .messages
                         .iter()
                         .filter(|msg| msg.selected)
                         .map(|msg| msg.msg.clone())
                         .collect();
+
+                    selected_messages.sort_by(|a, b| a.created_at().cmp(&b.created_at()));
 
                     if !selected_messages.is_empty() {
                         self.action_tx
@@ -245,6 +250,12 @@ fn build_list_items<'a>(messages: &[SelectedMessage], max_width: usize) -> Vec<L
             }
             spans.push(span!(Style::default(); " "));
 
+            let fg_color = if item.msg.is_system() {
+                Color::LightCyan
+            } else {
+                Color::LightMagenta
+            };
+
             let mut content = format!(
                 "{}: {}",
                 if item.msg.is_system() { "S" } else { "U" },
@@ -252,15 +263,13 @@ fn build_list_items<'a>(messages: &[SelectedMessage], max_width: usize) -> Vec<L
             );
             // If the content is too long, we will truncate it
             // and add ellipsis
-            if content.width() > max_width - 5 {
-                let mut truncated = content.chars().take(max_width - 5).collect::<String>();
-                truncated.push_str("...");
-                content = truncated;
+            if content.width() > max_width {
+                content = content.chars().take(max_width).collect::<String>();
             }
 
             spans.push(span!(Style::default(); content));
             let text = Text::from(Line::from(spans));
-            ListItem::new(text)
+            ListItem::new(text).fg(fg_color)
         })
         .collect()
 }
