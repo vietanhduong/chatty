@@ -31,10 +31,10 @@ async fn main() -> Result<()> {
     }));
 
     let config = cmd.get_config()?;
-    init_logger(&config)?;
+    init_logger(config.log())?;
     println!("[+] Logger initialized");
 
-    let theme = init_theme(&config)?;
+    let theme = init_theme(config.theme())?;
     println!("[+] Theme initialized");
 
     if config.backend().is_none() {

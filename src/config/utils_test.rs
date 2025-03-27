@@ -6,7 +6,7 @@ use super::*;
 fn test_load_configuration() {
     let config = load_configuration("./testdata/config.toml").expect("failed to load config");
 
-    let log = config.log().unwrap();
+    let log = config.log();
     assert_eq!(log.level(), Some("info"));
     let log_filters = log.filters().unwrap_or_default();
     assert_eq!(log_filters.len(), 1);
@@ -17,11 +17,8 @@ fn test_load_configuration() {
     assert_eq!(log_file.unwrap().path(), "/var/log/chatty.log");
     assert_eq!(log_file.unwrap().append(), true);
 
-    assert_eq!(config.theme().unwrap().name(), Some("dark"));
-    assert_eq!(
-        config.theme().unwrap().folder_path(),
-        Some("/etc/chatty/theme")
-    );
+    assert_eq!(config.theme().name(), Some("dark"));
+    assert_eq!(config.theme().folder_path(), Some("/etc/chatty/theme"));
 
     let backend = config.backend().unwrap();
     assert_eq!(backend.connections().len(), 2);
@@ -57,13 +54,24 @@ fn test_load_configuration() {
     let model = backend.default_model().unwrap();
     assert_eq!(model, "gpt-3.5-turbo");
 
-    let storage = config.storage().unwrap();
+    let storage = config.storage();
 
     match storage {
         StorageConfig::Sqlite(sqlite) => {
             assert_eq!(sqlite.path(), Some("/var/lib/chatty/chat.db"));
         }
     }
+}
+
+#[test]
+fn test_load_configuration_with_some_default_fields() {
+    let config =
+        load_configuration("./testdata/config_with_default.toml").expect("failed to load config");
+
+    let log = config.log();
+    assert_eq!(log.level(), Some("info"));
+    assert_eq!(log.file().is_none(), true);
+    assert_eq!(log.filters().is_none(), true);
 }
 
 #[test]

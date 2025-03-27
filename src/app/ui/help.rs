@@ -1,5 +1,4 @@
 use crate::models::Event;
-use once_cell::sync::Lazy;
 use ratatui_macros::span;
 use std::{
     cmp::{max, min},
@@ -16,7 +15,6 @@ use tui_textarea::Key;
 
 use super::utils;
 
-pub const KEY_BINDINGS: Lazy<Vec<KeyBinding>> = Lazy::new(build_key_bindings);
 const ROW_HEIGHT: usize = 1;
 
 pub struct HelpScreen<'a> {
@@ -25,6 +23,7 @@ pub struct HelpScreen<'a> {
     state: TableState,
 
     rows: Vec<Row<'a>>,
+    keybindings: Vec<KeyBinding>,
     last_known_width: usize,
     last_know_height: usize,
 }
@@ -37,6 +36,7 @@ impl<'a> HelpScreen<'_> {
             rows: vec![],
             last_known_width: 0,
             last_know_height: 0,
+            keybindings: build_key_bindings(),
         }
     }
 
@@ -127,7 +127,7 @@ impl<'a> HelpScreen<'_> {
             self.last_known_width = area.width as usize;
             self.last_know_height = area.height as usize;
 
-            self.rows = build_rows((area.width as f32 * 0.75).ceil() as usize);
+            self.rows = self.build_rows((area.width as f32 * 0.75).ceil() as usize);
             let row_index = 0;
             self.state.select(Some(row_index));
         }
@@ -146,7 +146,8 @@ impl<'a> HelpScreen<'_> {
     }
 
     pub fn render_help_line(&self, frame: &mut ratatui::Frame, area: Rect) {
-        let mut instructions = KEY_BINDINGS
+        let mut instructions = self
+            .keybindings
             .iter()
             .filter(|b| !b.short_description.is_empty())
             .map(|b| {
@@ -166,16 +167,16 @@ impl<'a> HelpScreen<'_> {
         let line = Line::from(instructions).light_green();
         frame.render_widget(line, area);
     }
-}
 
-fn build_rows<'a>(max_width: usize) -> Vec<Row<'a>> {
-    let mut rows = vec![];
-    for binding in KEY_BINDINGS.iter() {
-        let key = Cell::from(binding.key().to_string()).style(Style::default());
-        let desc = utils::split_to_lines(binding.long_description().to_string(), max_width - 2);
-        rows.push(Row::new(vec![key, Cell::from(Text::from(desc))]).height(ROW_HEIGHT as u16));
+    fn build_rows<'b>(&self, max_width: usize) -> Vec<Row<'b>> {
+        let mut rows = vec![];
+        for binding in self.keybindings.iter() {
+            let key = Cell::from(binding.key().to_string()).style(Style::default());
+            let desc = utils::split_to_lines(binding.long_description().to_string(), max_width - 2);
+            rows.push(Row::new(vec![key, Cell::from(Text::from(desc))]).height(ROW_HEIGHT as u16));
+        }
+        rows
     }
-    rows
 }
 
 fn build_key_bindings() -> Vec<KeyBinding> {

@@ -2,7 +2,10 @@
 #[path = "conversation_test.rs"]
 mod tests;
 
-use crate::models::{Message, message::Issuer};
+use crate::{
+    config::{Configuration, constants::HELLO_MESSAGE},
+    models::{Message, message::Issuer},
+};
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -20,7 +23,10 @@ impl Conversation {
         let mut conversation = Self::default();
         conversation.messages.push(Message::new_system(
             "system",
-            "Hello! How can I help you? 😊",
+            Configuration::instance()
+                .general()
+                .hello_message()
+                .unwrap_or(HELLO_MESSAGE),
         ));
         conversation
     }

@@ -31,17 +31,20 @@ impl Command {
         Self::parse()
     }
 
-    pub fn get_config(&self) -> Result<Configuration> {
+    pub fn get_config(&self) -> Result<&Configuration> {
         let config_path = self
             .config
             .clone()
             .unwrap_or_else(|| lookup_config_path().unwrap_or_default());
 
-        if config_path.is_empty() {
-            // No config path is specified just use the default config
-            return Ok(Configuration::default());
-        }
-        Ok(load_configuration(config_path.as_str()).wrap_err("loading configuration")?)
+        let config = if !config_path.is_empty() {
+            load_configuration(config_path.as_str()).wrap_err("loading configuration")?
+        } else {
+            Configuration::default()
+        };
+
+        Configuration::init(config).wrap_err("initializing configuration")?;
+        Ok(Configuration::instance())
     }
 
     pub fn version(&self) -> bool {

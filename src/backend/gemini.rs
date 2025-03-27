@@ -109,11 +109,22 @@ impl Backend for Gemini {
             builder = builder.timeout(*timeout);
         }
 
-        let res = builder.send().await?.json::<ModelListResponse>().await?;
+        let resp = builder.send().await?;
+
+        if !resp.status().is_success() {
+            let http_code = resp.status().as_u16();
+            let err: ErrorResponse = resp.json().await.wrap_err("parsing error response")?;
+            let mut err = err.error;
+            err.http_code = http_code;
+            return Err(err.into());
+        }
 
         let all = self.want_models.is_empty();
 
-        let mut models = res
+        let mut models = resp
+            .json::<ModelListResponse>()
+            .await
+            .wrap_err("parsing model list response")?
             .models
             .into_iter()
             .filter(|m| {
@@ -369,6 +380,7 @@ struct ModelResponse {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct ModelListResponse {
+    #[serde(default)]
     models: Vec<ModelResponse>,
 }
 
@@ -437,7 +449,7 @@ pub struct GeminiError {
 
 impl Display for GeminiError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "OpenAI error ({}): {}", self.http_code, self.message)
+        write!(f, "Gemini error ({}): {}", self.http_code, self.message)
     }
 }
 

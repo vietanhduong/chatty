@@ -28,9 +28,8 @@ pub trait Storage {
 
 pub type ArcStorage = Arc<dyn Storage + Send + Sync>;
 
-pub async fn new_storage(config: Option<&StorageConfig>) -> Result<ArcStorage> {
-    let storage_config = config.cloned().unwrap_or_default();
-    let storage = match storage_config {
+pub async fn new_storage(config: &StorageConfig) -> Result<ArcStorage> {
+    let storage = match config {
         StorageConfig::Sqlite(sqlite_config) => Arc::new(Sqlite::new(sqlite_config.path()).await?),
     };
     Ok(storage)

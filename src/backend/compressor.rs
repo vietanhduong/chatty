@@ -3,9 +3,9 @@
 mod tests;
 
 use crate::backend::ArcBackend;
+use crate::config::constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
 use crate::models::{
     ArcEventTx, BackendPrompt, Context as ConvoContext, Conversation, Event, Message,
-    constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH},
 };
 use eyre::{Context, Result, bail};
 use std::sync::Arc;

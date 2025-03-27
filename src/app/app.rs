@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, io, rc::Rc, sync::Arc, time};
 
 use crate::backend::Compressor;
+use crate::config::Configuration;
 use crate::models::Model;
 use crate::models::{
     Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
@@ -269,11 +270,16 @@ impl<'a> App<'a> {
                         msg.set_token_count(usage.completion_tokens);
                     }
 
-                    // If the usage is not empty, show it
-                    self.notice.add_message(
-                        NoticeMessage::info(format!("Usage: {}", usage.to_string()))
-                            .with_duration(time::Duration::from_secs(6)),
-                    );
+                    if Configuration::instance()
+                        .general()
+                        .show_usage()
+                        .unwrap_or_default()
+                    {
+                        self.notice.add_message(
+                            NoticeMessage::info(format!("Usage: {}", usage.to_string()))
+                                .with_duration(time::Duration::from_secs(6)),
+                        );
+                    }
                 }
 
                 // Upsert message to the storage

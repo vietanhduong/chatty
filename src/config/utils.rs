@@ -9,7 +9,7 @@ use regex::Regex;
 use std::{io::Write, str::FromStr};
 use syntect::highlighting::{Theme, ThemeSet};
 
-use super::Configuration;
+use super::{Configuration, LogConfig, ThemeConfig};
 
 pub fn load_configuration(config_path: &str) -> Result<Configuration> {
     let config =
@@ -18,10 +18,8 @@ pub fn load_configuration(config_path: &str) -> Result<Configuration> {
     Ok(config)
 }
 
-pub fn init_logger(config: &Configuration) -> Result<()> {
-    let log = config.log().cloned().unwrap_or_default();
-
-    let log_file: Box<dyn std::io::Write + Send + 'static> = if let Some(file) = log.file() {
+pub fn init_logger(config: &LogConfig) -> Result<()> {
+    let log_file: Box<dyn std::io::Write + Send + 'static> = if let Some(file) = config.file() {
         Box::new(
             std::fs::OpenOptions::new()
                 .create(true)
@@ -36,12 +34,12 @@ pub fn init_logger(config: &Configuration) -> Result<()> {
         Box::new(std::io::stderr())
     };
 
-    let raw_level = log.level().unwrap_or("info");
+    let raw_level = config.level().unwrap_or("info");
     let log_level = LevelFilter::from_str(raw_level)?;
 
     let mut builder = env_logger::Builder::new();
 
-    for filter in log.filters().unwrap_or_default() {
+    for filter in config.filters().unwrap_or_default() {
         let module_level =
             LevelFilter::from_str(filter.level().unwrap_or(raw_level)).unwrap_or(log_level.clone());
         builder.filter(Some(filter.module()), module_level);
@@ -66,16 +64,15 @@ pub fn init_logger(config: &Configuration) -> Result<()> {
     Ok(())
 }
 
-pub fn init_theme(config: &Configuration) -> Result<Theme> {
-    let theme = config.theme().cloned().unwrap_or_default();
-    let themes = match theme.folder_path() {
+pub fn init_theme(config: &ThemeConfig) -> Result<Theme> {
+    let themes = match config.folder_path() {
         Some(path) => {
             ThemeSet::load_from_folder(path).wrap_err(format!("loading theme from {}", path))?
         }
         None => syntect::highlighting::ThemeSet::load_defaults(),
     };
 
-    let theme_name = theme.name().unwrap_or_default();
+    let theme_name = config.name().unwrap_or_default();
     let theme = themes
         .themes
         .get(theme_name)

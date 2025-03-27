@@ -1,16 +1,33 @@
+use eyre::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::models::{
-    BackendConnection,
-    constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH},
-};
+use crate::config::constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
+use crate::models::BackendConnection;
+
+use super::CONFIG;
+use super::constants::HELLO_MESSAGE;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Configuration {
-    log: Option<LogConfig>,
-    theme: Option<ThemeConfig>,
+    #[serde(default)]
+    general: General,
+
+    #[serde(default)]
+    log: LogConfig,
+
+    #[serde(default)]
+    theme: ThemeConfig,
+
     backend: Option<BackendConfig>,
-    storage: Option<StorageConfig>,
+
+    #[serde(default)]
+    storage: StorageConfig,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct General {
+    hello_message: Option<String>,
+    show_usage: Option<bool>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -73,20 +90,45 @@ pub struct SqliteStorage {
 }
 
 impl Configuration {
-    pub fn log(&self) -> Option<&LogConfig> {
-        self.log.as_ref()
+    pub fn instance() -> &'static Configuration {
+        CONFIG.get().expect("Config not initialized")
     }
 
-    pub fn theme(&self) -> Option<&ThemeConfig> {
-        self.theme.as_ref()
+    pub fn init(config: Configuration) -> Result<()> {
+        CONFIG
+            .set(config)
+            .map_err(|_| eyre::eyre!("Config already initialized"))?;
+        Ok(())
+    }
+
+    pub fn log(&self) -> &LogConfig {
+        &self.log
+    }
+
+    pub fn theme(&self) -> &ThemeConfig {
+        &self.theme
     }
 
     pub fn backend(&self) -> Option<&BackendConfig> {
         self.backend.as_ref()
     }
 
-    pub fn storage(&self) -> Option<&StorageConfig> {
-        self.storage.as_ref()
+    pub fn storage(&self) -> &StorageConfig {
+        &self.storage
+    }
+
+    pub fn general(&self) -> &General {
+        &self.general
+    }
+}
+
+impl General {
+    pub fn hello_message(&self) -> Option<&str> {
+        self.hello_message.as_deref()
+    }
+
+    pub fn show_usage(&self) -> Option<bool> {
+        self.show_usage
     }
 }
 
@@ -189,10 +231,11 @@ impl SqliteStorage {
 impl Default for Configuration {
     fn default() -> Self {
         Self {
-            log: Some(LogConfig::default()),
-            theme: Some(ThemeConfig::default()),
+            log: LogConfig::default(),
+            theme: ThemeConfig::default(),
             backend: Some(BackendConfig::default()),
-            storage: Some(StorageConfig::default()),
+            storage: StorageConfig::default(),
+            general: General::default(),
         }
     }
 }
@@ -256,5 +299,14 @@ impl Default for StorageConfig {
 impl Default for SqliteStorage {
     fn default() -> Self {
         Self { path: None }
+    }
+}
+
+impl Default for General {
+    fn default() -> Self {
+        Self {
+            hello_message: Some(HELLO_MESSAGE.to_string()),
+            show_usage: None,
+        }
     }
 }

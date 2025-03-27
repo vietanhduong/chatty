@@ -1,0 +1,30 @@
+[theme]
+name = "dark"
+folder_path = "/etc/chatty/theme"
+
+[backend]
+default_model = "gpt-3.5-turbo"
+timeout_secs = 60
+
+[backend.context_compression]
+enabled = true
+max_tokens = 120000
+max_messages = 100
+keep_n_messages = 10
+
+[[backend.connections]]
+enabled = true
+alias = "deepseek"
+kind = "openai"
+endpoint = "https://api.deepseek.com"
+
+[[backend.connections]]
+enabled = true
+alias = "openai"
+kind = "openai"
+endpoint = "https://api.openai.com"
+models = ["gpt-3.5-turbo", "gpt-4"]
+
+
+[storage.sqlite]
+path = "/var/lib/chatty/chat.db"

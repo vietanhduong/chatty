@@ -1,8 +1,11 @@
+pub mod constants;
 pub mod models;
 pub mod utils;
 
 pub use models::*;
 pub use utils::*;
+
+use std::sync::OnceLock;
 
 pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -18,3 +21,5 @@ pub fn user_agent() -> String {
 pub fn version() -> String {
     format!("{} version: {} {}", APP_NAME, VERSION, GIT_SHA)
 }
+
+static CONFIG: OnceLock<Configuration> = OnceLock::new();
