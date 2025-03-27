@@ -65,6 +65,7 @@ impl<'a> ModelsScreen<'a> {
         }
         self.current_model = model.to_string();
         self.build_items();
+        self.set_cursor_to_selected();
     }
 
     pub fn showing(&self) -> bool {
@@ -98,7 +99,6 @@ impl<'a> ModelsScreen<'a> {
             Some(i) => (i as isize - 1).max(0) as usize,
             None => 0,
         };
-
         self.state.select(Some(i));
     }
 
@@ -141,6 +141,16 @@ impl<'a> ModelsScreen<'a> {
         Ok(true)
     }
 
+    fn set_cursor_to_selected(&mut self) {
+        if let Some(item) = self
+            .idx_map
+            .iter()
+            .find(|(_, model)| **model == self.current_model)
+        {
+            self.state.select(Some(*item.0));
+        }
+    }
+
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
         if !self.showing {
             return;
@@ -170,8 +180,14 @@ impl<'a> ModelsScreen<'a> {
         let inner = block.inner(area);
 
         if self.last_known_width != inner.width as usize {
+            let prev_width = self.last_known_width;
+
             self.last_known_width = inner.width as usize;
             self.build_items();
+            // Only set the cursor to the selected item at the first time
+            if prev_width == 0 {
+                self.set_cursor_to_selected();
+            }
         }
 
         let list = List::new(self.items.clone())
@@ -185,17 +201,7 @@ impl<'a> ModelsScreen<'a> {
 
     pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
         if self.search.showing() {
-            match event {
-                Event::KeyboardEsc | Event::KeyboardCtrlC => {
-                    self.search.close();
-                }
-                Event::KeyboardEnter => {
-                    self.current_search = self.search.close().unwrap_or_default();
-                    self.build_items();
-                }
-                _ => self.search.handle_key_event(event),
-            }
-
+            self.handle_search_popup(event).await;
             return Ok(false);
         }
 
@@ -237,6 +243,22 @@ impl<'a> ModelsScreen<'a> {
         Ok(false)
     }
 
+    async fn handle_search_popup(&mut self, event: &Event) {
+        match event {
+            Event::KeyboardEsc | Event::KeyboardCtrlC => {
+                self.search.close();
+            }
+            Event::KeyboardEnter => {
+                self.current_search = self.search.close().unwrap_or_default();
+                self.build_items();
+                if !self.items.is_empty() {
+                    self.state.select(Some(0));
+                }
+            }
+            _ => self.search.handle_key_event(event),
+        }
+    }
+
     fn build_items<'b>(&mut self) {
         self.idx_map.clear();
         self.items.clear();
@@ -273,16 +295,6 @@ impl<'a> ModelsScreen<'a> {
                 let lines = utils::split_to_lines(spans, self.last_known_width - 2);
                 self.items.push(ListItem::new(Text::from(lines)));
                 self.idx_map.insert(self.items.len() - 1, model);
-            }
-        }
-        // Set the selected item with the current model if it is not already selected
-        if self.state.selected().is_none() {
-            if let Some(item) = self
-                .idx_map
-                .iter()
-                .find(|(_, model)| **model == self.current_model)
-            {
-                self.state.select(Some(*item.0));
             }
         }
     }
