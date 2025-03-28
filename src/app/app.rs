@@ -1,8 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, io, rc::Rc, sync::Arc, time};
+use std::{collections::HashMap, io, sync::Arc, time};
 
 use crate::config::Configuration;
 use crate::context::Compressor;
 use crate::models::Model;
+use crate::models::conversation::FindMessage;
 use crate::models::{
     Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
@@ -56,10 +57,6 @@ pub struct App<'a> {
     history_screen: HistoryScreen<'a>,
     input: tui_textarea::TextArea<'a>,
 
-    // FIXME: Holding the entire conversation in memory is not ideal
-    // but for now, we will do it this way
-    conversations: HashMap<String, Rc<RefCell<Conversation>>>,
-
     compressor: Arc<Compressor>,
     storage: ArcStorage,
 
@@ -77,15 +74,20 @@ impl<'a> App<'a> {
         storage: ArcStorage,
         init_props: AppInitProps,
     ) -> App<'a> {
-        let mut conversations: HashMap<String, Rc<RefCell<Conversation>>> = init_props
+        let mut conversations = init_props
             .conversations
             .into_iter()
-            .map(|(k, v)| (k, Rc::new(RefCell::new(v))))
-            .collect();
+            .map(|(id, convo)| {
+                Conversation::default()
+                    .with_title(convo.title())
+                    .with_id(&id)
+                    .with_created_at(convo.created_at())
+                    .with_updated_at(convo.updated_at())
+            })
+            .collect::<Vec<_>>();
 
-        let default_conversation = Rc::new(RefCell::new(Conversation::new_hello()));
-        let default_id = default_conversation.borrow().id().to_string();
-        conversations.insert(default_id.clone(), Rc::clone(&default_conversation));
+        let default_convo = Conversation::new_hello();
+        conversations.push(default_convo);
 
         App {
             event_tx: event_tx.clone(),
@@ -94,7 +96,7 @@ impl<'a> App<'a> {
             edit_screen: EditScreen::new(action_tx.clone(), theme),
             action_tx: action_tx.clone(),
             events: EventsService::new(event_rx),
-            app_state: AppState::new(default_conversation, theme),
+            app_state: AppState::new(theme),
             input: TextArea::default().build(),
             loading: Loading::new(vec![
                 span!("Thinking... Press ").gray(),
@@ -103,9 +105,8 @@ impl<'a> App<'a> {
             ]),
             help_screen: HelpScreen::new(),
             history_screen: HistoryScreen::new(event_tx.clone(), storage)
-                .with_conversations(conversations.iter().map(|(_, v)| Rc::clone(v)).collect())
-                .with_current_conversation(default_id),
-            conversations,
+                .with_conversations(&conversations)
+                .with_current_conversation(""),
             models_screen: ModelsScreen::new(
                 init_props.default_model,
                 init_props.models,
@@ -152,36 +153,27 @@ impl<'a> App<'a> {
         }
 
         if let Event::ConversationDeleted(id) = event {
-            self.conversations.remove(&id);
             self.history_screen.remove_conversation(&id);
-            if self.history_screen.current_conversation().is_none() {
-                let conversation = self.get_default_or_create_conversation();
-                self.change_conversation(conversation);
+            if self.app_state.current_convo.id() == id {
+                self.upsert_default_conversation();
+                self.change_conversation("").await;
             }
             return Ok(false);
         }
 
         if let Event::ConversationUpdated(id) = event {
-            let convo = self.storage.get_conversation(&id).await?;
-            if let Some(convo) = convo {
-                let rc = Rc::new(RefCell::new(convo));
-                self.conversations.insert(id.clone(), rc.clone());
-                if self.app_state.conversation.borrow().id() == id {
-                    self.change_conversation(rc);
+            if let Some(mut convo) = self.storage.get_conversation(&id).await? {
+                let updated_at = convo.messages().last().unwrap().created_at();
+                convo.set_updated_at(updated_at);
+                if self.app_state.current_convo.id() == id {
+                    self.app_state.set_conversation(convo);
                 }
             }
             return Ok(false);
         }
 
         if let Event::SetConversation(id) = event {
-            if self.app_state.conversation.borrow().id() == id {
-                return Ok(false);
-            }
-            self.change_conversation(Rc::clone(self.conversations.get(&id).unwrap()));
-            self.notice.info(format!(
-                "Switched to: \"{}\"",
-                self.app_state.conversation.borrow().title()
-            ));
+            self.change_conversation(&id).await;
             return Ok(false);
         }
 
@@ -217,21 +209,23 @@ impl<'a> App<'a> {
         match event {
             Event::ModelChanged(model) => {
                 self.models_screen.set_current_model(&model);
-                self.notice.info(format!("Changed model to \"{}\"", model));
+                self.notice.info(format!("Using model \"{}\"", model));
                 return Ok(false);
             }
 
             Event::AbortRequest => {
-                let convo_id = self.app_state.conversation.borrow().id().to_string();
                 let message = Message::new_system("system", "Aborted!");
                 self.app_state.add_message(message.clone());
-                self.storage.upsert_message(&convo_id, message).await?;
+                self.storage
+                    .upsert_message(self.app_state.current_convo.id(), message)
+                    .await?;
             }
 
             Event::BackendMessage(msg) => {
-                let convo_id = self.app_state.conversation.borrow().id().to_string();
                 self.app_state.add_message(msg.clone());
-                self.storage.upsert_message(&convo_id, msg).await?;
+                self.storage
+                    .upsert_message(self.app_state.current_convo.id(), msg)
+                    .await?;
                 self.app_state.waiting_for_backend = false;
             }
 
@@ -241,13 +235,11 @@ impl<'a> App<'a> {
                 self.app_state.handle_backend_response(&msg);
 
                 if notify {
-                    let title = self.app_state.conversation.borrow().title().to_string();
+                    let title = self.app_state.current_convo.title();
                     self.notice.add_message(
                         NoticeMessage::new(format!("Updated Title: \"{}\"", title))
                             .with_duration(time::Duration::from_secs(5)),
                     );
-
-                    // Upsert the conversation to the storage
                     self.history_screen.rename_conversation(title).await;
                 }
 
@@ -255,18 +247,22 @@ impl<'a> App<'a> {
                     return Ok(false);
                 }
 
-                let mut conversation = self.app_state.conversation.borrow_mut();
-                let conversation_id = conversation.id().to_string();
-
                 if let Some(ref usage) = msg.usage {
-                    if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::user())) {
+                    let convo_id = self.app_state.current_convo.id().to_string();
+                    if let Some(msg) = self
+                        .app_state
+                        .current_convo
+                        .last_message_of_mut(Some(Issuer::user()))
+                    {
                         msg.set_token_count(usage.prompt_tokens);
-                        self.storage
-                            .upsert_message(&conversation_id, msg.clone())
-                            .await?;
+                        self.storage.upsert_message(&convo_id, msg.clone()).await?;
                     }
 
-                    if let Some(msg) = conversation.last_message_of_mut(Some(Issuer::system())) {
+                    if let Some(msg) = self
+                        .app_state
+                        .current_convo
+                        .last_message_of_mut(Some(Issuer::system()))
+                    {
                         msg.set_token_count(usage.completion_tokens);
                     }
 
@@ -282,11 +278,15 @@ impl<'a> App<'a> {
                     }
                 }
 
+                self.history_screen
+                    .upsert_conversation(&self.app_state.current_convo);
+                self.history_screen.update_items();
+
                 // Upsert message to the storage
                 self.storage
                     .upsert_message(
-                        &conversation_id,
-                        conversation.last_message().unwrap().clone(),
+                        self.app_state.current_convo.id(),
+                        self.app_state.current_convo.last_message().unwrap().clone(),
                     )
                     .await?;
 
@@ -294,8 +294,11 @@ impl<'a> App<'a> {
                 // in the background and notify the app when it's done to fetch
                 // the context and update the conversation. This will mitigate
                 // impact to the current conversation.
-                if self.compressor.should_compress(&conversation) {
-                    self.handle_convo_compress(&conversation_id);
+                if self
+                    .compressor
+                    .should_compress(&self.app_state.current_convo)
+                {
+                    self.handle_convo_compress(self.app_state.current_convo.id());
                 }
             }
             Event::KeyboardCharInput(c) => {
@@ -326,7 +329,7 @@ impl<'a> App<'a> {
             Event::KeyboardF1 => self.help_screen.toggle_showing(),
 
             Event::KeyboardCtrlN => {
-                self.handle_new_conversation();
+                self.handle_new_conversation().await;
                 return Ok(false);
             }
 
@@ -349,7 +352,7 @@ impl<'a> App<'a> {
                     return Ok(false);
                 }
                 self.edit_screen
-                    .set_messages(self.app_state.conversation.borrow().messages());
+                    .set_messages(self.app_state.current_convo.messages());
                 self.edit_screen.toggle_showing();
             }
 
@@ -361,19 +364,21 @@ impl<'a> App<'a> {
                 // Rebuild the conversation by removing all the messages from the backend
                 // and resubmit the last message from user
                 {
-                    let mut conversation = self.app_state.conversation.borrow_mut();
-
-                    let mut i = conversation.len() as i32 - 1;
+                    let mut i = self.app_state.current_convo.len() as i32 - 1;
                     if i == 0 {
                         // Welcome message, nothing to do
                         return Ok(false);
                     }
 
                     while i >= 0 {
-                        if !conversation.messages()[i as usize].is_system() {
+                        if !self.app_state.current_convo.messages_mut()[i as usize].is_system() {
                             break;
                         }
-                        let con = conversation.messages_mut().remove(i as usize);
+                        let con = self
+                            .app_state
+                            .current_convo
+                            .messages_mut()
+                            .remove(i as usize);
                         self.app_state
                             .bubble_list
                             .remove_message_by_index(i as usize);
@@ -385,9 +390,11 @@ impl<'a> App<'a> {
                 self.app_state.sync_state();
                 self.app_state.scroll.last();
 
-                let conversation = self.app_state.conversation.borrow();
                 // Resubmit the last message from user
-                let last_user_msg = conversation.last_message_of(Some(Issuer::user()));
+                let last_user_msg = self
+                    .app_state
+                    .current_convo
+                    .last_message_of(Some(Issuer::user()));
 
                 let input_str = if let Some(msg) = last_user_msg {
                     msg.text().to_string()
@@ -399,7 +406,7 @@ impl<'a> App<'a> {
                 self.app_state.waiting_for_backend = true;
                 let prompt = BackendPrompt::new(input_str)
                     .with_model(model)
-                    .with_context(conversation.build_context());
+                    .with_context(self.app_state.current_convo.build_context());
 
                 self.action_tx.send(Action::BackendRequest(prompt))?;
             }
@@ -423,34 +430,39 @@ impl<'a> App<'a> {
                     return Ok(false);
                 }
 
-                let first = self.app_state.conversation.borrow().len() < 2;
+                let first = self.app_state.current_convo.len() < 2;
 
                 let msg = Message::new_user("user", input_str);
                 self.input = TextArea::default().build();
                 self.app_state.add_message(msg.clone());
 
-                let conversation_id = self.app_state.conversation.borrow().id().to_string();
-                let model = self.models_screen.current_model();
+                if self.app_state.current_convo.id().is_empty() {
+                    // Default conversation
+                    let conversation_id = uuid::Uuid::new_v4().to_string();
+                    self.app_state.current_convo.set_id(&conversation_id);
+
+                    self.history_screen.remove_conversation("");
+                    self.history_screen
+                        .add_conversation_and_set(&self.app_state.current_convo);
+                }
 
                 self.app_state.waiting_for_backend = true;
 
+                let conversation_id = self.app_state.current_convo.id().to_string();
+                let model = self.models_screen.current_model();
+
                 let prompt = BackendPrompt::new(input_str)
-                    .with_context(self.app_state.conversation.borrow().build_context())
+                    .with_context(self.app_state.current_convo.build_context())
                     .with_model(model);
 
                 if first {
-                    self.history_screen
-                        .set_current_conversation(conversation_id.clone());
-
-                    self.storage
-                        .upsert_conversation(self.app_state.conversation.borrow().clone())
-                        .await?;
+                    self.save_current_conversation().await;
 
                     // Save the first message to the storage
                     self.storage
                         .upsert_message(
                             &conversation_id,
-                            self.app_state.conversation.borrow().messages()[0].clone(),
+                            self.app_state.current_convo.messages()[0].clone(),
                         )
                         .await?;
                 }
@@ -459,6 +471,7 @@ impl<'a> App<'a> {
                     .upsert_message(&conversation_id, msg.clone())
                     .await?;
                 self.action_tx.send(Action::BackendRequest(prompt))?;
+                self.history_screen.update_items();
             }
 
             Event::UiScrollDown => self.app_state.scroll.down(),
@@ -632,64 +645,86 @@ impl<'a> App<'a> {
         });
     }
 
-    fn handle_new_conversation(&mut self) {
+    async fn handle_new_conversation(&mut self) {
         if self.app_state.waiting_for_backend {
-            self.app_state.waiting_for_backend = false;
-            if let Err(err) = self.action_tx.send(Action::BackendAbort) {
-                self.notice.add_message(
-                    NoticeMessage::new(format!("Failed to abort: {}", err))
-                        .with_duration(time::Duration::from_secs(5))
-                        .with_type(NoticeType::Error),
-                );
-            }
-        }
-
-        if self.app_state.conversation.borrow().len() < 2 {
+            self.notice.add_message(
+                NoticeMessage::new("Please cancel the current request first!")
+                    .with_duration(time::Duration::from_secs(5))
+                    .with_type(NoticeType::Warning),
+            );
             return;
         }
 
-        let conversation = self.get_default_or_create_conversation();
-        self.change_conversation(conversation);
+        if self.app_state.current_convo.len() < 2 {
+            return;
+        }
+        self.upsert_default_conversation();
+        self.change_conversation("").await;
     }
 
-    fn get_default_or_create_conversation(&mut self) -> Rc<RefCell<Conversation>> {
-        let blank_conversation = self
-            .conversations
-            .iter()
-            .filter(|(_, v)| v.borrow().len() < 2)
-            .next();
-
-        if let Some((_, conversation)) = blank_conversation {
-            return Rc::clone(conversation);
-        }
-
-        let default_conversation = Rc::new(RefCell::new(Conversation::new_hello()));
-        let default_id = default_conversation.borrow().id().to_string();
-        self.conversations
-            .insert(default_id.clone(), Rc::clone(&default_conversation));
-        self.history_screen
-            .add_conversation(Rc::clone(&default_conversation));
-        default_conversation
+    fn upsert_default_conversation(&mut self) {
+        let convo = Conversation::new_hello();
+        self.history_screen.add_conversation_and_set(&convo);
     }
 
     async fn save_last_message(&mut self) -> Result<()> {
+        self.save_current_conversation().await;
         if !self.app_state.waiting_for_backend {
             // If no message is waiting, we can simply return the process
             return Ok(());
         }
+        let conversation_id = self.app_state.current_convo.id();
         // Otherwise, let save the last message in the conversation
-        let last_message = self.app_state.last_message().unwrap();
-        self.storage
-            .upsert_message(self.app_state.conversation.borrow().id(), last_message)
-            .await?;
+        if let Some(last) = self.app_state.current_convo.last_message() {
+            self.storage
+                .upsert_message(conversation_id, last.clone())
+                .await?;
+        }
         Ok(())
     }
 
-    fn change_conversation(&mut self, new_con: Rc<RefCell<Conversation>>) {
+    async fn save_current_conversation(&mut self) {
+        if self.app_state.current_convo.len() < 2 {
+            return;
+        }
+        if let Err(err) = self
+            .storage
+            .upsert_conversation(self.app_state.current_convo.clone())
+            .await
+        {
+            self.notice.add_message(
+                NoticeMessage::new(format!("Failed to save conversation: {}", err))
+                    .with_duration(time::Duration::from_secs(5))
+                    .with_type(NoticeType::Error),
+            );
+        }
+    }
+
+    async fn change_conversation(&mut self, convo_id: &str) {
+        // Save the current conversation
+        self.save_current_conversation().await;
+
+        let convo = if convo_id.is_empty() {
+            Conversation::new_hello()
+        } else {
+            match self.storage.get_conversation(convo_id).await {
+                Ok(convo) => convo.unwrap(),
+                Err(err) => {
+                    self.notice.add_message(
+                        NoticeMessage::new(format!("Failed to get conversation: {}", err))
+                            .with_duration(time::Duration::from_secs(5))
+                            .with_type(NoticeType::Error),
+                    );
+                    return;
+                }
+            }
+        };
+
         // Change the conversation
-        self.history_screen
-            .set_current_conversation(new_con.borrow().id());
-        self.app_state.set_conversation(new_con);
+        self.history_screen.set_current_conversation(convo.id());
+        let title = convo.title().to_string();
+        self.app_state.set_conversation(convo);
+        self.notice.info(format!("Switching to \"{}\"", title));
         self.input = TextArea::default().build();
         self.app_state.sync_state();
     }

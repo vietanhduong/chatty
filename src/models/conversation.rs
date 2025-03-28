@@ -6,7 +6,6 @@ use crate::{
     config::{Configuration, constants::HELLO_MESSAGE},
     models::{Message, message::Issuer},
 };
-use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct Conversation {
@@ -77,6 +76,10 @@ impl Conversation {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         self
+    }
+
+    pub fn set_id(&mut self, id: impl Into<String>) {
+        self.id = id.into();
     }
 
     pub fn set_title(&mut self, title: impl Into<String>) {
@@ -180,24 +183,6 @@ impl Conversation {
         return context;
     }
 
-    pub fn last_message_of_mut(&mut self, issuer: Option<Issuer>) -> Option<&mut Message> {
-        for msg in self.messages.iter_mut().rev() {
-            if filter_issuer(issuer.as_ref(), msg) {
-                return Some(msg);
-            }
-        }
-        None
-    }
-
-    pub fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
-        for msg in self.messages.iter().rev() {
-            if filter_issuer(issuer.as_ref(), msg) {
-                return Some(msg);
-            }
-        }
-        None
-    }
-
     pub fn token_count(&self) -> usize {
         self.messages.iter().map(|msg| msg.token_count()).sum()
     }
@@ -206,7 +191,7 @@ impl Conversation {
 impl Default for Conversation {
     fn default() -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: "".to_string(),
             title: "New Chat".to_string(),
             messages: vec![],
             contexts: vec![],
@@ -295,7 +280,7 @@ impl From<&Context> for Message {
     }
 }
 
-fn filter_issuer(issuer: Option<&Issuer>, msg: &Message) -> bool {
+pub fn filter_issuer(issuer: Option<&Issuer>, msg: &Message) -> bool {
     if issuer.is_none() {
         return true;
     }
@@ -317,4 +302,39 @@ fn filter_issuer(issuer: Option<&Issuer>, msg: &Message) -> bool {
     }
 
     value.is_empty() || msg.issuer_str() == value
+}
+
+pub trait FindMessage {
+    fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message>;
+    fn last_message_of_mut(&mut self, issuer: Option<Issuer>) -> Option<&mut Message>;
+}
+
+impl FindMessage for Vec<Message> {
+    fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
+        for msg in self.iter().rev() {
+            if filter_issuer(issuer.as_ref(), msg) {
+                return Some(msg);
+            }
+        }
+        None
+    }
+
+    fn last_message_of_mut(&mut self, issuer: Option<Issuer>) -> Option<&mut Message> {
+        for msg in self.iter_mut().rev() {
+            if filter_issuer(issuer.as_ref(), msg) {
+                return Some(msg);
+            }
+        }
+        None
+    }
+}
+
+impl FindMessage for Conversation {
+    fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
+        self.messages.last_message_of(issuer)
+    }
+
+    fn last_message_of_mut(&mut self, issuer: Option<Issuer>) -> Option<&mut Message> {
+        self.messages.last_message_of_mut(issuer)
+    }
 }

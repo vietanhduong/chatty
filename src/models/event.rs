@@ -33,7 +33,9 @@ pub enum Event {
     UiScrollPageUp,
     UiScrollPageDown,
 
+    /// Event for when user select a conversation
     SetConversation(String),
+
     ConversationDeleted(String),
     ConversationUpdated(String),
 }

@@ -1,36 +1,35 @@
-use std::{cell::RefCell, rc::Rc};
-
 use crate::models::{BackendResponse, Conversation, Message};
 use ratatui::layout::Rect;
 use syntect::highlighting::Theme;
 
 use crate::{app::ui::BubbleList, app::ui::Scroll};
 
-pub struct AppState<'a> {
+pub(crate) struct AppState<'a> {
     theme: &'a Theme,
-    pub(crate) bubble_list: BubbleList<'a>,
-    pub(crate) last_known_height: usize,
-    pub(crate) last_known_width: usize,
-    pub(crate) conversation: Rc<RefCell<Conversation>>,
-    pub(crate) scroll: Scroll,
-    pub(crate) waiting_for_backend: bool,
+    pub bubble_list: BubbleList<'a>,
+    pub last_known_height: usize,
+    pub last_known_width: usize,
+    pub scroll: Scroll,
+
+    pub current_convo: Conversation,
+    pub waiting_for_backend: bool,
 }
 
 impl<'a> AppState<'a> {
-    pub fn new(conversation: Rc<RefCell<Conversation>>, theme: &'a Theme) -> AppState<'a> {
+    pub fn new(theme: &'a Theme) -> AppState<'a> {
         AppState {
             theme,
             bubble_list: BubbleList::new(theme),
             last_known_height: 0,
             last_known_width: 0,
-            conversation,
+            current_convo: Conversation::new_hello(),
             scroll: Scroll::default(),
             waiting_for_backend: false,
         }
     }
 
-    pub fn set_conversation(&mut self, conversation: Rc<RefCell<Conversation>>) {
-        self.conversation = conversation;
+    pub fn set_conversation(&mut self, convo: Conversation) {
+        self.current_convo = convo;
         self.bubble_list = BubbleList::new(self.theme);
         self.sync_state();
         // Move the scroll to the last message
@@ -44,26 +43,22 @@ impl<'a> AppState<'a> {
     }
 
     pub fn add_message(&mut self, message: Message) {
-        {
-            let mut conversation = self.conversation.borrow_mut();
-            conversation.append_message(message);
-        }
+        self.current_convo.append_message(message);
         self.sync_state();
         self.scroll.last();
     }
 
-    pub(crate) fn last_message(&self) -> Option<Message> {
-        self.conversation.borrow().last_message().cloned()
-    }
-
-    pub(crate) fn handle_backend_response(&mut self, resp: &BackendResponse) {
+    pub fn handle_backend_response(&mut self, resp: &BackendResponse) {
+        if self.current_convo.len() == 0
+            || matches!(self.current_convo.messages().last(), Some(last) if !last.is_system())
         {
-            let mut conversation = self.conversation.borrow_mut();
-            let last_message = conversation.last_message().unwrap();
-            if !last_message.is_system() {
-                conversation.append_message(Message::new_system(&resp.model, "").with_id(&resp.id));
-            }
-            conversation.last_mut_message().unwrap().append(&resp.text);
+            self.current_convo
+                .append_message(Message::new_system(&resp.model, "").with_id(&resp.id));
+        }
+
+        {
+            let last_message = self.current_convo.last_mut_message().unwrap();
+            last_message.append(&resp.text);
         }
 
         if resp.done {
@@ -72,22 +67,27 @@ impl<'a> AppState<'a> {
                 // the conversation at the beginning of the text and starts with #
 
                 // Get the first line of the last message
-                let message = self.last_message().unwrap();
-                let first_line = message.text().lines().next().unwrap_or("");
+                let first_line = self
+                    .current_convo
+                    .messages()
+                    .last()
+                    .unwrap()
+                    .text()
+                    .lines()
+                    .next()
+                    .unwrap_or("");
                 // Check if the first line starts with #
                 if first_line.starts_with('#') {
                     // Remove the # and any leading spaces
                     let title = first_line.trim_start_matches('#').trim();
                     if !title.is_empty() {
                         // Set the title of the conversation
-                        self.conversation.borrow_mut().set_title(title.to_string());
+                        self.current_convo.set_title(title.to_string());
                     }
                 }
             }
-
-            self.conversation
-                .borrow_mut()
-                .set_updated_at(chrono::Utc::now());
+            let updated_at = self.current_convo.last_mut_message().unwrap().created_at();
+            self.current_convo.set_updated_at(updated_at);
             self.waiting_for_backend = false;
         }
         self.sync_state();
@@ -95,7 +95,7 @@ impl<'a> AppState<'a> {
 
     pub fn sync_state(&mut self) {
         self.bubble_list
-            .set_messages(self.conversation.borrow().messages(), self.last_known_width);
+            .set_messages(self.current_convo.messages(), self.last_known_width);
         let scrollbar_at_bottom = self.scroll.is_position_at_last();
         self.scroll
             .set_state(self.bubble_list.len(), self.last_known_height);

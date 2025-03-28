@@ -11,10 +11,8 @@ use ratatui::{
 };
 use ratatui_macros::span;
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, HashMap},
     fmt::Display,
-    rc::Rc,
 };
 use tokio::sync::mpsc;
 use tui_textarea::Key;
@@ -39,7 +37,7 @@ pub struct HistoryScreen<'a> {
     event_tx: mpsc::UnboundedSender<Event>,
 
     storage: ArcStorage,
-    conversations: Vec<Rc<RefCell<Conversation>>>,
+    conversations: Vec<Conversation>,
     items: Vec<ListItem<'a>>,
     idx_map: HashMap<usize, String>,
 
@@ -82,16 +80,12 @@ impl<'a> HistoryScreen<'a> {
         self.showing
     }
 
-    pub fn with_conversations(
-        mut self,
-        conversations: Vec<Rc<RefCell<Conversation>>>,
-    ) -> HistoryScreen<'a> {
-        self.conversations = conversations;
+    pub fn with_conversations(mut self, conversations: &[Conversation]) -> HistoryScreen<'a> {
+        self.conversations = conversations.to_vec();
         // sort the conversations by last updated time descending
         self.conversations
-            .sort_by(|a, b| b.borrow().updated_at().cmp(&a.borrow().updated_at()));
-        self.conversations
-            .dedup_by(|a, b| a.borrow().id() == b.borrow().id());
+            .sort_by(|a, b| b.updated_at().cmp(&a.updated_at()));
+        self.conversations.dedup_by(|a, b| a.id() == b.id());
         self
     }
 
@@ -114,13 +108,13 @@ impl<'a> HistoryScreen<'a> {
         if let Some(pos) = self
             .conversations
             .iter()
-            .position(|c| c.borrow().id() == conversation)
+            .position(|c| c.id() == conversation)
         {
             if self.current_conversation.as_deref() == Some(conversation) {
                 self.current_conversation = None;
             }
             self.conversations.remove(pos);
-            self.build_list_items();
+            self.update_items();
         }
     }
 
@@ -135,40 +129,37 @@ impl<'a> HistoryScreen<'a> {
         }
     }
 
-    pub fn add_conversation(&mut self, conversation: Rc<RefCell<Conversation>>) {
+    pub fn upsert_conversation(&mut self, conversation: &Conversation) {
         // If the conversation already exists, just update it
         // otherwise, add the conversation at the top of the list
         let pos = self
             .conversations
             .iter()
-            .position(|c| c.borrow().id() == conversation.borrow().id())
+            .position(|c| c.id() == conversation.id())
             .unwrap_or_default();
 
         if pos != 0 {
-            log::debug!(
-                "Conversation already exists, updating it: {:?}",
-                conversation
-            );
             // remove the conversation from the list
             self.conversations.remove(pos);
         }
 
-        self.current_conversation = Some(conversation.borrow().id().to_string());
-        self.conversations.insert(0, conversation);
+        self.conversations.insert(0, conversation.clone());
         // sort the conversations by last updated time descending
         self.conversations
-            .sort_by(|a, b| b.borrow().updated_at().cmp(&a.borrow().updated_at()));
-        self.build_list_items();
+            .sort_by(|a, b| b.updated_at().cmp(&a.updated_at()));
+        self.update_items();
     }
 
-    pub fn current_conversation(&self) -> Option<String> {
-        self.current_conversation.clone()
+    pub fn add_conversation_and_set(&mut self, conversation: &Conversation) {
+        let id = conversation.id().to_string();
+        self.upsert_conversation(conversation);
+        self.current_conversation = Some(id);
     }
 
     pub fn set_current_conversation(&mut self, conversation: impl Into<String>) {
         self.current_conversation = Some(conversation.into());
         self.move_cursor_to_current();
-        self.build_list_items();
+        self.update_items();
     }
 
     fn next_row(&mut self) {
@@ -228,7 +219,7 @@ impl<'a> HistoryScreen<'a> {
         self.state.select(Some(self.items.len() - 1));
     }
 
-    fn build_list_items(&mut self) {
+    pub fn update_items(&mut self) {
         self.items.clear();
         self.idx_map.clear();
 
@@ -240,8 +231,7 @@ impl<'a> HistoryScreen<'a> {
             return;
         }
 
-        let mut conversations: BTreeMap<ConversationGroup, Vec<Rc<RefCell<Conversation>>>> =
-            BTreeMap::new();
+        let mut conversations: BTreeMap<ConversationGroup, Vec<&Conversation>> = BTreeMap::new();
 
         let now = Utc::now();
         self.conversations
@@ -250,26 +240,22 @@ impl<'a> HistoryScreen<'a> {
                 if self.current_search.is_empty() {
                     return true;
                 }
-                c.borrow()
-                    .title()
+                c.title()
                     .to_lowercase()
                     .contains(&self.current_search.to_lowercase())
             })
             .for_each(|c| {
-                let group = categorize_conversation(now, c);
+                let group = categorize_conversation(now, c.updated_at());
 
-                conversations
-                    .entry(group)
-                    .or_insert_with(Vec::new)
-                    .push(c.clone());
+                conversations.entry(group).or_insert_with(Vec::new).push(c);
             });
 
         for (group, conversations) in conversations {
             self.items.push(group.to_list_item());
 
             for c in conversations {
-                let mut spans = vec![span!(c.borrow().title())];
-                if self.current_conversation.as_deref() == Some(c.borrow().id()) {
+                let mut spans = vec![span!(c.title())];
+                if self.current_conversation.as_deref() == Some(c.id()) {
                     spans.push(Span::styled(" ", Style::default()));
                     spans.push(Span::styled("[*]", Style::default().fg(Color::LightRed)))
                 }
@@ -277,7 +263,7 @@ impl<'a> HistoryScreen<'a> {
                 let lines = utils::split_to_lines(spans, self.last_known_width);
                 self.items.push(ListItem::new(Text::from(lines)));
                 self.idx_map
-                    .insert(self.items.len() - 1, c.borrow().id().to_string());
+                    .insert(self.items.len() - 1, c.id().to_string());
             }
         }
     }
@@ -342,13 +328,13 @@ impl<'a> HistoryScreen<'a> {
                         None => return Ok(false),
                     };
 
-                    if conversation.borrow().len() < 2 {
+                    if conversation.id().is_empty() {
                         return Ok(false);
                     }
 
                     let quest = vec![
                         span!("Do you want to delete"),
-                        span!(format!("\"{}\"", conversation.borrow().title()))
+                        span!(format!("\"{}\"", conversation.title()))
                             .add_modifier(Modifier::BOLD | Modifier::ITALIC)
                             .yellow(),
                         span!("?"),
@@ -358,10 +344,10 @@ impl<'a> HistoryScreen<'a> {
                 Key::Char('r') => {
                     if let Some(conversation) = self.get_selected_conversation() {
                         // Ignore with blank conversation
-                        if conversation.borrow().len() < 2 {
+                        if conversation.id().is_empty() {
                             return Ok(false);
                         }
-                        let title = conversation.borrow().title().to_string();
+                        let title = conversation.title().to_string();
                         self.rename.open(title);
                     }
                 }
@@ -385,6 +371,10 @@ impl<'a> HistoryScreen<'a> {
             }
             Event::KeyboardEnter => {
                 self.current_search = self.search.close().unwrap_or_default();
+                self.update_items();
+                if !self.items.is_empty() {
+                    self.state.select(Some(0));
+                }
             }
             _ => self.search.handle_key_event(event),
         }
@@ -410,7 +400,7 @@ impl<'a> HistoryScreen<'a> {
         match event {
             Event::KeyboardEnter => {
                 let text = self.rename.close().unwrap_or_default();
-                self.rename_conversation(text).await;
+                self.rename_conversation(&text).await;
             }
             Event::KeyboardCtrlC | Event::KeyboardEsc => {
                 self.rename.close();
@@ -420,12 +410,11 @@ impl<'a> HistoryScreen<'a> {
     }
 
     async fn on_delete(&mut self) {
-        let conversation = match self.get_selected_conversation() {
-            Some(c) => c,
+        let convo_id = match self.get_selected_conversation_id() {
+            Some(id) => id.to_string(),
             None => return,
         };
 
-        let convo_id = conversation.borrow().id().to_string();
         if let Err(err) = self.storage.delete_conversation(&convo_id).await {
             log::error!("Failed to delete conversation: {}", err);
             self.event_tx
@@ -442,8 +431,13 @@ impl<'a> HistoryScreen<'a> {
             .ok();
     }
 
-    pub async fn rename_conversation(&mut self, new_title: String) {
-        let conversation = match self.get_selected_conversation() {
+    pub async fn rename_conversation(&mut self, new_title: &str) {
+        let convo_id = match self.get_selected_conversation_id() {
+            Some(id) => id.to_string(),
+            None => return,
+        };
+
+        let convo = match self.conversations.iter_mut().find(|c| c.id() == convo_id) {
             Some(c) => c,
             None => return,
         };
@@ -451,11 +445,12 @@ impl<'a> HistoryScreen<'a> {
         if new_title.is_empty() {
             return;
         }
-
-        conversation.borrow_mut().set_title(new_title.clone());
-        self.build_list_items();
-        let conversation = conversation.borrow().clone();
-        if let Err(err) = self.storage.upsert_conversation(conversation).await {
+        {
+            convo.set_title(new_title.to_string());
+        }
+        let convo = convo.clone();
+        self.update_items();
+        if let Err(err) = self.storage.upsert_conversation(convo).await {
             log::error!("Failed to rename conversation: {}", err);
             self.event_tx
                 .send(Event::Notice(NoticeMessage::warning(format!(
@@ -477,12 +472,9 @@ impl<'a> HistoryScreen<'a> {
         }
     }
 
-    pub fn get_selected_conversation(&self) -> Option<Rc<RefCell<Conversation>>> {
-        let id = self.get_selected_conversation_id()?;
-        self.conversations
-            .iter()
-            .find(|c| c.borrow().id() == id)
-            .cloned()
+    pub fn get_selected_conversation(&self) -> Option<&Conversation> {
+        let id = self.get_selected_conversation_id()?.to_string();
+        self.conversations.iter().find(|c| c.id() == id)
     }
 
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
@@ -514,7 +506,7 @@ impl<'a> HistoryScreen<'a> {
         if !self.showing {
             if !self.conversations.is_empty() && self.items.is_empty() {
                 self.last_known_width = (inner.width - 2) as usize;
-                self.build_list_items();
+                self.update_items();
             }
             return;
         }
@@ -523,7 +515,7 @@ impl<'a> HistoryScreen<'a> {
 
         if self.last_known_width != (inner.width - 2) as usize {
             self.last_known_width = (inner.width - 2) as usize;
-            self.build_list_items();
+            self.update_items();
         }
 
         let list = List::new(self.items.clone())
@@ -571,14 +563,10 @@ impl ConversationGroup {
 
 fn categorize_conversation(
     now: chrono::DateTime<Utc>,
-    conversation: &Rc<RefCell<Conversation>>,
+    updated_at: chrono::DateTime<Utc>,
 ) -> ConversationGroup {
-    let age = now.with_timezone(&Local).date_naive()
-        - conversation
-            .borrow()
-            .updated_at()
-            .with_timezone(&Local)
-            .date_naive();
+    let age =
+        now.with_timezone(&Local).date_naive() - updated_at.with_timezone(&Local).date_naive();
     let days = age.num_days();
     match days {
         0 => ConversationGroup::Today,
