@@ -37,7 +37,7 @@ pub struct HistoryScreen<'a> {
     event_tx: mpsc::UnboundedSender<Event>,
 
     storage: ArcStorage,
-    conversations: Vec<Conversation>,
+    conversations: HashMap<String, Conversation>,
     items: Vec<ListItem<'a>>,
     idx_map: HashMap<usize, String>,
 
@@ -59,7 +59,7 @@ impl<'a> HistoryScreen<'a> {
             event_tx,
             storage,
             showing: false,
-            conversations: vec![],
+            conversations: HashMap::new(),
 
             idx_map: HashMap::new(),
             rename: InputBox::default().with_title(" Rename "),
@@ -80,12 +80,11 @@ impl<'a> HistoryScreen<'a> {
         self.showing
     }
 
-    pub fn with_conversations(mut self, conversations: &[Conversation]) -> HistoryScreen<'a> {
-        self.conversations = conversations.to_vec();
-        // sort the conversations by last updated time descending
-        self.conversations
-            .sort_by(|a, b| b.updated_at().cmp(&a.updated_at()));
-        self.conversations.dedup_by(|a, b| a.id() == b.id());
+    pub fn with_conversations(
+        mut self,
+        conversations: HashMap<String, Conversation>,
+    ) -> HistoryScreen<'a> {
+        self.conversations = conversations;
         self
     }
 
@@ -105,15 +104,10 @@ impl<'a> HistoryScreen<'a> {
     }
 
     pub fn remove_conversation(&mut self, conversation: &str) {
-        if let Some(pos) = self
-            .conversations
-            .iter()
-            .position(|c| c.id() == conversation)
-        {
-            if self.current_conversation.as_deref() == Some(conversation) {
+        if let Some(convo) = self.conversations.remove(conversation) {
+            if convo.id() == self.current_conversation.as_deref().unwrap_or_default() {
                 self.current_conversation = None;
             }
-            self.conversations.remove(pos);
             self.update_items();
         }
     }
@@ -130,23 +124,14 @@ impl<'a> HistoryScreen<'a> {
     }
 
     pub fn upsert_conversation(&mut self, conversation: &Conversation) {
-        // If the conversation already exists, just update it
-        // otherwise, add the conversation at the top of the list
-        let pos = self
-            .conversations
-            .iter()
-            .position(|c| c.id() == conversation.id())
-            .unwrap_or_default();
-
-        if pos != 0 {
-            // remove the conversation from the list
-            self.conversations.remove(pos);
-        }
-
-        self.conversations.insert(0, conversation.clone());
-        // sort the conversations by last updated time descending
-        self.conversations
-            .sort_by(|a, b| b.updated_at().cmp(&a.updated_at()));
+        self.conversations.insert(
+            conversation.id().to_string(),
+            Conversation::default()
+                .with_title(conversation.title())
+                .with_id(conversation.id())
+                .with_created_at(conversation.created_at())
+                .with_updated_at(conversation.updated_at()),
+        );
         self.update_items();
     }
 
@@ -236,7 +221,7 @@ impl<'a> HistoryScreen<'a> {
         let now = Utc::now();
         self.conversations
             .iter()
-            .filter(|c| {
+            .filter(|(_, c)| {
                 if self.current_search.is_empty() {
                     return true;
                 }
@@ -244,14 +229,20 @@ impl<'a> HistoryScreen<'a> {
                     .to_lowercase()
                     .contains(&self.current_search.to_lowercase())
             })
-            .for_each(|c| {
+            .for_each(|(_, c)| {
                 let group = categorize_conversation(now, c.updated_at());
 
                 conversations.entry(group).or_insert_with(Vec::new).push(c);
             });
 
-        for (group, conversations) in conversations {
+        for (group, mut conversations) in conversations {
             self.items.push(group.to_list_item());
+            conversations.sort_by(|a, b| {
+                b.updated_at()
+                    .with_timezone(&Local)
+                    .date_naive()
+                    .cmp(&a.updated_at().with_timezone(&Local).date_naive())
+            });
 
             for c in conversations {
                 let mut spans = vec![span!(c.title())];
@@ -303,6 +294,10 @@ impl<'a> HistoryScreen<'a> {
                     Some(id) => id.to_string(),
                     None => return Ok(false),
                 };
+
+                if self.current_conversation.as_deref() == Some(&id) {
+                    return Ok(false);
+                }
 
                 self.showing = false;
                 self.event_tx.send(Event::SetConversation(id.clone())).ok();
@@ -437,17 +432,15 @@ impl<'a> HistoryScreen<'a> {
             None => return,
         };
 
-        let convo = match self.conversations.iter_mut().find(|c| c.id() == convo_id) {
+        let convo = match self.conversations.get_mut(&convo_id) {
             Some(c) => c,
             None => return,
         };
 
-        if new_title.is_empty() {
+        if convo.title() == new_title {
             return;
         }
-        {
-            convo.set_title(new_title.to_string());
-        }
+        convo.set_title(new_title.to_string());
         let convo = convo.clone();
         self.update_items();
         if let Err(err) = self.storage.upsert_conversation(convo).await {
@@ -474,7 +467,7 @@ impl<'a> HistoryScreen<'a> {
 
     pub fn get_selected_conversation(&self) -> Option<&Conversation> {
         let id = self.get_selected_conversation_id()?.to_string();
-        self.conversations.iter().find(|c| c.id() == id)
+        self.conversations.get(&id)
     }
 
     pub fn render(&mut self, f: &mut Frame, area: Rect) {

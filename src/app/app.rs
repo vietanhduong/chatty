@@ -78,16 +78,16 @@ impl<'a> App<'a> {
             .conversations
             .into_iter()
             .map(|(id, convo)| {
-                Conversation::default()
+                let convo = Conversation::default()
                     .with_title(convo.title())
                     .with_id(&id)
                     .with_created_at(convo.created_at())
-                    .with_updated_at(convo.updated_at())
+                    .with_updated_at(convo.updated_at());
+                (id, convo)
             })
-            .collect::<Vec<_>>();
+            .collect::<HashMap<_, _>>();
 
-        let default_convo = Conversation::new_hello();
-        conversations.push(default_convo);
+        conversations.insert(String::new(), Conversation::new_hello());
 
         App {
             event_tx: event_tx.clone(),
@@ -105,7 +105,7 @@ impl<'a> App<'a> {
             ]),
             help_screen: HelpScreen::new(),
             history_screen: HistoryScreen::new(event_tx.clone(), storage)
-                .with_conversations(&conversations)
+                .with_conversations(conversations)
                 .with_current_conversation(""),
             models_screen: ModelsScreen::new(
                 init_props.default_model,
@@ -234,15 +234,6 @@ impl<'a> App<'a> {
                 let done = msg.done;
                 self.app_state.handle_backend_response(&msg);
 
-                if notify {
-                    let title = self.app_state.current_convo.title();
-                    self.notice.add_message(
-                        NoticeMessage::new(format!("Updated Title: \"{}\"", title))
-                            .with_duration(time::Duration::from_secs(5)),
-                    );
-                    self.history_screen.rename_conversation(title).await;
-                }
-
                 if !done {
                     return Ok(false);
                 }
@@ -278,9 +269,18 @@ impl<'a> App<'a> {
                     }
                 }
 
+                if notify {
+                    let title = self.app_state.current_convo.title();
+                    self.notice.add_message(
+                        NoticeMessage::new(format!("Updated Title: \"{}\"", title))
+                            .with_duration(time::Duration::from_secs(5)),
+                    );
+                }
+
+                log::debug!("Current convo id: {}", self.app_state.current_convo.id());
+
                 self.history_screen
                     .upsert_conversation(&self.app_state.current_convo);
-                self.history_screen.update_items();
 
                 // Upsert message to the storage
                 self.storage
