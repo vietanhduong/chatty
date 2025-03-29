@@ -38,6 +38,9 @@ pub struct GeneralConfig {
 
     #[serde(default)]
     pub show_usage: Option<bool>,
+
+    #[serde(default)]
+    pub verbose: bool,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -260,6 +263,7 @@ impl Default for SqliteStorage {
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
+            verbose: false,
             hello_message: Some(HELLO_MESSAGE.to_string()),
             show_usage: None,
         }

@@ -33,3 +33,15 @@ static CONFIG: OnceLock<Configuration> = OnceLock::new();
 thread_local! {
     static TEST_CONFIG: RefCell<&'static Configuration> = RefCell::new(Box::leak(Box::new(Configuration::default())))
 }
+
+#[macro_export]
+macro_rules! verbose {
+    ($($arg:tt)*) => {
+        if $crate::config::Configuration::instance().general.verbose {
+            eprintln!($($arg)*);
+        }
+    };
+    () => {};
+}
+
+pub use verbose;

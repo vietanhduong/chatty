@@ -2,7 +2,10 @@
 # Default welcome message
 hello_message = "Hello! How can I help you? 😊"
 # Show usage statistics when ever a chat completion completed
-show_uage = false
+show_usage = false
+# Verbose info in starting up. This different from the log level
+# and will only print in the beginning to stderr.
+verbose = false
 
 [log]
 # Default log level is "info"
@@ -22,9 +25,6 @@ append = false
 name = "base16-ocean.dark"
 folder_path = ""
 
-[backend]
-default_model = ""
-
 [context.compression]
 enabled = false
 # The maximum number of tokens in the context before trigger compression
@@ -40,6 +40,9 @@ enabled = false
 # context.truncation.max_tokens + backend.connections.max_output_tokens
 # then the context will be truncated to fit the limit
 max_tokens = 65_536
+
+[backend]
+default_model = ""
 
 # At least one backend connection must be enabled
 #[[backend.connections]]

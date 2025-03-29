@@ -11,7 +11,7 @@ pub use openai::OpenAI;
 use mockall::{automock, predicate::*};
 
 use crate::{
-    config::BackendConfig,
+    config::{BackendConfig, verbose},
     models::{ArcEventTx, BackendKind, BackendPrompt, Model},
 };
 use async_trait::async_trait;
@@ -76,7 +76,7 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
             .add_connection(backend)
             .await
             .wrap_err(format!("adding connection: {}", name))?;
-        println!("  [+] Added backend: {}", name);
+        verbose!("  [+] Added backend: {}", name);
         log::debug!("Added backend connection: {}", name);
     }
     Ok(Arc::new(manager))

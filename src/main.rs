@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chatty::backend::new_manager;
+use chatty::config::verbose;
 use chatty::config::{init_logger, init_theme};
 use chatty::context::Compressor;
 use chatty::models::{Action, ArcEventTx, Event, storage::FilterConversation};
@@ -33,26 +34,26 @@ async fn main() -> Result<()> {
 
     let config = cmd.get_config()?;
     init_logger(&config.log)?;
-    println!("[+] Logger initialized");
+    verbose!("[+] Logger initialized");
 
     let theme = init_theme(&config.theme)?;
-    println!("[+] Theme initialized");
+    verbose!("[+] Theme initialized");
 
     if config.backend.connections.is_empty() {
         eyre::bail!("No backend configured");
     }
 
-    println!("[+] Initializing backend...");
+    verbose!("[+] Initializing backend...");
     let backend = new_manager(&config.backend).await?;
     backend.health_check().await?;
-    println!("[+] Backend is healthy");
+    verbose!("[+] Backend is healthy");
 
-    println!("[+] Listing models...");
+    verbose!("[+] Listing models...");
     let models = backend.list_models(false).await?;
     if models.is_empty() {
         eyre::bail!("No models available");
     }
-    println!("[+] Loaded {} model(s)", models.len());
+    verbose!("[+] Loaded {} model(s)", models.len());
 
     let want_model = config.backend.default_model.as_deref().unwrap_or_default();
 
@@ -74,31 +75,31 @@ async fn main() -> Result<()> {
     };
 
     backend.set_current_model(model.id()).await?;
-    println!("[+] Set current model to {}", model);
+    verbose!("[+] Set current model to {}", model);
 
     if !config.context.compression.enabled && !config.context.truncation.enabled {
-        println!("[!] Context compression and truncation are disabled");
+        verbose!("[!] Context compression and truncation are disabled");
     }
 
     if config.context.compression.enabled {
-        println!("[+] Context compression enabled");
+        verbose!("[+] Context compression enabled");
     }
 
     if config.context.truncation.enabled {
-        println!("[+] Context truncation enabled");
+        verbose!("[+] Context truncation enabled");
     }
 
-    println!("[+] Initializing storage...");
+    verbose!("[+] Initializing storage...");
     let storage = new_storage(&config.storage)
         .await
         .wrap_err("initializing storage")?;
-    println!("[+] Storage initialized");
+    verbose!("[+] Storage initialized");
 
-    println!("[+] Fetching conversations...");
+    verbose!("[+] Fetching conversations...");
     let conversations = storage
         .get_conversations(FilterConversation::default())
         .await?;
-    println!("[+] Conversations fetched");
+    verbose!("[+] Conversations fetched");
 
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
