@@ -76,6 +76,18 @@ async fn main() -> Result<()> {
     backend.set_current_model(model.id()).await?;
     println!("[+] Set current model to {}", model);
 
+    if !config.context.compression.enabled && !config.context.truncation.enabled {
+        println!("[!] Context compression and truncation are disabled");
+    }
+
+    if config.context.compression.enabled {
+        println!("[+] Context compression enabled");
+    }
+
+    if config.context.truncation.enabled {
+        println!("[+] Context truncation enabled");
+    }
+
     println!("[+] Initializing storage...");
     let storage = new_storage(&config.storage)
         .await
