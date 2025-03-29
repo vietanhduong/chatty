@@ -5,7 +5,7 @@ It brings the power of ChatGPT and Gemini to your terminal, with features like c
 multiple model support, and intelligent context compression.
 
 <div align="center">
-![ChaTTY Demo](./assets/demo.gif)
+<img src="./assets/demo.gif" alt="ChaTTY Demo"/>
 
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](LICENSE)
@@ -52,11 +52,28 @@ api_key = "<your_api_key>"
 
 View the complete configuration options in our [default config file](./.chatty.default.toml).
 
-## Basic Commands
-```bash
-chatty                  # Start a new chat session
-chatty -c <file>       # Specify a config file
-chatty --help          # Show help message
+## Command Usage
+```console
+$ chatty --help
+A Terminal UI to interact OpenAI models
+
+Default configuration file location looks up in the following order:
+    * $XDG_CONFIG_HOME/chatty/config.toml
+    * $HOME/.config/chatty/config.toml
+    * $HOME/.chatty.toml
+
+
+Usage: chatty [OPTIONS]
+
+Options:
+  -c, --config <PATH>
+          Configuration file path
+
+  -v, --version
+          Show the version
+
+  -h, --help
+          Print help (see a summary with '-h')
 ```
 
 ## Contributing
