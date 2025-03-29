@@ -73,6 +73,10 @@ impl<'a> InputBox<'a> {
             Event::KeyboardCharInput(input) => {
                 self.input.input(input.clone());
             }
+            Event::KeyboardPaste(text) => {
+                self.input.set_yank_text(text.replace('\r', "\n"));
+                self.input.paste();
+            }
             _ => {}
         }
     }
