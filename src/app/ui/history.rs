@@ -204,6 +204,17 @@ impl<'a> HistoryScreen<'a> {
         self.state.select(Some(self.items.len() - 1));
     }
 
+    pub fn update_conversation_updated_at(
+        &mut self,
+        conversation_id: &str,
+        updated_at: chrono::DateTime<Utc>,
+    ) {
+        if let Some(conversation) = self.conversations.get_mut(conversation_id) {
+            conversation.set_updated_at(updated_at);
+            self.update_items();
+        }
+    }
+
     pub fn update_items(&mut self) {
         self.items.clear();
         self.idx_map.clear();
@@ -238,10 +249,14 @@ impl<'a> HistoryScreen<'a> {
         for (group, mut conversations) in conversations {
             self.items.push(group.to_list_item());
             conversations.sort_by(|a, b| {
+                // If the id is empty, always put it at the top of the list
+                if a.id().is_empty() {
+                    return std::cmp::Ordering::Less;
+                }
+
                 b.updated_at()
                     .with_timezone(&Local)
-                    .date_naive()
-                    .cmp(&a.updated_at().with_timezone(&Local).date_naive())
+                    .cmp(&a.updated_at().with_timezone(&Local))
             });
 
             for c in conversations {
@@ -410,6 +425,8 @@ impl<'a> HistoryScreen<'a> {
             None => return,
         };
 
+        log::debug!("Deleting conversation: {}", convo_id);
+
         if let Err(err) = self.storage.delete_conversation(&convo_id).await {
             log::error!("Failed to delete conversation: {}", err);
             self.event_tx
@@ -437,9 +454,12 @@ impl<'a> HistoryScreen<'a> {
             None => return,
         };
 
-        if convo.title() == new_title {
+        log::debug!("Renaming conversation: {:?}", convo);
+
+        if convo.title() == new_title || new_title.is_empty() {
             return;
         }
+
         convo.set_title(new_title.to_string());
         let convo = convo.clone();
         self.update_items();
@@ -452,6 +472,9 @@ impl<'a> HistoryScreen<'a> {
                 ))))
                 .ok();
         }
+        self.event_tx
+            .send(Event::ConversationUpdated(convo_id))
+            .ok();
     }
 
     pub fn get_selected_conversation_id(&self) -> Option<&str> {

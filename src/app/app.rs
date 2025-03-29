@@ -214,11 +214,14 @@ impl<'a> App<'a> {
             }
 
             Event::AbortRequest => {
+                if let Some(msg) = self.app_state.current_convo.last_message() {
+                    self.storage
+                        .upsert_message(self.app_state.current_convo.id(), msg.clone())
+                        .await?;
+                }
+
                 let message = Message::new_system("system", "Aborted!");
                 self.app_state.add_message(message.clone());
-                self.storage
-                    .upsert_message(self.app_state.current_convo.id(), message)
-                    .await?;
             }
 
             Event::BackendMessage(msg) => {
@@ -275,12 +278,16 @@ impl<'a> App<'a> {
                         NoticeMessage::new(format!("Updated Title: \"{}\"", title))
                             .with_duration(time::Duration::from_secs(5)),
                     );
+                    // This will update the conversation title in the history
+                    self.history_screen
+                        .upsert_conversation(&self.app_state.current_convo);
                 }
 
-                log::debug!("Current convo id: {}", self.app_state.current_convo.id());
-
-                self.history_screen
-                    .upsert_conversation(&self.app_state.current_convo);
+                // Update the conversation updated_at in the history
+                self.history_screen.update_conversation_updated_at(
+                    &self.app_state.current_convo.id(),
+                    self.app_state.current_convo.updated_at(),
+                );
 
                 // Upsert message to the storage
                 self.storage
@@ -467,9 +474,14 @@ impl<'a> App<'a> {
                         .await?;
                 }
 
+                // Save the current message to the storage
                 self.storage
                     .upsert_message(&conversation_id, msg.clone())
                     .await?;
+
+                self.history_screen
+                    .update_conversation_updated_at(&conversation_id, msg.created_at());
+
                 self.action_tx.send(Action::BackendRequest(prompt))?;
                 self.history_screen.update_items();
             }
