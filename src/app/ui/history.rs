@@ -454,7 +454,12 @@ impl<'a> HistoryScreen<'a> {
             None => return,
         };
 
-        log::debug!("Renaming conversation: {:?}", convo);
+        log::debug!(
+            "Renaming conversation: {}, old/new: {}/{}",
+            convo.id(),
+            convo.title(),
+            new_title
+        );
 
         if convo.title() == new_title || new_title.is_empty() {
             return;
