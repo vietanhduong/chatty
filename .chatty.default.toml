@@ -45,6 +45,8 @@ enabled = false
 max_tokens = 65_536
 
 [backend]
+# Default backend model to use. If not set or not present in the models list
+# then the first model in the list will be used.
 default_model = ""
 
 # At least one backend connection must be enabled
