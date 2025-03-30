@@ -23,3 +23,7 @@ pub(crate) fn log_level() -> Option<String> {
 pub(crate) fn log_file_path() -> String {
     LOG_FILE_PATH.to_string()
 }
+
+pub(crate) fn bubble_width_percent() -> usize {
+    BUBBLE_WIDTH_PERCENT
+}
