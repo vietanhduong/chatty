@@ -1,5 +1,35 @@
 use ratatui::style::Color;
 
+#[macro_export]
+macro_rules! info_notice {
+    ($msg:expr) => {
+        $crate::models::NoticeMessage::info($msg)
+    };
+    ($msg:expr, $duration:expr) => {
+        $crate::models::NoticeMessage::info($msg).with_duration($duration)
+    };
+}
+
+#[macro_export]
+macro_rules! warn_notice {
+    ($msg:expr) => {
+        $crate::models::NoticeMessage::warning($msg)
+    };
+    ($msg:expr, $duration:expr) => {
+        $crate::models::NoticeMessage::warning($msg).with_duration($duration)
+    };
+}
+
+#[macro_export]
+macro_rules! error_notice {
+    ($msg:expr) => {
+        $crate::models::NoticeMessage::error($msg)
+    };
+    ($msg:expr, $duration:expr) => {
+        $crate::models::NoticeMessage::error($msg).with_duration($duration)
+    };
+}
+
 #[derive(Debug, Default, Clone)]
 pub enum NoticeKind {
     #[default]

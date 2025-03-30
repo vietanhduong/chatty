@@ -40,33 +40,24 @@ pub enum Event {
 }
 
 #[macro_export]
-macro_rules! notice_info {
-    ($msg:expr) => {
-        Event::Notice($crate::models::NoticeMessage::info($msg))
-    };
-    ($msg:expr, $duration:expr) => {
-        Event::Notice($crate::models::NoticeMessage::info($msg).with_duration($duration))
-    };
+macro_rules! info_event {
+    ($($arg:tt)*) => {
+        Event::Notice($crate::info_notice!($($arg)*))
+    }
 }
 
 #[macro_export]
-macro_rules! notice_warning {
-    ($msg:expr) => {
-        Event::Notice($crate::models::NoticeMessage::warning($msg))
-    };
-    ($msg:expr, $duration:expr) => {
-        Event::Notice($crate::models::NoticeMessage::warning($msg).with_duration($duration))
-    };
+macro_rules! warn_event {
+    ($($arg:tt)*) => {
+        Event::Notice($crate::warn_notice!($($arg)*))
+    }
 }
 
 #[macro_export]
-macro_rules! notice_error {
-    ($msg:expr) => {
-        Event::Notice($crate::models::NoticeMessage::error($msg))
-    };
-    ($msg:expr, $duration:expr) => {
-        Event::Notice($crate::models::NoticeMessage::error($msg).with_duration($duration))
-    };
+macro_rules! error_event {
+    ($($arg:tt)*) => {
+        Event::Notice($crate::error_notice!($($arg)*))
+    }
 }
 
 #[async_trait::async_trait]

@@ -1,13 +1,13 @@
+use std::time::Duration;
 use std::{collections::HashMap, io, sync::Arc, time};
 
 use crate::config::Configuration;
 use crate::context::Compressor;
 use crate::models::action::Action;
 use crate::models::conversation::FindMessage;
-use crate::models::{
-    BackendPrompt, Conversation, Event, Message, NoticeKind, NoticeMessage, message::Issuer,
-};
+use crate::models::{BackendPrompt, Conversation, Event, Message, message::Issuer};
 use crate::models::{BackendResponse, Model, UpsertConvoRequest};
+use crate::{info_notice, warn_notice};
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
@@ -557,19 +557,19 @@ impl<'a> App<'a> {
                 .show_usage
                 .unwrap_or_default()
             {
-                self.notice.add_message(
-                    NoticeMessage::info(format!("Usage: {}", usage.to_string()))
-                        .with_duration(time::Duration::from_secs(6)),
-                );
+                self.notice.add_message(info_notice!(
+                    format!("Usage: {}", usage.to_string()),
+                    Duration::from_secs(7)
+                ));
             }
         }
 
         if notify {
             let title = self.app_state.current_convo.title();
-            self.notice.add_message(
-                NoticeMessage::new(format!("Updated Title: \"{}\"", title))
-                    .with_duration(time::Duration::from_secs(5)),
-            );
+            self.notice.add_message(info_notice!(
+                format!("Update conversation's title to \"{}\"", title),
+                Duration::from_secs(5)
+            ));
             // This will update the conversation title in the history
             self.history_screen
                 .upsert_conversation(&self.app_state.current_convo);
@@ -666,11 +666,9 @@ impl<'a> App<'a> {
 
     fn on_waiting_backend(&mut self, notice: bool) -> bool {
         if self.app_state.waiting_for_backend && notice {
-            self.notice.add_message(
-                NoticeMessage::new("Please wait for the backend to finish!")
-                    .with_duration(time::Duration::from_secs(5))
-                    .with_kind(NoticeKind::Warning),
-            );
+            self.notice.add_message(warn_notice!(
+                "Waiting for backend to respond, please wait..."
+            ));
         }
         return self.app_state.waiting_for_backend;
     }

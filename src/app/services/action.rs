@@ -6,12 +6,13 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     backend::ArcBackend,
     context::Compressor,
+    error_event, info_event,
     models::{
         Action, ArcEventTx, BackendPrompt, Context, Conversation, Event, Message,
         UpsertConvoRequest,
     },
-    notice_error, notice_info, notice_warning,
     storage::ArcStorage,
+    warn_event,
 };
 
 use super::clipboard::ClipboardService;
@@ -93,7 +94,7 @@ impl ActionService {
                     log::error!("Failed to copy messages: {}", err);
                     let _ = self
                         .event_tx
-                        .send(notice_error!(format!("Failed to copy messages: {}", err)));
+                        .send(error_event!(format!("Failed to copy messages: {}", err)));
                 }
             }
 
@@ -123,7 +124,7 @@ impl ActionService {
         let result = self.storage.delete_conversation(convo_id).await;
         self.pending_tasks.fetch_sub(1, atomic::Ordering::SeqCst);
         if let Err(err) = result {
-            let _ = self.event_tx.send(notice_error!(format!(
+            let _ = self.event_tx.send(error_event!(format!(
                 "Failed to delete conversation: {}",
                 err
             )));
@@ -141,7 +142,7 @@ impl ActionService {
         if let Err(err) = result {
             let _ = self
                 .event_tx
-                .send(notice_error!(format!("Failed to delete message: {}", err)));
+                .send(error_event!(format!("Failed to delete message: {}", err)));
         }
     }
 
@@ -152,7 +153,7 @@ impl ActionService {
         if let Err(err) = result {
             let _ = self
                 .event_tx
-                .send(notice_error!(format!("Failed to upsert context: {}", err)));
+                .send(error_event!(format!("Failed to upsert context: {}", err)));
         }
     }
 
@@ -163,7 +164,7 @@ impl ActionService {
         if let Err(err) = result {
             let _ = self
                 .event_tx
-                .send(notice_error!(format!("Failed to upsert message: {}", err)));
+                .send(error_event!(format!("Failed to upsert message: {}", err)));
         }
     }
 
@@ -173,7 +174,7 @@ impl ActionService {
         let result = self.storage.upsert_conversation(req.convo.clone()).await;
         self.pending_tasks.fetch_sub(1, atomic::Ordering::SeqCst);
         if let Err(err) = result {
-            let _ = self.event_tx.send(notice_error!(format!(
+            let _ = self.event_tx.send(error_event!(format!(
                 "Failed to upsert conversation: {}",
                 err
             )));
@@ -202,10 +203,9 @@ impl ActionService {
     async fn get_convo(&self, convo_id: &str) -> Option<Conversation> {
         let result = self.storage.get_conversation(convo_id).await;
         if let Err(err) = result {
-            let _ = self.event_tx.send(notice_error!(format!(
-                "Failed to get conversation: {}",
-                err
-            )));
+            let _ = self
+                .event_tx
+                .send(error_event!(format!("Failed to get conversation: {}", err)));
             return None;
         }
         result.unwrap()
@@ -224,7 +224,7 @@ impl ActionService {
         ClipboardService::set(payload)?;
         let _ = self
             .event_tx
-            .send(notice_info!("Copied messages to clipboard!"));
+            .send(info_event!("Copied messages to clipboard!"));
         Ok(())
     }
 
@@ -238,7 +238,7 @@ impl ActionService {
 
         let pending_tasks = self.pending_tasks.clone();
         tokio::spawn(async move {
-            let _ = event_tx.send(notice_warning!(
+            let _ = event_tx.send(warn_event!(
                 "Compressing conversation... Please do NOT close the app until this process is finished!"
             ));
 
@@ -249,10 +249,8 @@ impl ActionService {
                 },
                 Err(err) => {
                     log::error!("Failed to get conversation: {}", err);
-                    let _ = event_tx.send(notice_warning!(format!(
-                        "Failed to get conversation: {}",
-                        err
-                    )));
+                    let _ =
+                        event_tx.send(warn_event!(format!("Failed to get conversation: {}", err)));
                     None
                 }
             };
@@ -271,7 +269,7 @@ impl ActionService {
                 },
                 Err(err) => {
                     log::error!("Failed to compress conversation: {}", err);
-                    let _ = event_tx.send(notice_warning!(format!(
+                    let _ = event_tx.send(warn_event!(format!(
                         "Failed to compress conversation: {}",
                         err
                     )));
@@ -289,14 +287,14 @@ impl ActionService {
                 .upsert_context(&conversation_id, context.unwrap())
                 .await
             {
-                let _ = event_tx.send(notice_warning!(format!("Failed to save context: {}", err)));
+                let _ = event_tx.send(warn_event!(format!("Failed to save context: {}", err)));
                 pending_tasks.fetch_sub(1, atomic::Ordering::SeqCst);
                 return;
             }
 
             if let Some(convo) = storage.get_conversation(&conversation_id).await.unwrap() {
                 let _ = event_tx.send(Event::ConversationUpdated(convo));
-                let _ = event_tx.send(notice_info!("Context compressed!"));
+                let _ = event_tx.send(info_event!("Context compressed!"));
             }
             pending_tasks.fetch_sub(1, atomic::Ordering::SeqCst);
         });

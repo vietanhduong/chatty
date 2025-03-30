@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::{
     config::Configuration,
+    info_event,
     models::{Event, Model},
-    notice_info,
 };
 use ratatui::{
     Frame,
@@ -80,7 +80,7 @@ impl<'a> ModelsScreen<'a> {
 
         let _ = self
             .event_tx
-            .send(notice_info!(format!("Model changed to \"{}\"", model)));
+            .send(info_event!(format!("Model changed to \"{}\"", model)));
 
         self.build_items();
         self.set_cursor_to_selected();
