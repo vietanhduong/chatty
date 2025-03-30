@@ -7,7 +7,7 @@ use crate::{
     backend::ArcBackend,
     context::Compressor,
     models::{
-        Action, ArcEventTx, BackendPrompt, Context, Conversation, Event, Message, NoticeMessage,
+        Action, ArcEventTx, BackendPrompt, Context, Conversation, Event, Message,
         UpsertConvoRequest,
     },
     notice_error, notice_info, notice_warning,
@@ -93,10 +93,7 @@ impl ActionService {
                     log::error!("Failed to copy messages: {}", err);
                     let _ = self
                         .event_tx
-                        .send(Event::Notice(NoticeMessage::error(format!(
-                            "Failed to copy messages: {}",
-                            err
-                        ))));
+                        .send(notice_error!(format!("Failed to copy messages: {}", err)));
                 }
             }
 
@@ -227,7 +224,7 @@ impl ActionService {
         ClipboardService::set(payload)?;
         let _ = self
             .event_tx
-            .send(Event::Notice(NoticeMessage::new("Copied to clipboard!")));
+            .send(notice_info!("Copied messages to clipboard!"));
         Ok(())
     }
 
