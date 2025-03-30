@@ -6,6 +6,9 @@ show_usage = false
 # Verbose info in starting up. This different from the log level
 # and will only print in the beginning to stderr.
 verbose = false
+# The percentage of the screen width to use for the bubble width
+# Can't be more than 95% and less than 50%
+bubble_width_percent = 60
 
 [log]
 # Default log level is "info"

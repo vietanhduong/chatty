@@ -1,7 +1,7 @@
 use std::time::{self, Duration};
 
 use super::utils;
-use crate::models::{NoticeMessage, NoticeType};
+use crate::models::{NoticeKind, NoticeMessage};
 use ratatui::{
     Frame,
     layout::Rect,
@@ -100,7 +100,7 @@ fn build_list_items<'a>(
     let mut current_height = 0;
 
     for item in notices {
-        let lines = build_bubble(item.value.message(), max_width, item.value.message_type());
+        let lines = build_bubble(item.value.message(), max_width, item.value.kind());
 
         current_height += lines.len();
         if current_height > max_height {
@@ -113,7 +113,7 @@ fn build_list_items<'a>(
     items
 }
 
-fn build_bubble<'a>(message: &str, max_width: usize, notice_type: &NoticeType) -> Vec<Line<'a>> {
+fn build_bubble<'a>(message: &str, max_width: usize, notice_type: &NoticeKind) -> Vec<Line<'a>> {
     // build lines from message based on max_width
     let mut lines = vec![];
 
@@ -137,7 +137,7 @@ fn build_bubble<'a>(message: &str, max_width: usize, notice_type: &NoticeType) -
 fn wrap_bubble<'a>(
     lines: Vec<String>,
     max_width: usize,
-    notice_type: &NoticeType,
+    notice_type: &NoticeKind,
 ) -> Vec<Line<'a>> {
     let border_color = notice_type.border_color();
     let text_color = notice_type.text_color();

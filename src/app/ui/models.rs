@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::{
     config::Configuration,
-    models::{Event, Model, NoticeMessage},
+    info_event,
+    models::{Event, Model},
 };
 use ratatui::{
     Frame,
@@ -47,9 +48,9 @@ impl<'a> ModelsScreen<'a> {
 
         let default_model = models
             .iter()
-            .map(|m| m.id())
-            .find(|model| want_model == *model)
-            .unwrap_or_else(|| models[0].id())
+            .find(|model| want_model == model.id())
+            .unwrap_or_else(|| &models[0])
+            .id()
             .to_string();
 
         ModelsScreen {
@@ -77,16 +78,9 @@ impl<'a> ModelsScreen<'a> {
         }
         self.current_model = model.to_string();
 
-        let err = self
+        let _ = self
             .event_tx
-            .send(Event::Notice(NoticeMessage::info(format!(
-                "Model changed to \"{}\"",
-                model
-            ))));
-
-        if let Err(err) = err {
-            log::error!("Failed to send event: {}", err);
-        }
+            .send(info_event!(format!("Model changed to \"{}\"", model)));
 
         self.build_items();
         self.set_cursor_to_selected();

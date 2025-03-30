@@ -1,8 +1,4 @@
-use crate::{
-    app::clipboard,
-    models::{Event, Message, NoticeMessage},
-};
-use eyre::Result;
+use crate::models::{Action, Event, Message};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -19,23 +15,24 @@ use unicode_width::UnicodeWidthStr;
 use super::utils;
 
 pub struct EditScreen<'a> {
+    action_tx: mpsc::UnboundedSender<Action>,
+
     theme: &'a Theme,
 
     showing: bool,
     messages: Vec<SelectedMessage>,
     list_state: ListState,
-
-    event_tx: mpsc::UnboundedSender<Event>,
 }
 
 impl<'a> EditScreen<'_> {
-    pub fn new(theme: &'a Theme, event_tx: mpsc::UnboundedSender<Event>) -> EditScreen<'a> {
+    pub fn new(theme: &'a Theme, action_tx: mpsc::UnboundedSender<Action>) -> EditScreen<'a> {
         EditScreen {
+            action_tx,
+
             showing: false,
             messages: vec![],
             list_state: ListState::default(),
             theme,
-            event_tx,
         }
     }
 
@@ -180,22 +177,22 @@ impl<'a> EditScreen<'_> {
         frame.render_widget(list, area);
     }
 
-    pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
+    pub async fn handle_key_event(&mut self, event: &Event) -> bool {
         match event {
             Event::KeyboardCtrlE => {
                 self.showing = !self.showing;
-                return Ok(false);
+                return false;
             }
             Event::Quit => {
                 self.showing = false;
-                return Ok(true);
+                return true;
             }
 
             Event::KeyboardCharInput(input) => match input.key {
                 Key::Char('c') => {
                     if let Some(i) = self.list_state.selected() {
                         let message = self.messages[i].msg.clone();
-                        self.copy_messages(&[message]);
+                        let _ = self.action_tx.send(Action::CopyMessages(vec![message]));
                     }
                 }
                 Key::Char('y') => {
@@ -209,7 +206,7 @@ impl<'a> EditScreen<'_> {
                     selected_messages.sort_by(|a, b| a.created_at().cmp(&b.created_at()));
 
                     if !selected_messages.is_empty() {
-                        self.copy_messages(&selected_messages);
+                        let _ = self.action_tx.send(Action::CopyMessages(selected_messages));
                     }
                 }
                 Key::Char('j') => self.next_row(),
@@ -223,7 +220,7 @@ impl<'a> EditScreen<'_> {
                 Key::Char(' ') => self.toggle_selected(),
                 Key::Char('q') => {
                     self.showing = false;
-                    return Ok(false);
+                    return false;
                 }
                 _ => {}
             },
@@ -235,26 +232,7 @@ impl<'a> EditScreen<'_> {
 
             _ => {}
         }
-        Ok(false)
-    }
-
-    fn copy_messages(&mut self, messages: &[Message]) {
-        let mut payload = messages[0].text().to_string();
-        if messages.len() > 1 {
-            payload = messages
-                .iter()
-                .map(|msg| msg.text().to_string())
-                .collect::<Vec<String>>()
-                .join("\n");
-        }
-        if let Err(err) = clipboard::set(payload) {
-            self.event_tx
-                .send(Event::Notice(NoticeMessage::error(format!(
-                    "Failed to copy messages: {}",
-                    err
-                ))))
-                .ok();
-        }
+        false
     }
 }
 

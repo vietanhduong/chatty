@@ -3,12 +3,19 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tui_textarea::Input;
 
+use super::Conversation;
+
 #[derive(Debug)]
 pub enum Event {
     Notice(crate::models::NoticeMessage),
 
+    BackendAbort,
     BackendMessage(crate::models::Message),
     BackendPromptResponse(crate::models::BackendResponse),
+
+    SetConversation(Option<Conversation>),
+    ConversationDeleted(String),
+    ConversationUpdated(Conversation),
 
     KeyboardCharInput(Input),
     KeyboardEsc,
@@ -30,12 +37,27 @@ pub enum Event {
     UiScrollDown,
     UiScrollPageUp,
     UiScrollPageDown,
+}
 
-    /// Event for when user select a conversation
-    SetConversation(String),
+#[macro_export]
+macro_rules! info_event {
+    ($($arg:tt)*) => {
+        Event::Notice($crate::info_notice!($($arg)*))
+    }
+}
 
-    ConversationDeleted(String),
-    ConversationUpdated(String),
+#[macro_export]
+macro_rules! warn_event {
+    ($($arg:tt)*) => {
+        Event::Notice($crate::warn_notice!($($arg)*))
+    }
+}
+
+#[macro_export]
+macro_rules! error_event {
+    ($($arg:tt)*) => {
+        Event::Notice($crate::error_notice!($($arg)*))
+    }
 }
 
 #[async_trait::async_trait]

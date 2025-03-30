@@ -1,6 +1,5 @@
 use crate::models::Event;
 use crossterm::event::{Event as CrosstermEvent, EventStream, MouseEventKind};
-use eyre::Result;
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::time;
@@ -8,16 +7,19 @@ use tui_textarea::{Input, Key};
 
 const FRAME_DURATION: time::Duration = time::Duration::from_millis(1000 / 60);
 
-pub struct EventPubliser<'a> {
+pub struct EventService {
     crossterm_events: EventStream,
-    events: &'a mut mpsc::UnboundedReceiver<Event>,
+    event_rx: mpsc::UnboundedReceiver<Event>,
+    event_tx: mpsc::UnboundedSender<Event>,
 }
 
-impl<'a> EventPubliser<'_> {
-    pub fn new(events: &'a mut mpsc::UnboundedReceiver<Event>) -> EventPubliser<'a> {
-        EventPubliser {
+impl EventService {
+    pub fn new() -> Self {
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<Event>();
+        Self {
             crossterm_events: EventStream::new(),
-            events,
+            event_rx,
+            event_tx,
         }
     }
 
@@ -68,10 +70,14 @@ impl<'a> EventPubliser<'_> {
         }
     }
 
-    pub async fn next(&mut self) -> Result<Event> {
+    pub fn event_tx(&self) -> mpsc::UnboundedSender<Event> {
+        self.event_tx.clone()
+    }
+
+    pub async fn next(&mut self) -> Event {
         loop {
             let e = tokio::select! {
-                event = self.events.recv() => event,
+                event = self.event_rx.recv() => event,
                 event = self.crossterm_events.next().fuse() => match event {
                     Some(Ok(input)) => self.handle_crossterm(input),
                     Some(Err(_)) => None,
@@ -81,7 +87,7 @@ impl<'a> EventPubliser<'_> {
             };
 
             if let Some(event) = e {
-                return Ok(event);
+                return event;
             }
         }
     }

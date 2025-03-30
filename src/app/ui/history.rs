@@ -1,5 +1,4 @@
-use crate::models::{Conversation, Event, NoticeMessage};
-use crate::storage::ArcStorage;
+use crate::models::{Action, Conversation, Event, UpsertConvoRequest};
 use chrono::{Local, Utc};
 use ratatui::{
     Frame,
@@ -33,9 +32,8 @@ enum ConversationGroup {
 pub struct HistoryScreen<'a> {
     showing: bool,
 
-    event_tx: mpsc::UnboundedSender<Event>,
+    action_tx: mpsc::UnboundedSender<Action>,
 
-    storage: ArcStorage,
     conversations: HashMap<String, Conversation>,
     items: Vec<ListItem<'a>>,
     idx_map: HashMap<usize, String>,
@@ -53,10 +51,10 @@ pub struct HistoryScreen<'a> {
 }
 
 impl<'a> HistoryScreen<'a> {
-    pub fn new(storage: ArcStorage, event_tx: mpsc::UnboundedSender<Event>) -> HistoryScreen<'a> {
+    pub fn new(action_tx: mpsc::UnboundedSender<Action>) -> HistoryScreen<'a> {
         HistoryScreen {
-            event_tx,
-            storage,
+            action_tx,
+
             showing: false,
             conversations: HashMap::new(),
 
@@ -313,7 +311,9 @@ impl<'a> HistoryScreen<'a> {
                 }
 
                 self.showing = false;
-                self.event_tx.send(Event::SetConversation(id.clone())).ok();
+                self.action_tx
+                    .send(Action::SetConversation(id.clone()))
+                    .ok();
                 self.current_conversation = Some(id);
             }
 
@@ -424,20 +424,9 @@ impl<'a> HistoryScreen<'a> {
 
         log::debug!("Deleting conversation: {}", convo_id);
 
-        if let Err(err) = self.storage.delete_conversation(&convo_id).await {
-            log::error!("Failed to delete conversation: {}", err);
-            self.event_tx
-                .send(Event::Notice(NoticeMessage::warning(format!(
-                    "Failed to delete conversation: {}",
-                    err
-                ))))
-                .ok();
-            return;
-        }
-
-        self.event_tx
-            .send(Event::ConversationDeleted(convo_id))
-            .ok();
+        let _ = self
+            .action_tx
+            .send(Action::DeleteConversation(convo_id.to_string()));
     }
 
     pub async fn rename_conversation(&mut self, new_title: &str) {
@@ -465,18 +454,14 @@ impl<'a> HistoryScreen<'a> {
         convo.set_title(new_title.to_string());
         let convo = convo.clone();
         self.update_items();
-        if let Err(err) = self.storage.upsert_conversation(convo).await {
-            log::error!("Failed to rename conversation: {}", err);
-            self.event_tx
-                .send(Event::Notice(NoticeMessage::warning(format!(
-                    "Failed to rename conversation: {}",
-                    err
-                ))))
-                .ok();
-        }
-        self.event_tx
-            .send(Event::ConversationUpdated(convo_id))
-            .ok();
+
+        let _ = self
+            .action_tx
+            .send(Action::UpsertConversation(UpsertConvoRequest {
+                convo,
+                include_context: false,
+                include_messages: false,
+            }));
     }
 
     pub fn get_selected_conversation_id(&self) -> Option<&str> {

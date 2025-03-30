@@ -7,10 +7,12 @@ use crate::models::BackendConnection;
 #[allow(unused_imports)]
 use super::CONFIG;
 
-use super::constants::{HELLO_MESSAGE, LOG_FILE_PATH};
+use super::constants::{
+    HELLO_MESSAGE, LOG_FILE_PATH, MAX_BUBBLE_WIDTH_PERCENT, MIN_BUBBLE_WIDTH_PERCENT,
+};
 use super::defaults::*;
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Configuration {
     #[serde(default)]
     pub general: GeneralConfig,
@@ -41,6 +43,9 @@ pub struct GeneralConfig {
 
     #[serde(default)]
     pub verbose: bool,
+
+    #[serde(default = "bubble_width_percent")]
+    pub bubble_width_percent: usize,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -168,16 +173,10 @@ impl Configuration {
     }
 }
 
-impl Default for Configuration {
-    fn default() -> Self {
-        Self {
-            log: LogConfig::default(),
-            theme: ThemeConfig::default(),
-            backend: BackendConfig::default(),
-            storage: StorageConfig::default(),
-            general: GeneralConfig::default(),
-            context: ContextConfig::default(),
-        }
+impl GeneralConfig {
+    pub fn get_bubble_width_percent(&self) -> usize {
+        let percent = self.bubble_width_percent.min(MAX_BUBBLE_WIDTH_PERCENT);
+        percent.max(MIN_BUBBLE_WIDTH_PERCENT)
     }
 }
 
@@ -266,6 +265,7 @@ impl Default for GeneralConfig {
             verbose: false,
             hello_message: Some(HELLO_MESSAGE.to_string()),
             show_usage: None,
+            bubble_width_percent: 80,
         }
     }
 }
