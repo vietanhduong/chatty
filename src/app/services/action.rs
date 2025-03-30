@@ -51,19 +51,6 @@ impl ActionService<'_> {
                     // let storage = Arc::clone(&self.storage);
                     let backend = Arc::clone(&self.backend);
                     match event {
-                        Action::BackendAbort => {
-                            worker.abort();
-                            worker_tx.send(Event::AbortRequest).await?;
-                        }
-
-                        Action::BackendRequest(prompt) => {
-                            worker = tokio::spawn(async move {
-                                if let Err(err) = completions(&backend, prompt, Arc::clone(&worker_tx)).await {
-                                    worker_error(err, Arc::clone(&worker_tx)).await?;
-                                }
-                                Ok(())
-                            })
-                        }
 
                         Action::CopyMessages(messages) => {
                             if let Err(err) = self.copy_messages(messages).await {
@@ -107,24 +94,4 @@ impl ActionService<'_> {
             .await?;
         Ok(())
     }
-}
-
-async fn completions(
-    backend: &ArcBackend,
-    prompt: BackendPrompt,
-    event_tx: ArcEventTx,
-) -> Result<()> {
-    backend.get_completion(prompt, event_tx).await?;
-    Ok(())
-}
-
-async fn worker_error(err: eyre::Error, event_tx: ArcEventTx) -> Result<()> {
-    event_tx
-        .send(Event::BackendMessage(Message::new_system(
-            "system",
-            format!("Error: Backend failed with the following error: \n\n {err:?}"),
-        )))
-        .await?;
-
-    Ok(())
 }

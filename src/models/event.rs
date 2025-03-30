@@ -7,8 +7,6 @@ use tui_textarea::Input;
 pub enum Event {
     Notice(crate::models::NoticeMessage),
 
-    AbortRequest,
-    ModelChanged(String),
     BackendMessage(crate::models::Message),
     BackendPromptResponse(crate::models::BackendResponse),
 

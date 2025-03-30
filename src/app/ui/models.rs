@@ -229,10 +229,10 @@ impl<'a> ModelsScreen<'a> {
         self.search.render(f, search_area);
     }
 
-    pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
+    pub async fn handle_key_event(&mut self, event: &Event) -> bool {
         if self.search.showing() {
             self.handle_search_popup(event).await;
-            return Ok(false);
+            return false;
         }
 
         match event {
@@ -242,11 +242,7 @@ impl<'a> ModelsScreen<'a> {
 
             Event::Quit => {
                 self.showing = false;
-                return Ok(true);
-            }
-
-            Event::ModelChanged(model) => {
-                self.current_model = model.clone();
+                return true;
             }
 
             Event::KeyboardEnter => {
@@ -270,7 +266,7 @@ impl<'a> ModelsScreen<'a> {
             _ => {}
         }
 
-        Ok(false)
+        false
     }
 
     async fn handle_search_popup(&mut self, event: &Event) {
