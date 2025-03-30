@@ -155,6 +155,8 @@ impl<'a> App<'a> {
                 if self.app_state.waiting_for_backend {
                     self.app_state.waiting_for_backend = false;
                     self.action_tx.send(Action::BackendAbort)?;
+                    // handle abort right after
+                    self.handle_abort().await;
                 }
                 return Ok(true);
             }
