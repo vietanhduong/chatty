@@ -28,7 +28,7 @@ pub struct UpsertMessage {
     pub conversation_id: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub enum NoticeType {
     #[default]
     Info,
@@ -36,7 +36,7 @@ pub enum NoticeType {
     Error,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NoticeMessage {
     message: String,
     message_type: NoticeType,

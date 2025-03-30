@@ -2,11 +2,11 @@ use std::{collections::HashMap, io, sync::Arc, time};
 
 use crate::config::Configuration;
 use crate::context::Compressor;
-use crate::models::Model;
 use crate::models::conversation::FindMessage;
 use crate::models::{
     Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
+use crate::models::{BackendResponse, Model};
 use crate::storage::ArcStorage;
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
@@ -148,40 +148,74 @@ impl<'a> App<'a> {
     async fn handle_key_event(&mut self) -> Result<bool> {
         let event = self.events.next().await?;
 
-        if let Event::Quit = event {
-            self.save_last_message().await?;
-        }
-
-        if let Event::ConversationDeleted(id) = event {
-            self.history_screen.remove_conversation(&id);
-            if self.app_state.current_convo.id() == id {
-                self.upsert_default_conversation();
-                self.change_conversation("").await;
-            }
-            return Ok(false);
-        }
-
-        if let Event::ConversationUpdated(id) = event {
-            if let Some(mut convo) = self.storage.get_conversation(&id).await? {
-                let updated_at = convo.messages().last().unwrap().created_at();
-                convo.set_updated_at(updated_at);
-                if self.app_state.current_convo.id() == id {
-                    self.app_state.set_conversation(convo);
+        // Handle critical events first
+        match &event {
+            Event::Quit => {
+                self.save_last_message().await?;
+                if self.app_state.waiting_for_backend {
+                    self.app_state.waiting_for_backend = false;
+                    self.action_tx.send(Action::BackendAbort)?;
                 }
+                return Ok(true);
             }
-            return Ok(false);
+            Event::BackendPromptResponse(resp) => {
+                self.handle_response(resp).await;
+                return Ok(false);
+            }
+
+            Event::BackendMessage(msg) => {
+                self.app_state.add_message(msg.clone());
+                self.storage
+                    .upsert_message(self.app_state.current_convo.id(), msg.clone())
+                    .await?;
+                self.app_state.waiting_for_backend = false;
+            }
+
+            Event::AbortRequest => {
+                self.handle_abort().await;
+                return Ok(false);
+            }
+
+            Event::ConversationDeleted(id) => {
+                self.history_screen.remove_conversation(&id);
+                if self.app_state.current_convo.id() == id {
+                    self.upsert_default_conversation();
+                    self.change_conversation("").await;
+                }
+                return Ok(false);
+            }
+
+            Event::ConversationUpdated(id) => {
+                if let Some(mut convo) = self.storage.get_conversation(&id).await? {
+                    let updated_at = convo.messages().last().unwrap().created_at();
+                    convo.set_updated_at(updated_at);
+                    if self.app_state.current_convo.id() == id {
+                        self.app_state.set_conversation(convo);
+                    }
+                }
+                return Ok(false);
+            }
+
+            Event::SetConversation(id) => {
+                self.change_conversation(&id).await;
+                return Ok(false);
+            }
+
+            Event::Notice(msg) => {
+                self.notice.add_message(msg.clone());
+                return Ok(false);
+            }
+
+            Event::ModelChanged(model) => {
+                self.models_screen.set_current_model(&model);
+                self.notice.info(format!("Using model \"{}\"", model));
+                return Ok(false);
+            }
+
+            _ => {}
         }
 
-        if let Event::SetConversation(id) = event {
-            self.change_conversation(&id).await;
-            return Ok(false);
-        }
-
-        if let Event::Notice(msg) = event {
-            self.notice.add_message(msg);
-            return Ok(false);
-        }
-
+        // Handle screen events
         if self.help_screen.showing() {
             if !self.help_screen.handle_key_event(&event) {
                 return Ok(false);
@@ -206,113 +240,14 @@ impl<'a> App<'a> {
             }
         }
 
+        // Handle input events
         match event {
-            Event::ModelChanged(model) => {
-                self.models_screen.set_current_model(&model);
-                self.notice.info(format!("Using model \"{}\"", model));
-                return Ok(false);
-            }
-
-            Event::AbortRequest => {
-                if let Some(msg) = self.app_state.current_convo.last_message() {
-                    self.storage
-                        .upsert_message(self.app_state.current_convo.id(), msg.clone())
-                        .await?;
-                }
-
-                let message = Message::new_system("system", "Aborted!");
-                self.app_state.add_message(message.clone());
-            }
-
-            Event::BackendMessage(msg) => {
-                self.app_state.add_message(msg.clone());
-                self.storage
-                    .upsert_message(self.app_state.current_convo.id(), msg)
-                    .await?;
-                self.app_state.waiting_for_backend = false;
-            }
-
-            Event::BackendPromptResponse(msg) => {
-                let notify = msg.done && msg.init_conversation;
-                let done = msg.done;
-                self.app_state.handle_backend_response(&msg);
-
-                if !done {
-                    return Ok(false);
-                }
-
-                if let Some(ref usage) = msg.usage {
-                    let convo_id = self.app_state.current_convo.id().to_string();
-                    if let Some(msg) = self
-                        .app_state
-                        .current_convo
-                        .last_message_of_mut(Some(Issuer::user()))
-                    {
-                        msg.set_token_count(usage.prompt_tokens);
-                        self.storage.upsert_message(&convo_id, msg.clone()).await?;
-                    }
-
-                    if let Some(msg) = self
-                        .app_state
-                        .current_convo
-                        .last_message_of_mut(Some(Issuer::system()))
-                    {
-                        msg.set_token_count(usage.completion_tokens);
-                    }
-
-                    if Configuration::instance()
-                        .general
-                        .show_usage
-                        .unwrap_or_default()
-                    {
-                        self.notice.add_message(
-                            NoticeMessage::info(format!("Usage: {}", usage.to_string()))
-                                .with_duration(time::Duration::from_secs(6)),
-                        );
-                    }
-                }
-
-                if notify {
-                    let title = self.app_state.current_convo.title();
-                    self.notice.add_message(
-                        NoticeMessage::new(format!("Updated Title: \"{}\"", title))
-                            .with_duration(time::Duration::from_secs(5)),
-                    );
-                    // This will update the conversation title in the history
-                    self.history_screen
-                        .upsert_conversation(&self.app_state.current_convo);
-                }
-
-                // Update the conversation updated_at in the history
-                self.history_screen.update_conversation_updated_at(
-                    &self.app_state.current_convo.id(),
-                    self.app_state.current_convo.updated_at(),
-                );
-
-                // Upsert message to the storage
-                self.storage
-                    .upsert_message(
-                        self.app_state.current_convo.id(),
-                        self.app_state.current_convo.last_message().unwrap().clone(),
-                    )
-                    .await?;
-
-                // If the conversation should be compressed, we will process it
-                // in the background and notify the app when it's done to fetch
-                // the context and update the conversation. This will mitigate
-                // impact to the current conversation.
-                if self
-                    .compressor
-                    .should_compress(&self.app_state.current_convo)
-                {
-                    self.handle_convo_compress(self.app_state.current_convo.id());
-                }
-            }
             Event::KeyboardCharInput(c) => {
                 if !self.app_state.waiting_for_backend {
                     self.input.input(c);
                 }
             }
+
             Event::KeyboardCtrlC => {
                 if self.app_state.waiting_for_backend {
                     self.app_state.waiting_for_backend = false;
@@ -325,98 +260,28 @@ impl<'a> App<'a> {
                     self.input = TextArea::default().build();
                 }
             }
-            Event::Quit => {
-                if self.app_state.waiting_for_backend {
-                    self.app_state.waiting_for_backend = false;
-                    self.action_tx.send(Action::BackendAbort)?;
-                }
-                return Ok(true);
-            }
 
             Event::KeyboardF1 => self.help_screen.toggle_showing(),
 
-            Event::KeyboardCtrlN => {
-                self.handle_new_conversation().await;
-                return Ok(false);
-            }
+            Event::KeyboardCtrlN => self.handle_new_conversation().await,
 
             Event::KeyboardCtrlH => {
-                if self.app_state.waiting_for_backend {
-                    self.notice.add_message(
-                        NoticeMessage::new("Please wait for the backend to finish!".to_string())
-                            .with_duration(time::Duration::from_secs(5))
-                            .with_type(NoticeType::Warning),
-                    );
-                    return Ok(false);
+                if !self.on_waiting_backend(true) {
+                    self.history_screen.toggle_showing();
                 }
-                self.history_screen.toggle_showing();
             }
 
             Event::KeyboardCtrlL => self.models_screen.toggle_showing(),
 
             Event::KeyboardCtrlE => {
-                if self.app_state.waiting_for_backend {
-                    return Ok(false);
+                if !self.on_waiting_backend(true) {
+                    self.edit_screen
+                        .set_messages(self.app_state.current_convo.messages());
+                    self.edit_screen.toggle_showing();
                 }
-                self.edit_screen
-                    .set_messages(self.app_state.current_convo.messages());
-                self.edit_screen.toggle_showing();
             }
 
-            Event::KeyboardCtrlR => {
-                if self.app_state.waiting_for_backend {
-                    return Ok(false);
-                }
-
-                // Rebuild the conversation by removing all the messages from the backend
-                // and resubmit the last message from user
-                {
-                    let mut i = self.app_state.current_convo.len() as i32 - 1;
-                    if i == 0 {
-                        // Welcome message, nothing to do
-                        return Ok(false);
-                    }
-
-                    while i >= 0 {
-                        if !self.app_state.current_convo.messages_mut()[i as usize].is_system() {
-                            break;
-                        }
-                        let con = self
-                            .app_state
-                            .current_convo
-                            .messages_mut()
-                            .remove(i as usize);
-                        self.app_state
-                            .bubble_list
-                            .remove_message_by_index(i as usize);
-                        // Tell the storage to remove the message
-                        self.storage.delete_messsage(con.id()).await?;
-                        i -= 1;
-                    }
-                }
-                self.app_state.sync_state();
-                self.app_state.scroll.last();
-
-                // Resubmit the last message from user
-                let last_user_msg = self
-                    .app_state
-                    .current_convo
-                    .last_message_of(Some(Issuer::user()));
-
-                let input_str = if let Some(msg) = last_user_msg {
-                    msg.text().to_string()
-                } else {
-                    return Ok(false);
-                };
-
-                let model = self.models_screen.current_model();
-                self.app_state.waiting_for_backend = true;
-                let prompt = BackendPrompt::new(input_str)
-                    .with_model(model)
-                    .with_context(self.app_state.current_convo.build_context());
-
-                self.action_tx.send(Action::BackendRequest(prompt))?;
-            }
+            Event::KeyboardCtrlR => self.handle_regenerate_response().await,
 
             Event::KeyboardPaste(text) => {
                 self.input.set_yank_text(text.replace('\r', "\n"));
@@ -424,67 +289,12 @@ impl<'a> App<'a> {
             }
 
             Event::KeyboardAltEnter => {
-                if self.app_state.waiting_for_backend {}
-                self.input.insert_newline();
+                if !self.on_waiting_backend(false) {
+                    self.input.insert_newline();
+                }
             }
 
-            Event::KeyboardEnter => {
-                if self.app_state.waiting_for_backend {
-                    return Ok(false);
-                }
-                let input_str = &self.input.lines().join("\n");
-                if input_str.is_empty() {
-                    return Ok(false);
-                }
-
-                let first = self.app_state.current_convo.len() < 2;
-
-                let msg = Message::new_user("user", input_str);
-                self.input = TextArea::default().build();
-                self.app_state.add_message(msg.clone());
-
-                if self.app_state.current_convo.id().is_empty() {
-                    // Default conversation
-                    let conversation_id = uuid::Uuid::new_v4().to_string();
-                    self.app_state.current_convo.set_id(&conversation_id);
-
-                    self.history_screen.remove_conversation("");
-                    self.history_screen
-                        .add_conversation_and_set(&self.app_state.current_convo);
-                }
-
-                self.app_state.waiting_for_backend = true;
-
-                let conversation_id = self.app_state.current_convo.id().to_string();
-                let model = self.models_screen.current_model();
-
-                let prompt = BackendPrompt::new(input_str)
-                    .with_context(self.app_state.current_convo.build_context())
-                    .with_model(model);
-
-                if first {
-                    self.save_current_conversation().await;
-
-                    // Save the first message to the storage
-                    self.storage
-                        .upsert_message(
-                            &conversation_id,
-                            self.app_state.current_convo.messages()[0].clone(),
-                        )
-                        .await?;
-                }
-
-                // Save the current message to the storage
-                self.storage
-                    .upsert_message(&conversation_id, msg.clone())
-                    .await?;
-
-                self.history_screen
-                    .update_conversation_updated_at(&conversation_id, msg.created_at());
-
-                self.action_tx.send(Action::BackendRequest(prompt))?;
-                self.history_screen.update_items();
-            }
+            Event::KeyboardEnter => self.handle_send_prompt().await,
 
             Event::UiScrollDown => self.app_state.scroll.down(),
             Event::UiScrollUp => self.app_state.scroll.up(),
@@ -578,6 +388,241 @@ impl<'a> App<'a> {
         }
     }
 
+    async fn handle_send_prompt(&mut self) {
+        if self.on_waiting_backend(false) {
+            return;
+        }
+
+        let input_str = &self.input.lines().join("\n");
+        if input_str.is_empty() {
+            return;
+        }
+
+        let first = self.app_state.current_convo.len() < 2;
+
+        let msg = Message::new_user("user", input_str);
+        self.input = TextArea::default().build();
+        self.app_state.add_message(msg.clone());
+
+        if self.app_state.current_convo.id().is_empty() {
+            // Default conversation
+            let conversation_id = uuid::Uuid::new_v4().to_string();
+            self.app_state.current_convo.set_id(&conversation_id);
+
+            self.history_screen.remove_conversation("");
+            self.history_screen
+                .add_conversation_and_set(&self.app_state.current_convo);
+        }
+
+        self.app_state.waiting_for_backend = true;
+
+        let conversation_id = self.app_state.current_convo.id().to_string();
+        let model = self.models_screen.current_model();
+
+        let prompt = BackendPrompt::new(input_str)
+            .with_context(self.app_state.current_convo.build_context())
+            .with_model(model);
+
+        if first {
+            self.save_current_conversation().await;
+
+            // Save the first message to the storage
+            let err = self
+                .storage
+                .upsert_message(
+                    &conversation_id,
+                    self.app_state.current_convo.messages()[0].clone(),
+                )
+                .await;
+            if let Err(err) = err {
+                self.notice_on_error(format!("Failed to save message: {}", err));
+                return;
+            }
+        }
+
+        // Save the current message to the storage
+        if let Err(err) = self
+            .storage
+            .upsert_message(&conversation_id, msg.clone())
+            .await
+        {
+            self.notice_on_error(format!("Failed to save message: {}", err));
+            return;
+        }
+
+        self.history_screen
+            .update_conversation_updated_at(&conversation_id, msg.created_at());
+
+        if let Err(err) = self.action_tx.send(Action::BackendRequest(prompt)) {
+            self.notice_on_error(format!("Failed to send request: {}", err));
+            return;
+        }
+
+        self.history_screen.update_items();
+    }
+
+    async fn handle_regenerate_response(&mut self) {
+        if self.on_waiting_backend(true) {
+            return;
+        }
+
+        // Rebuild the conversation by removing all the messages from the backend
+        // and resubmit the last message from user
+        {
+            let mut i = self.app_state.current_convo.len() as i32 - 1;
+            if i == 0 {
+                // Welcome message, nothing to do
+                return;
+            }
+
+            while i >= 0 {
+                if !self.app_state.current_convo.messages_mut()[i as usize].is_system() {
+                    break;
+                }
+                let con = self
+                    .app_state
+                    .current_convo
+                    .messages_mut()
+                    .remove(i as usize);
+                self.app_state
+                    .bubble_list
+                    .remove_message_by_index(i as usize);
+                // Tell the storage to remove the message
+                if let Err(err) = self.storage.delete_messsage(con.id()).await {
+                    self.notice_on_error(format!("Failed to delete message: {}", err));
+                    return;
+                }
+
+                i -= 1;
+            }
+        }
+        self.app_state.sync_state();
+        self.app_state.scroll.last();
+
+        // Resubmit the last message from user
+        let last_user_msg = self
+            .app_state
+            .current_convo
+            .last_message_of(Some(Issuer::user()));
+
+        let input_str = if let Some(msg) = last_user_msg {
+            msg.text().to_string()
+        } else {
+            return; // This should never happen
+        };
+
+        let model = self.models_screen.current_model();
+        self.app_state.waiting_for_backend = true;
+        let prompt = BackendPrompt::new(input_str)
+            .with_model(model)
+            .with_context(self.app_state.current_convo.build_context());
+
+        if let Err(err) = self.action_tx.send(Action::BackendRequest(prompt)) {
+            self.notice_on_error(format!("Failed to send request: {}", err));
+        }
+    }
+
+    async fn handle_abort(&mut self) {
+        if let Some(msg) = self.app_state.current_convo.last_message() {
+            if let Err(err) = self
+                .storage
+                .upsert_message(self.app_state.current_convo.id(), msg.clone())
+                .await
+            {
+                self.notice_on_error(format!("Failed to save message: {}", err));
+                return;
+            }
+        }
+
+        let message = Message::new_system("system", "Aborted!");
+        self.app_state.add_message(message.clone());
+    }
+
+    async fn handle_response(&mut self, resp: &BackendResponse) {
+        let notify = resp.done && resp.init_conversation;
+        let done = resp.done;
+        self.app_state.handle_backend_response(&resp);
+
+        if !done {
+            return;
+        }
+
+        if let Some(ref usage) = resp.usage {
+            let convo_id = self.app_state.current_convo.id().to_string();
+            if let Some(msg) = self
+                .app_state
+                .current_convo
+                .last_message_of_mut(Some(Issuer::user()))
+            {
+                msg.set_token_count(usage.prompt_tokens);
+                if let Err(err) = self.storage.upsert_message(&convo_id, msg.clone()).await {
+                    self.notice_on_error(format!("Failed to save message: {}", err));
+                    return;
+                }
+            }
+
+            if let Some(msg) = self
+                .app_state
+                .current_convo
+                .last_message_of_mut(Some(Issuer::system()))
+            {
+                msg.set_token_count(usage.completion_tokens);
+            }
+
+            if Configuration::instance()
+                .general
+                .show_usage
+                .unwrap_or_default()
+            {
+                self.notice.add_message(
+                    NoticeMessage::info(format!("Usage: {}", usage.to_string()))
+                        .with_duration(time::Duration::from_secs(6)),
+                );
+            }
+        }
+
+        if notify {
+            let title = self.app_state.current_convo.title();
+            self.notice.add_message(
+                NoticeMessage::new(format!("Updated Title: \"{}\"", title))
+                    .with_duration(time::Duration::from_secs(5)),
+            );
+            // This will update the conversation title in the history
+            self.history_screen
+                .upsert_conversation(&self.app_state.current_convo);
+        }
+
+        // Update the conversation updated_at in the history
+        self.history_screen.update_conversation_updated_at(
+            &self.app_state.current_convo.id(),
+            self.app_state.current_convo.updated_at(),
+        );
+
+        // Upsert message to the storage
+        let err = self
+            .storage
+            .upsert_message(
+                self.app_state.current_convo.id(),
+                self.app_state.current_convo.last_message().unwrap().clone(),
+            )
+            .await;
+        if let Err(err) = err {
+            self.notice_on_error(format!("Failed to save message: {}", err));
+            return;
+        }
+
+        // If the conversation should be compressed, we will process it
+        // in the background and notify the app when it's done to fetch
+        // the context and update the conversation. This will mitigate
+        // impact to the current conversation.
+        if self
+            .compressor
+            .should_compress(&self.app_state.current_convo)
+        {
+            self.handle_convo_compress(self.app_state.current_convo.id());
+        }
+    }
+
     fn handle_convo_compress(&self, conversation_id: &str) {
         let storage = self.storage.clone();
         let compressor = self.compressor.clone();
@@ -658,12 +703,7 @@ impl<'a> App<'a> {
     }
 
     async fn handle_new_conversation(&mut self) {
-        if self.app_state.waiting_for_backend {
-            self.notice.add_message(
-                NoticeMessage::new("Please cancel the current request first!")
-                    .with_duration(time::Duration::from_secs(5))
-                    .with_type(NoticeType::Warning),
-            );
+        if self.on_waiting_backend(true) {
             return;
         }
 
@@ -739,6 +779,25 @@ impl<'a> App<'a> {
         self.notice.info(format!("Switching to \"{}\"", title));
         self.input = TextArea::default().build();
         self.app_state.sync_state();
+    }
+
+    fn notice_on_error(&mut self, err: impl Into<String>) {
+        self.notice.add_message(
+            NoticeMessage::new(err.into())
+                .with_duration(time::Duration::from_secs(5))
+                .with_type(NoticeType::Error),
+        );
+    }
+
+    fn on_waiting_backend(&mut self, notice: bool) -> bool {
+        if self.app_state.waiting_for_backend && notice {
+            self.notice.add_message(
+                NoticeMessage::new("Please wait for the backend to finish!")
+                    .with_duration(time::Duration::from_secs(5))
+                    .with_type(NoticeType::Warning),
+            );
+        }
+        return self.app_state.waiting_for_backend;
     }
 }
 
