@@ -1,11 +1,18 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::time;
 
-use chatty::app;
+use chatty::app::app::InitProps;
+use chatty::app::services::action::ActionService;
+use chatty::app::services::{ClipboardService, EventService, ShutdownCoordinator};
 use chatty::backend::new_manager;
 use chatty::config::verbose;
 use chatty::config::{init_logger, init_theme};
 use chatty::context::Compressor;
-use chatty::models::Event;
+use chatty::models::Conversation;
+use chatty::models::action::Action;
+use chatty::models::storage::FilterConversation;
 use chatty::storage::new_storage;
 use chatty::{
     app::{App, destruct_terminal_for_panic},
@@ -60,51 +67,96 @@ async fn main() -> Result<()> {
         .wrap_err("initializing storage")?;
     verbose!("[+] Storage initialized");
 
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let (action_tx, action_rx) = mpsc::unbounded_channel::<Action>();
 
-    let mut bg_futures = task::JoinSet::new();
+    let mut events = EventService::new();
+
+    let mut task_set = task::JoinSet::new();
+    let token = CancellationToken::new();
+    let pending_tasks = Arc::new(AtomicUsize::new(0));
+
+    let compressor =
+        Arc::new(Compressor::new(backend.clone()).from_config(&config.context.compression));
+
+    let mut action_service = ActionService::new(
+        backend.clone(),
+        storage.clone(),
+        Arc::clone(&compressor),
+        action_rx,
+        events.event_tx(),
+        token.clone(),
+        pending_tasks.clone(),
+    );
+
+    task_set.spawn(async move { return action_service.run().await });
+
+    verbose!("[+] Fetching models...");
+    let models = backend.list_models().await.wrap_err("getting models")?;
+    verbose!("[+] Fetched {} models", models.len());
+
+    verbose!("[+] Fetching conversations...");
+    let conversations = storage
+        .get_conversations(FilterConversation::default())
+        .await
+        .wrap_err("getting conversations")?
+        .into_iter()
+        .map(|(id, convo)| {
+            let convo = Conversation::default()
+                .with_id(&id)
+                .with_created_at(convo.created_at())
+                .with_updated_at(convo.updated_at())
+                .with_title(convo.title());
+            (id, convo)
+        })
+        .collect::<HashMap<_, _>>();
 
     let mut app = App::new(
-        &theme,
-        backend.clone(),
-        event_tx.clone(),
-        &mut event_rx,
-        Arc::new(Compressor::new(backend.clone()).from_config(&config.context.compression)),
-        storage,
-    )
-    .await
-    .wrap_err("initializing app")?;
+        theme,
+        action_tx,
+        &mut events,
+        Arc::clone(&compressor),
+        token.clone(),
+        InitProps {
+            conversations,
+            models,
+        },
+    );
 
-    let token = CancellationToken::new();
-
-    if let Err(err) = app::clipboard::init() {
+    if let Err(err) = ClipboardService::init() {
         log::warn!("Clipboard service is not available: {err}");
     } else {
         let token_clone = token.clone();
-        bg_futures.spawn(async move {
-            return app::clipboard::start(token_clone).await;
+        task_set.spawn(async move {
+            return ClipboardService::start(token_clone).await;
         });
     }
 
-    let res = app.run().await;
+    let coordinator = ShutdownCoordinator {
+        pending_tasks: pending_tasks.clone(),
+        shutdown_complete: shutdown_tx,
+        timeout: None,
+    };
 
-    token.cancel();
+    task_set.spawn(coordinator.wait_for_completion());
 
-    while let Some(res) = bg_futures.join_next().await {
+    if let Err(err) = app.run().await {
+        eprintln!("Error: {}", err);
+    }
+
+    match tokio::time::timeout(time::Duration::from_secs(15), shutdown_rx).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => eprintln!("Shutdown error: {}", e),
+        Err(_) => eprintln!("Shutdown timeout reached"),
+    }
+
+    task_set.abort_all();
+    while let Some(res) = task_set.join_next().await {
         match res {
-            Ok(Ok(_)) => {}
-            Ok(Err(err)) => {
-                log::error!("Background task failed: {err}");
-            }
-            Err(err) => {
-                log::error!("Background task panicked: {err}");
-            }
+            Ok(_) => {}
+            Err(err) => log::error!("Task error: {}", err),
         }
     }
 
-    if res.is_err() {
-        // destruct_terminal_for_panic();
-        return Err(res.unwrap_err());
-    }
     Ok(())
 }

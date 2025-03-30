@@ -1,7 +1,6 @@
 pub mod app;
 pub mod app_state;
-pub mod clipboard;
-pub mod event_publisher;
+pub mod services;
 pub mod ui;
 
 use std::io;

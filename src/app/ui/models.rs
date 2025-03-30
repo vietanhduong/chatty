@@ -47,9 +47,9 @@ impl<'a> ModelsScreen<'a> {
 
         let default_model = models
             .iter()
-            .map(|m| m.id())
-            .find(|model| want_model == *model)
-            .unwrap_or_else(|| models[0].id())
+            .find(|model| want_model == model.id())
+            .unwrap_or_else(|| &models[0])
+            .id()
             .to_string();
 
         ModelsScreen {

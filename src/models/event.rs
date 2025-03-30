@@ -3,12 +3,19 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tui_textarea::Input;
 
+use super::Conversation;
+
 #[derive(Debug)]
 pub enum Event {
     Notice(crate::models::NoticeMessage),
 
+    BackendAbort,
     BackendMessage(crate::models::Message),
     BackendPromptResponse(crate::models::BackendResponse),
+
+    SetConversation(Option<Conversation>),
+    ConversationDeleted(String),
+    ConversationUpdated(Conversation),
 
     KeyboardCharInput(Input),
     KeyboardEsc,
@@ -30,12 +37,36 @@ pub enum Event {
     UiScrollDown,
     UiScrollPageUp,
     UiScrollPageDown,
+}
 
-    /// Event for when user select a conversation
-    SetConversation(String),
+#[macro_export]
+macro_rules! notice_info {
+    ($msg:expr) => {
+        Event::Notice($crate::models::NoticeMessage::info($msg))
+    };
+    ($msg:expr, $duration:expr) => {
+        Event::Notice($crate::models::NoticeMessage::info($msg).with_duration($duration))
+    };
+}
 
-    ConversationDeleted(String),
-    ConversationUpdated(String),
+#[macro_export]
+macro_rules! notice_warning {
+    ($msg:expr) => {
+        Event::Notice($crate::models::NoticeMessage::warning($msg))
+    };
+    ($msg:expr, $duration:expr) => {
+        Event::Notice($crate::models::NoticeMessage::warning($msg).with_duration($duration))
+    };
+}
+
+#[macro_export]
+macro_rules! notice_error {
+    ($msg:expr) => {
+        Event::Notice($crate::models::NoticeMessage::error($msg))
+    };
+    ($msg:expr, $duration:expr) => {
+        Event::Notice($crate::models::NoticeMessage::error($msg).with_duration($duration))
+    };
 }
 
 #[async_trait::async_trait]
