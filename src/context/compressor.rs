@@ -3,6 +3,7 @@
 mod tests;
 
 use crate::backend::ArcBackend;
+use crate::config::ContextCompression;
 use crate::config::constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
 use crate::models::{
     ArcEventTx, BackendPrompt, Context as ConvoContext, Conversation, Event, Message,
@@ -30,6 +31,14 @@ impl Compressor {
             max_convo_length: MAX_CONVO_LENGTH,
             keep_n_messages: KEEP_N_MEESAGES,
         }
+    }
+
+    pub fn from_config(mut self, cfg: &ContextCompression) -> Self {
+        self.enabled = cfg.enabled;
+        self.max_context_length = cfg.max_tokens;
+        self.max_convo_length = cfg.max_messages;
+        self.keep_n_messages = cfg.keep_n_messages.max(KEEP_N_MEESAGES);
+        self
     }
 
     pub fn is_enabled(&self) -> bool {

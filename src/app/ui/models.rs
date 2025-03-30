@@ -1,11 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
-    backend::ArcBackend,
     config::Configuration,
     models::{Event, Model, NoticeMessage},
 };
-use eyre::Result;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -40,11 +38,7 @@ pub struct ModelsScreen<'a> {
 }
 
 impl<'a> ModelsScreen<'a> {
-    pub async fn new(
-        backend: ArcBackend,
-        event_tx: mpsc::UnboundedSender<Event>,
-    ) -> Result<ModelsScreen<'a>> {
-        let models = backend.list_models().await?;
+    pub fn new(models: Vec<Model>, event_tx: mpsc::UnboundedSender<Event>) -> ModelsScreen<'a> {
         let want_model = Configuration::instance()
             .backend
             .default_model
@@ -58,7 +52,7 @@ impl<'a> ModelsScreen<'a> {
             .unwrap_or_else(|| models[0].id())
             .to_string();
 
-        Ok(ModelsScreen {
+        ModelsScreen {
             event_tx,
             showing: false,
             models,
@@ -70,7 +64,7 @@ impl<'a> ModelsScreen<'a> {
             state: ListState::default(),
             idx_map: HashMap::new(),
             items: vec![],
-        })
+        }
     }
 
     pub fn current_model(&self) -> &str {

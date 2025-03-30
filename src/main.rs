@@ -1,16 +1,14 @@
 use std::sync::Arc;
 
+use chatty::app;
 use chatty::backend::new_manager;
 use chatty::config::verbose;
 use chatty::config::{init_logger, init_theme};
 use chatty::context::Compressor;
-use chatty::models::{Action, ArcEventTx, Event};
+use chatty::models::Event;
 use chatty::storage::new_storage;
 use chatty::{
-    app::{
-        App, destruct_terminal_for_panic,
-        services::{ActionService, ClipboardService},
-    },
+    app::{App, destruct_terminal_for_panic},
     cli::Command,
 };
 use eyre::{Context, Result};
@@ -62,26 +60,16 @@ async fn main() -> Result<()> {
         .wrap_err("initializing storage")?;
     verbose!("[+] Storage initialized");
 
-    let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
 
     let mut bg_futures = task::JoinSet::new();
 
-    let ctx_compress_config = &config.context.compression;
-
     let mut app = App::new(
         &theme,
         backend.clone(),
-        action_tx.clone(),
         event_tx.clone(),
         &mut event_rx,
-        Arc::new(
-            Compressor::new(backend.clone())
-                .with_context_length(ctx_compress_config.max_tokens)
-                .with_conversation_length(ctx_compress_config.max_messages)
-                .with_keep_n_messages(ctx_compress_config.keep_n_messages)
-                .with_enabled(ctx_compress_config.enabled),
-        ),
+        Arc::new(Compressor::new(backend.clone()).from_config(&config.context.compression)),
         storage,
     )
     .await
@@ -89,20 +77,12 @@ async fn main() -> Result<()> {
 
     let token = CancellationToken::new();
 
-    let token_clone = token.clone();
-    let event_sender: ArcEventTx = Arc::new(event_tx);
-    bg_futures.spawn(async move {
-        ActionService::new(event_sender, &mut action_rx, backend, token_clone)
-            .start()
-            .await
-    });
-
-    if let Err(err) = ClipboardService::healthcheck() {
+    if let Err(err) = app::clipboard::init() {
         log::warn!("Clipboard service is not available: {err}");
     } else {
         let token_clone = token.clone();
         bg_futures.spawn(async move {
-            return ClipboardService::start(token_clone).await;
+            return app::clipboard::start(token_clone).await;
         });
     }
 

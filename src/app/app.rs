@@ -5,10 +5,10 @@ use crate::config::Configuration;
 use crate::context::Compressor;
 use crate::models::conversation::FindMessage;
 use crate::models::storage::FilterConversation;
-use crate::models::{
-    Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
-};
 use crate::models::{ArcEventTx, BackendResponse};
+use crate::models::{
+    BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
+};
 use crate::storage::ArcStorage;
 use crate::verbose;
 use crossterm::{
@@ -33,18 +33,19 @@ use tokio::sync::mpsc;
 
 use crate::{
     app::app_state::AppState,
-    app::services::EventsService,
     app::ui::{
         EditScreen, HelpScreen, HistoryScreen, Loading, ModelsScreen, Notice, TextArea, utils,
     },
 };
+
+use super::event_publisher::EventPubliser;
 
 const MIN_WIDTH: u16 = 80;
 
 pub struct App<'a> {
     event_tx: mpsc::UnboundedSender<Event>,
 
-    events: EventsService<'a>,
+    events: EventPubliser<'a>,
 
     app_state: AppState<'a>,
     models_screen: ModelsScreen<'a>,
@@ -66,7 +67,6 @@ impl<'a> App<'a> {
     pub async fn new(
         theme: &'a Theme,
         backend: ArcBackend,
-        action_tx: mpsc::UnboundedSender<Action>,
         event_tx: mpsc::UnboundedSender<Event>,
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
         compressor: Arc<Compressor>,
@@ -96,8 +96,8 @@ impl<'a> App<'a> {
             compressor,
             storage: storage.clone(),
             backend: backend.clone(),
-            edit_screen: EditScreen::new(action_tx.clone(), theme),
-            events: EventsService::new(event_rx),
+            edit_screen: EditScreen::new(theme, event_tx.clone()),
+            events: EventPubliser::new(event_rx),
             app_state: AppState::new(theme),
             input: TextArea::default().build(),
             loading: Loading::new(vec![
@@ -109,9 +109,10 @@ impl<'a> App<'a> {
             history_screen: HistoryScreen::new(storage, event_tx.clone())
                 .with_conversations(conversations)
                 .with_current_conversation(""),
-            models_screen: ModelsScreen::new(backend, event_tx.clone())
-                .await
-                .wrap_err("initializing models")?,
+            models_screen: ModelsScreen::new(
+                backend.list_models().await.wrap_err("listing models")?,
+                event_tx.clone(),
+            ),
             notice: Notice::default(),
             completion_worker: None,
         })
