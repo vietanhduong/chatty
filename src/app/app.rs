@@ -5,10 +5,12 @@ use crate::config::Configuration;
 use crate::context::Compressor;
 use crate::models::BackendResponse;
 use crate::models::conversation::FindMessage;
+use crate::models::storage::FilterConversation;
 use crate::models::{
     Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
 use crate::storage::ArcStorage;
+use crate::verbose;
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
@@ -39,10 +41,6 @@ use crate::{
 
 const MIN_WIDTH: u16 = 80;
 
-pub struct AppInitProps {
-    pub conversations: HashMap<String, Conversation>,
-}
-
 pub struct App<'a> {
     action_tx: mpsc::UnboundedSender<Action>,
     event_tx: mpsc::UnboundedSender<Event>,
@@ -58,7 +56,7 @@ pub struct App<'a> {
 
     compressor: Arc<Compressor>,
     storage: ArcStorage,
-    backend: ArcBackend,
+    _backend: ArcBackend,
 
     notice: Notice,
     loading: Loading<'a>,
@@ -73,10 +71,12 @@ impl<'a> App<'a> {
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
         compressor: Arc<Compressor>,
         storage: ArcStorage,
-        init_props: AppInitProps,
     ) -> Result<App<'a>> {
-        let mut conversations = init_props
-            .conversations
+        verbose!("[+] Fetching conversations...");
+        let mut conversations = storage
+            .get_conversations(FilterConversation::default())
+            .await
+            .wrap_err("getting conversations")?
             .into_iter()
             .map(|(id, convo)| {
                 let convo = Conversation::default()
@@ -89,12 +89,12 @@ impl<'a> App<'a> {
             .collect::<HashMap<_, _>>();
 
         conversations.insert(String::new(), Conversation::new_hello());
-
+        verbose!("[+] Conversations fetched");
         Ok(App {
             event_tx: event_tx.clone(),
             compressor,
             storage: storage.clone(),
-            backend: backend.clone(),
+            _backend: backend.clone(),
             edit_screen: EditScreen::new(action_tx.clone(), theme),
             action_tx: action_tx.clone(),
             events: EventsService::new(event_rx),

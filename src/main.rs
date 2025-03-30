@@ -4,13 +4,11 @@ use chatty::backend::new_manager;
 use chatty::config::verbose;
 use chatty::config::{init_logger, init_theme};
 use chatty::context::Compressor;
-use chatty::models::{Action, ArcEventTx, Event, storage::FilterConversation};
+use chatty::models::{Action, ArcEventTx, Event};
 use chatty::storage::new_storage;
 use chatty::{
     app::{
-        App,
-        app::AppInitProps,
-        destruct_terminal_for_panic,
+        App, destruct_terminal_for_panic,
         services::{ActionService, ClipboardService},
     },
     cli::Command,
@@ -64,12 +62,6 @@ async fn main() -> Result<()> {
         .wrap_err("initializing storage")?;
     verbose!("[+] Storage initialized");
 
-    verbose!("[+] Fetching conversations...");
-    let conversations = storage
-        .get_conversations(FilterConversation::default())
-        .await?;
-    verbose!("[+] Conversations fetched");
-
     let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
 
@@ -91,7 +83,6 @@ async fn main() -> Result<()> {
                 .with_enabled(ctx_compress_config.enabled),
         ),
         storage,
-        AppInitProps { conversations },
     )
     .await
     .wrap_err("initializing app")?;
