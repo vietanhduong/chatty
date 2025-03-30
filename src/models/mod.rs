@@ -14,20 +14,6 @@ pub use message::Message;
 
 pub use event::{ArcEventTx, Event, EventTx};
 
-pub enum Action {
-    BackendAbort,
-    BackendRequest(BackendPrompt),
-    BackendSetModel(String),
-
-    CopyMessages(Vec<Message>),
-}
-
-#[derive(Debug, Clone)]
-pub struct UpsertMessage {
-    pub message: Message,
-    pub conversation_id: String,
-}
-
 #[derive(Debug, Default, Clone)]
 pub enum NoticeType {
     #[default]

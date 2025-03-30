@@ -18,7 +18,6 @@ use std::sync::Arc;
 use std::{fmt::Display, time};
 use thiserror::Error;
 use tokio::io::AsyncBufReadExt;
-use tokio::sync::RwLock;
 use tokio_util::io::StreamReader;
 
 #[derive(Debug)]
@@ -30,9 +29,6 @@ pub struct OpenAI {
 
     want_models: Vec<String>,
 
-    cache_models: RwLock<Vec<Model>>,
-    current_model: RwLock<Option<String>>,
-
     max_output_tokens: Option<usize>,
 }
 
@@ -42,26 +38,7 @@ impl Backend for OpenAI {
         &self.alias
     }
 
-    async fn health_check(&self) -> Result<()> {
-        if self.endpoint.is_empty() {
-            bail!("Endpoint is not set");
-        }
-
-        let cached_models = self.cache_models.read().await;
-        if !cached_models.is_empty() {
-            return Ok(());
-        }
-        drop(cached_models);
-
-        self.list_models(true).await?;
-        Ok(())
-    }
-
-    async fn list_models(&self, force: bool) -> Result<Vec<Model>> {
-        if !force && !self.cache_models.read().await.is_empty() {
-            return Ok(self.cache_models.read().await.clone());
-        }
-
+    async fn list_models(&self) -> Result<Vec<Model>> {
         let mut req = reqwest::Client::new()
             .get(format!("{}/v1/models", self.endpoint))
             .header("User-Agent", user_agent());
@@ -100,37 +77,11 @@ impl Backend for OpenAI {
 
         models.sort_by(|a, b| a.id().cmp(b.id()));
 
-        let mut cached = self.cache_models.write().await;
-        *cached = models.clone();
         Ok(models)
     }
 
-    async fn current_model(&self) -> Option<String> {
-        let default_model = self.current_model.read().await;
-        return default_model.clone();
-    }
-
-    async fn set_current_model(&self, model: &str) -> Result<()> {
-        // We will check the model against the list of available models
-        // If the model is not available, we will return an error
-        let models = self.list_models(false).await?;
-        let model = if model.is_empty() {
-            models
-                .last()
-                .ok_or_else(|| eyre::eyre!("no models available"))?
-        } else {
-            models
-                .iter()
-                .find(|m| m.id() == model)
-                .ok_or_else(|| eyre::eyre!("model {} not available", model))?
-        };
-        let mut default_model = self.current_model.write().await;
-        *default_model = Some(model.id().to_string());
-        Ok(())
-    }
-
     async fn get_completion(&self, prompt: BackendPrompt, event_tx: ArcEventTx) -> Result<()> {
-        if self.current_model().await.is_none() && prompt.model().is_none() {
+        if prompt.model().is_empty() {
             bail!("no model is set");
         }
 
@@ -153,13 +104,8 @@ impl Backend for OpenAI {
             .map(|m| MessageRequest::from(&m))
             .collect::<Vec<_>>();
 
-        let model = match prompt.model() {
-            Some(model) => model.to_string(),
-            None => self.current_model().await.unwrap(),
-        };
-
         let completion_req = CompletionRequest {
-            model: model.clone(),
+            model: prompt.model().to_string(),
             messages: messages.clone(),
             stream: true,
             max_completion_tokens: self.max_output_tokens,
@@ -241,7 +187,7 @@ impl Backend for OpenAI {
 
             let msg = BackendResponse {
                 id: message_id.clone(),
-                model: model.clone(),
+                model: prompt.model().to_string(),
                 text,
                 done: false,
                 init_conversation,
@@ -260,7 +206,7 @@ impl Backend for OpenAI {
 
         let msg = BackendResponse {
             id: message_id,
-            model: model.clone(),
+            model: prompt.model().to_string(),
             text: String::new(),
             done: true,
             init_conversation,
@@ -350,8 +296,6 @@ impl Default for OpenAI {
             endpoint: "https://api.openai.com".to_string(),
             api_key: None,
             timeout: None,
-            current_model: RwLock::new(None),
-            cache_models: tokio::sync::RwLock::new(Vec::new()),
             want_models: vec![],
         }
     }

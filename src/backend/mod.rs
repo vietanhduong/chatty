@@ -28,10 +28,7 @@ The title should be placed at the top of the response, in separate line and star
 #[cfg_attr(test, automock)]
 pub trait Backend {
     fn name(&self) -> &str;
-    async fn health_check(&self) -> Result<()>;
-    async fn list_models(&self, force: bool) -> Result<Vec<Model>>;
-    async fn current_model(&self) -> Option<String>;
-    async fn set_current_model(&self, model: &str) -> Result<()>;
+    async fn list_models(&self) -> Result<Vec<Model>>;
     async fn get_completion(&self, prompt: BackendPrompt, event_tx: ArcEventTx) -> Result<()>;
 }
 

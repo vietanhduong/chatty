@@ -1,18 +1,21 @@
 use std::{collections::HashMap, io, sync::Arc, time};
 
+use crate::backend::ArcBackend;
 use crate::config::Configuration;
 use crate::context::Compressor;
 use crate::models::conversation::FindMessage;
+use crate::models::storage::FilterConversation;
+use crate::models::{ArcEventTx, BackendResponse};
 use crate::models::{
-    Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
+    BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
-use crate::models::{BackendResponse, Model};
 use crate::storage::ArcStorage;
+use crate::verbose;
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use eyre::Result;
+use eyre::{Context, Result};
 use ratatui::crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -30,25 +33,19 @@ use tokio::sync::mpsc;
 
 use crate::{
     app::app_state::AppState,
-    app::services::EventsService,
     app::ui::{
         EditScreen, HelpScreen, HistoryScreen, Loading, ModelsScreen, Notice, TextArea, utils,
     },
 };
 
+use super::event_publisher::EventPubliser;
+
 const MIN_WIDTH: u16 = 80;
 
-pub struct AppInitProps {
-    pub models: Vec<Model>,
-    pub default_model: String,
-    pub conversations: HashMap<String, Conversation>,
-}
-
 pub struct App<'a> {
-    action_tx: mpsc::UnboundedSender<Action>,
     event_tx: mpsc::UnboundedSender<Event>,
 
-    events: EventsService<'a>,
+    events: EventPubliser<'a>,
 
     app_state: AppState<'a>,
     models_screen: ModelsScreen<'a>,
@@ -59,23 +56,27 @@ pub struct App<'a> {
 
     compressor: Arc<Compressor>,
     storage: ArcStorage,
+    backend: ArcBackend,
+    completion_worker: Option<tokio::task::JoinHandle<Result<()>>>,
 
     notice: Notice,
     loading: Loading<'a>,
 }
 
 impl<'a> App<'a> {
-    pub fn new(
+    pub async fn new(
         theme: &'a Theme,
-        action_tx: mpsc::UnboundedSender<Action>,
+        backend: ArcBackend,
         event_tx: mpsc::UnboundedSender<Event>,
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
         compressor: Arc<Compressor>,
         storage: ArcStorage,
-        init_props: AppInitProps,
-    ) -> App<'a> {
-        let mut conversations = init_props
-            .conversations
+    ) -> Result<App<'a>> {
+        verbose!("[+] Fetching conversations...");
+        let mut conversations = storage
+            .get_conversations(FilterConversation::default())
+            .await
+            .wrap_err("getting conversations")?
             .into_iter()
             .map(|(id, convo)| {
                 let convo = Conversation::default()
@@ -88,14 +89,15 @@ impl<'a> App<'a> {
             .collect::<HashMap<_, _>>();
 
         conversations.insert(String::new(), Conversation::new_hello());
+        verbose!("[+] Conversations fetched");
 
-        App {
+        Ok(App {
             event_tx: event_tx.clone(),
             compressor,
             storage: storage.clone(),
-            edit_screen: EditScreen::new(action_tx.clone(), theme),
-            action_tx: action_tx.clone(),
-            events: EventsService::new(event_rx),
+            backend: backend.clone(),
+            edit_screen: EditScreen::new(theme, event_tx.clone()),
+            events: EventPubliser::new(event_rx),
             app_state: AppState::new(theme),
             input: TextArea::default().build(),
             loading: Loading::new(vec![
@@ -104,16 +106,16 @@ impl<'a> App<'a> {
                 span!(" to abort!").gray(),
             ]),
             help_screen: HelpScreen::new(),
-            history_screen: HistoryScreen::new(event_tx.clone(), storage)
+            history_screen: HistoryScreen::new(storage, event_tx.clone())
                 .with_conversations(conversations)
                 .with_current_conversation(""),
             models_screen: ModelsScreen::new(
-                init_props.default_model,
-                init_props.models,
-                action_tx.clone(),
+                backend.list_models().await.wrap_err("listing models")?,
+                event_tx.clone(),
             ),
             notice: Notice::default(),
-        }
+            completion_worker: None,
+        })
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -149,33 +151,74 @@ impl<'a> App<'a> {
         let event = self.events.next().await?;
 
         // Handle critical events first
+        if let Some(stop) = self.handle_global_event(&event).await {
+            return Ok(stop);
+        }
+
+        // Handle screen events
+        if self.help_screen.showing() {
+            if self.help_screen.handle_key_event(&event) {
+                self.event_tx.send(Event::Quit).ok();
+            }
+            return Ok(false);
+        }
+
+        if self.models_screen.showing() {
+            if self.models_screen.handle_key_event(&event).await {
+                self.event_tx.send(Event::Quit).ok();
+            }
+            return Ok(false);
+        }
+
+        if self.edit_screen.showing() {
+            if self.edit_screen.handle_key_event(&event).await? {
+                self.event_tx.send(Event::Quit).ok();
+            }
+            return Ok(false);
+        }
+
+        if self.history_screen.showing() {
+            if self.history_screen.handle_key_event(&event).await {
+                self.event_tx.send(Event::Quit).ok();
+            }
+            return Ok(false);
+        }
+
+        self.handle_input_event(event).await;
+        Ok(false)
+    }
+
+    async fn handle_global_event(&mut self, event: &Event) -> Option<bool> {
         match &event {
             Event::Quit => {
-                self.save_last_message().await?;
+                if let Err(err) = self.save_last_message().await {
+                    self.notice_on_error(format!("Failed to save last message: {}", err));
+                }
+
                 if self.app_state.waiting_for_backend {
                     self.app_state.waiting_for_backend = false;
-                    self.action_tx.send(Action::BackendAbort)?;
-                    // handle abort right after
                     self.handle_abort().await;
                 }
-                return Ok(true);
+
+                return Some(true);
             }
             Event::BackendPromptResponse(resp) => {
                 self.handle_response(resp).await;
-                return Ok(false);
+                return Some(false);
             }
 
             Event::BackendMessage(msg) => {
                 self.app_state.add_message(msg.clone());
-                self.storage
+                let err = self
+                    .storage
                     .upsert_message(self.app_state.current_convo.id(), msg.clone())
-                    .await?;
-                self.app_state.waiting_for_backend = false;
-            }
+                    .await;
 
-            Event::AbortRequest => {
-                self.handle_abort().await;
-                return Ok(false);
+                if let Err(err) = err {
+                    self.notice_on_error(format!("Failed to save message: {}", err));
+                }
+                self.app_state.waiting_for_backend = false;
+                Some(false)
             }
 
             Event::ConversationDeleted(id) => {
@@ -184,64 +227,42 @@ impl<'a> App<'a> {
                     self.upsert_default_conversation();
                     self.change_conversation("").await;
                 }
-                return Ok(false);
+                Some(false)
             }
 
             Event::ConversationUpdated(id) => {
-                if let Some(mut convo) = self.storage.get_conversation(&id).await? {
+                let result = self.storage.get_conversation(&id).await;
+                if let Err(err) = result {
+                    self.notice_on_error(format!("Failed to get conversation: {}", err));
+                    return Some(false);
+                }
+
+                if let Some(mut convo) = result.unwrap() {
                     let updated_at = convo.messages().last().unwrap().created_at();
                     convo.set_updated_at(updated_at);
                     if self.app_state.current_convo.id() == id {
                         self.app_state.set_conversation(convo);
                     }
                 }
-                return Ok(false);
+                Some(false)
             }
 
             Event::SetConversation(id) => {
                 self.change_conversation(&id).await;
-                return Ok(false);
+                Some(false)
             }
 
             Event::Notice(msg) => {
                 self.notice.add_message(msg.clone());
-                return Ok(false);
+                Some(false)
             }
 
-            Event::ModelChanged(model) => {
-                self.models_screen.set_current_model(&model);
-                self.notice.info(format!("Using model \"{}\"", model));
-                return Ok(false);
-            }
-
-            _ => {}
+            // Fallthrough to the next event handler
+            _ => None,
         }
+    }
 
-        // Handle screen events
-        if self.help_screen.showing() {
-            if !self.help_screen.handle_key_event(&event) {
-                return Ok(false);
-            }
-        }
-
-        if self.models_screen.showing() {
-            if !self.models_screen.handle_key_event(&event).await? {
-                return Ok(false);
-            }
-        }
-
-        if self.edit_screen.showing() {
-            if !self.edit_screen.handle_key_event(&event).await? {
-                return Ok(false);
-            }
-        }
-
-        if self.history_screen.showing() {
-            if !self.history_screen.handle_key_event(&event).await? {
-                return Ok(false);
-            }
-        }
-
+    async fn handle_input_event(&mut self, event: Event) {
         // Handle input events
         match event {
             Event::KeyboardCharInput(c) => {
@@ -253,8 +274,8 @@ impl<'a> App<'a> {
             Event::KeyboardCtrlC => {
                 if self.app_state.waiting_for_backend {
                     self.app_state.waiting_for_backend = false;
-                    self.action_tx.send(Action::BackendAbort)?;
-                    return Ok(false);
+                    self.handle_abort().await;
+                    return;
                 }
 
                 // Clear text in the input area if not waiting for backend
@@ -304,7 +325,6 @@ impl<'a> App<'a> {
             Event::UiScrollPageUp => self.app_state.scroll.page_up(),
             _ => {}
         }
-        Ok(false)
     }
 
     fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
@@ -455,10 +475,15 @@ impl<'a> App<'a> {
         self.history_screen
             .update_conversation_updated_at(&conversation_id, msg.created_at());
 
-        if let Err(err) = self.action_tx.send(Action::BackendRequest(prompt)) {
-            self.notice_on_error(format!("Failed to send request: {}", err));
-            return;
-        }
+        let backend = self.backend.clone();
+        let event_tx = Arc::new(self.event_tx.clone());
+
+        self.completion_worker = Some(tokio::spawn(async move {
+            if let Err(err) = completions(&backend, prompt, event_tx.clone()).await {
+                worker_error(err, event_tx).await?;
+            }
+            Ok(())
+        }));
 
         self.history_screen.update_items();
     }
@@ -519,12 +544,29 @@ impl<'a> App<'a> {
             .with_model(model)
             .with_context(self.app_state.current_convo.build_context());
 
-        if let Err(err) = self.action_tx.send(Action::BackendRequest(prompt)) {
-            self.notice_on_error(format!("Failed to send request: {}", err));
-        }
+        let backend = self.backend.clone();
+        let event_tx = Arc::new(self.event_tx.clone());
+
+        self.completion_worker = Some(tokio::spawn(async move {
+            if let Err(err) = completions(&backend, prompt, event_tx.clone()).await {
+                worker_error(err, event_tx).await?;
+            }
+            Ok(())
+        }));
     }
 
     async fn handle_abort(&mut self) {
+        if self.completion_worker.is_none() {
+            return;
+        }
+
+        if let Some(worker) = self.completion_worker.take() {
+            if let Err(err) = worker.await {
+                self.notice_on_error(format!("Failed to abort: {}", err));
+                // Keep following the process to save the last message
+            }
+        }
+
         if let Some(msg) = self.app_state.current_convo.last_message() {
             if let Err(err) = self
                 .storage
@@ -805,4 +847,24 @@ impl<'a> App<'a> {
 
 fn is_line_width_sufficient(line_width: u16) -> bool {
     return line_width >= MIN_WIDTH;
+}
+
+async fn completions(
+    backend: &ArcBackend,
+    prompt: BackendPrompt,
+    event_tx: ArcEventTx,
+) -> Result<()> {
+    backend.get_completion(prompt, event_tx).await?;
+    Ok(())
+}
+
+async fn worker_error(err: eyre::Error, event_tx: ArcEventTx) -> Result<()> {
+    event_tx
+        .send(Event::BackendMessage(Message::new_system(
+            "system",
+            format!("Error: Backend failed with the following error: \n\n {err:?}"),
+        )))
+        .await?;
+
+    Ok(())
 }

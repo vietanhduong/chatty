@@ -1,7 +1,6 @@
 use crate::models::{Conversation, Event, NoticeMessage};
 use crate::storage::ArcStorage;
 use chrono::{Local, Utc};
-use eyre::Result;
 use ratatui::{
     Frame,
     layout::{Alignment, Rect},
@@ -54,7 +53,7 @@ pub struct HistoryScreen<'a> {
 }
 
 impl<'a> HistoryScreen<'a> {
-    pub fn new(event_tx: mpsc::UnboundedSender<Event>, storage: ArcStorage) -> HistoryScreen<'a> {
+    pub fn new(storage: ArcStorage, event_tx: mpsc::UnboundedSender<Event>) -> HistoryScreen<'a> {
         HistoryScreen {
             event_tx,
             storage,
@@ -274,50 +273,48 @@ impl<'a> HistoryScreen<'a> {
         }
     }
 
-    pub async fn handle_key_event(&mut self, event: &Event) -> Result<bool> {
+    pub async fn handle_key_event(&mut self, event: &Event) -> bool {
         if self.rename.showing() {
             self.handle_rename_popup(event).await;
-            return Ok(false);
+            return false;
         }
 
         if self.question.showing() {
             self.handle_question_popup(event).await;
-            return Ok(false);
+            return false;
         }
 
         if self.search.showing() {
             self.handle_search_popup(event).await;
-            return Ok(false);
+            return false;
         }
 
         match event {
             Event::KeyboardCtrlH => {
                 self.showing = !self.showing;
-                return Ok(false);
             }
             Event::Quit => {
                 self.showing = false;
-                return Ok(true);
+                return true;
             }
 
             Event::KeyboardEnter => {
                 if self.state.selected().is_none() || self.conversations.is_empty() {
-                    return Ok(false);
+                    return false;
                 }
 
                 let id = match self.get_selected_conversation_id() {
                     Some(id) => id.to_string(),
-                    None => return Ok(false),
+                    None => return false,
                 };
 
                 if self.current_conversation.as_deref() == Some(&id) {
-                    return Ok(false);
+                    return false;
                 }
 
                 self.showing = false;
                 self.event_tx.send(Event::SetConversation(id.clone())).ok();
                 self.current_conversation = Some(id);
-                return Ok(false);
             }
 
             Event::KeyboardCharInput(input) => match input.key {
@@ -335,11 +332,11 @@ impl<'a> HistoryScreen<'a> {
                 Key::Char('d') => {
                     let conversation = match self.get_selected_conversation() {
                         Some(c) => c,
-                        None => return Ok(false),
+                        None => return false,
                     };
 
                     if conversation.id().is_empty() {
-                        return Ok(false);
+                        return false;
                     }
 
                     let quest = vec![
@@ -355,7 +352,7 @@ impl<'a> HistoryScreen<'a> {
                     if let Some(conversation) = self.get_selected_conversation() {
                         // Ignore with blank conversation
                         if conversation.id().is_empty() {
-                            return Ok(false);
+                            return false;
                         }
                         let title = conversation.title().to_string();
                         self.rename.open(title);
@@ -371,7 +368,7 @@ impl<'a> HistoryScreen<'a> {
 
             _ => {}
         }
-        Ok(false)
+        false
     }
 
     async fn handle_search_popup(&mut self, event: &Event) {

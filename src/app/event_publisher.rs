@@ -8,14 +8,14 @@ use tui_textarea::{Input, Key};
 
 const FRAME_DURATION: time::Duration = time::Duration::from_millis(1000 / 60);
 
-pub struct EventsService<'a> {
+pub struct EventPubliser<'a> {
     crossterm_events: EventStream,
     events: &'a mut mpsc::UnboundedReceiver<Event>,
 }
 
-impl<'a> EventsService<'_> {
-    pub fn new(events: &'a mut mpsc::UnboundedReceiver<Event>) -> EventsService<'a> {
-        EventsService {
+impl<'a> EventPubliser<'_> {
+    pub fn new(events: &'a mut mpsc::UnboundedReceiver<Event>) -> EventPubliser<'a> {
+        EventPubliser {
             crossterm_events: EventStream::new(),
             events,
         }

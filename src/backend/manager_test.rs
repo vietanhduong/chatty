@@ -6,10 +6,7 @@ use std::sync::Arc;
 async fn test_add_connection() {
     let mut mock = MockBackend::new();
     mock.expect_name().times(1).return_const("test".to_string());
-    mock.expect_health_check()
-        .times(1)
-        .returning(|| Box::pin(async { Ok(()) }));
-    mock.expect_list_models().times(1).returning(|_| {
+    mock.expect_list_models().times(1).returning(|| {
         Box::pin(async {
             Ok(vec![
                 Model::new("model1").with_provider("test"),
@@ -32,14 +29,14 @@ async fn test_add_connection() {
 async fn test_add_connection_with_error() {
     let mut mock = MockBackend::new();
     mock.expect_name().times(1).return_const("test".to_string());
-    mock.expect_health_check()
+    mock.expect_list_models()
         .times(1)
         .returning(|| Box::pin(async { Err(eyre::eyre!("test error")) }));
     let mut manager = Manager::default();
     let result = manager.add_connection(Arc::new(mock)).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert_eq!(err.to_string(), "health check backend test");
+    assert_eq!(err.to_string(), "listing models backend test");
     let root_cause = err.root_cause();
     assert_eq!(root_cause.to_string(), "test error");
 }

@@ -32,7 +32,7 @@ pub struct BackendUsage {
 }
 
 pub struct BackendPrompt {
-    model: Option<String>,
+    model: String,
     text: String,
     context: Vec<Message>,
     no_generate_title: bool,
@@ -41,7 +41,7 @@ pub struct BackendPrompt {
 impl BackendPrompt {
     pub fn new(text: impl Into<String>) -> BackendPrompt {
         BackendPrompt {
-            model: None,
+            model: String::new(),
             text: text.into(),
             context: vec![],
             no_generate_title: false,
@@ -49,7 +49,7 @@ impl BackendPrompt {
     }
 
     pub fn with_model(mut self, model: &str) -> Self {
-        self.model = Some(model.to_string());
+        self.model = model.to_string();
         self
     }
 
@@ -63,8 +63,8 @@ impl BackendPrompt {
         self
     }
 
-    pub fn model(&self) -> Option<&str> {
-        self.model.as_deref()
+    pub fn model(&self) -> &str {
+        &self.model
     }
 
     pub fn text(&self) -> &str {

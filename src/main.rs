@@ -1,18 +1,14 @@
 use std::sync::Arc;
 
+use chatty::app;
 use chatty::backend::new_manager;
 use chatty::config::verbose;
 use chatty::config::{init_logger, init_theme};
 use chatty::context::Compressor;
-use chatty::models::{Action, ArcEventTx, Event, storage::FilterConversation};
+use chatty::models::Event;
 use chatty::storage::new_storage;
 use chatty::{
-    app::{
-        App,
-        app::AppInitProps,
-        destruct_terminal_for_panic,
-        services::{ActionService, ClipboardService},
-    },
+    app::{App, destruct_terminal_for_panic},
     cli::Command,
 };
 use eyre::{Context, Result};
@@ -45,37 +41,6 @@ async fn main() -> Result<()> {
 
     verbose!("[+] Initializing backend...");
     let backend = new_manager(&config.backend).await?;
-    backend.health_check().await?;
-    verbose!("[+] Backend is healthy");
-
-    verbose!("[+] Listing models...");
-    let models = backend.list_models(false).await?;
-    if models.is_empty() {
-        eyre::bail!("No models available");
-    }
-    verbose!("[+] Loaded {} model(s)", models.len());
-
-    let want_model = config.backend.default_model.as_deref().unwrap_or_default();
-
-    let model = if want_model.is_empty() {
-        models[0].clone()
-    } else {
-        models
-            .iter()
-            .find(|m| m.id() == want_model)
-            .unwrap_or_else(|| {
-                log::warn!(
-                    "Model {} not found, using default ({})",
-                    want_model,
-                    models[0].id()
-                );
-                &models[0]
-            })
-            .clone()
-    };
-
-    backend.set_current_model(model.id()).await?;
-    verbose!("[+] Set current model to {}", model);
 
     if !config.context.compression.enabled && !config.context.truncation.enabled {
         verbose!("[!] Context compression and truncation are disabled");
@@ -95,55 +60,29 @@ async fn main() -> Result<()> {
         .wrap_err("initializing storage")?;
     verbose!("[+] Storage initialized");
 
-    verbose!("[+] Fetching conversations...");
-    let conversations = storage
-        .get_conversations(FilterConversation::default())
-        .await?;
-    verbose!("[+] Conversations fetched");
-
-    let (action_tx, mut action_rx) = mpsc::unbounded_channel::<Action>();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<Event>();
 
     let mut bg_futures = task::JoinSet::new();
 
-    let ctx_compress_config = &config.context.compression;
-
     let mut app = App::new(
         &theme,
-        action_tx.clone(),
+        backend.clone(),
         event_tx.clone(),
         &mut event_rx,
-        Arc::new(
-            Compressor::new(backend.clone())
-                .with_context_length(ctx_compress_config.max_tokens)
-                .with_conversation_length(ctx_compress_config.max_messages)
-                .with_keep_n_messages(ctx_compress_config.keep_n_messages)
-                .with_enabled(ctx_compress_config.enabled),
-        ),
+        Arc::new(Compressor::new(backend.clone()).from_config(&config.context.compression)),
         storage,
-        AppInitProps {
-            default_model: model.id().to_string(),
-            models,
-            conversations,
-        },
-    );
+    )
+    .await
+    .wrap_err("initializing app")?;
 
     let token = CancellationToken::new();
 
-    let token_clone = token.clone();
-    let event_sender: ArcEventTx = Arc::new(event_tx);
-    bg_futures.spawn(async move {
-        ActionService::new(event_sender, &mut action_rx, backend, token_clone)
-            .start()
-            .await
-    });
-
-    if let Err(err) = ClipboardService::healthcheck() {
+    if let Err(err) = app::clipboard::init() {
         log::warn!("Clipboard service is not available: {err}");
     } else {
         let token_clone = token.clone();
         bg_futures.spawn(async move {
-            return ClipboardService::start(token_clone).await;
+            return app::clipboard::start(token_clone).await;
         });
     }
 
