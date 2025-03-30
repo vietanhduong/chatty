@@ -5,16 +5,6 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 use super::*;
 
-impl Gemini {
-    async fn set_models(&self, models: Vec<String>) {
-        let mut write = self.cache_models.write().await;
-        *write = models
-            .into_iter()
-            .map(|m| Model::new(m).with_provider(&self.alias))
-            .collect();
-    }
-}
-
 #[tokio::test]
 async fn test_list_models() {
     let body = serde_json::to_string(&ModelListResponse {
@@ -59,52 +49,13 @@ async fn test_list_models() {
             "model/gemini-2.0-flash-lite".to_string(),
         ]);
 
-    let res = backend
-        .list_models(false)
-        .await
-        .expect("Failed to list models");
+    let res = backend.list_models().await.expect("Failed to list models");
 
     assert_eq!(res.len(), 2);
     assert_eq!(res[0].id(), "gemini-2.0-flash");
     assert_eq!(res[1].id(), "gemini-2.0-flash-lite");
 
     models_handler.assert();
-
-    let res = backend
-        .list_models(false)
-        .await
-        .expect("Failed to list models");
-
-    assert_eq!(res.len(), 2);
-    assert_eq!(res[0].id(), "gemini-2.0-flash");
-    assert_eq!(res[1].id(), "gemini-2.0-flash-lite");
-    // Hit cache, no request to server
-    models_handler.assert();
-}
-
-#[tokio::test]
-async fn test_set_current_model() {
-    let backend = Gemini::default();
-
-    backend
-        .set_models(vec![
-            "gemini-2.0-flash".to_string(),
-            "gemini-2.0-flash-lite".to_string(),
-        ])
-        .await;
-
-    backend
-        .set_current_model("gemini-2.0-flash")
-        .await
-        .expect("Failed to set current model");
-
-    assert_eq!(
-        backend.current_model().await,
-        Some("gemini-2.0-flash".to_string())
-    );
-
-    let err = backend.set_current_model("o1-mini").await.unwrap_err();
-    assert!(err.to_string().contains("model o1-mini not available"));
 }
 
 #[tokio::test]
@@ -184,17 +135,5 @@ async fn setup_backend(url: String) -> Gemini {
             "gemini-2.0-flash".to_string(),
             "gemini-2.0-flash-lite".to_string(),
         ]);
-
-    backend
-        .set_models(vec![
-            "gemini-2.0-flash".to_string(),
-            "gemini-2.0-flash-lite".to_string(),
-        ])
-        .await;
-
-    backend
-        .set_current_model("gemini-2.0-flash")
-        .await
-        .expect("Failed to set current model");
     backend
 }

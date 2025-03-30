@@ -45,37 +45,6 @@ async fn main() -> Result<()> {
 
     verbose!("[+] Initializing backend...");
     let backend = new_manager(&config.backend).await?;
-    backend.health_check().await?;
-    verbose!("[+] Backend is healthy");
-
-    verbose!("[+] Listing models...");
-    let models = backend.list_models(false).await?;
-    if models.is_empty() {
-        eyre::bail!("No models available");
-    }
-    verbose!("[+] Loaded {} model(s)", models.len());
-
-    let want_model = config.backend.default_model.as_deref().unwrap_or_default();
-
-    let model = if want_model.is_empty() {
-        models[0].clone()
-    } else {
-        models
-            .iter()
-            .find(|m| m.id() == want_model)
-            .unwrap_or_else(|| {
-                log::warn!(
-                    "Model {} not found, using default ({})",
-                    want_model,
-                    models[0].id()
-                );
-                &models[0]
-            })
-            .clone()
-    };
-
-    backend.set_current_model(model.id()).await?;
-    verbose!("[+] Set current model to {}", model);
 
     if !config.context.compression.enabled && !config.context.truncation.enabled {
         verbose!("[!] Context compression and truncation are disabled");
@@ -110,6 +79,7 @@ async fn main() -> Result<()> {
 
     let mut app = App::new(
         &theme,
+        backend.clone(),
         action_tx.clone(),
         event_tx.clone(),
         &mut event_rx,
@@ -121,12 +91,10 @@ async fn main() -> Result<()> {
                 .with_enabled(ctx_compress_config.enabled),
         ),
         storage,
-        AppInitProps {
-            default_model: model.id().to_string(),
-            models,
-            conversations,
-        },
-    );
+        AppInitProps { conversations },
+    )
+    .await
+    .wrap_err("initializing app")?;
 
     let token = CancellationToken::new();
 

@@ -51,18 +51,6 @@ impl ActionService<'_> {
                     // let storage = Arc::clone(&self.storage);
                     let backend = Arc::clone(&self.backend);
                     match event {
-                        Action::BackendSetModel(model) => {
-                            if let Err(err) = self.backend.set_current_model(&model).await {
-                                log::error!("Failed to set model: {}", err);
-                                self.send_notice(
-                                    NoticeType::Error,
-                                    format!("Failed to set model: {}", err),
-                                ).await;
-                                continue;
-                            }
-                            worker_tx.send(Event::ModelChanged(model)).await?;
-                        }
-
                         Action::BackendAbort => {
                             worker.abort();
                             worker_tx.send(Event::AbortRequest).await?;

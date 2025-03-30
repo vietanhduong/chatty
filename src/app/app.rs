@@ -1,18 +1,19 @@
 use std::{collections::HashMap, io, sync::Arc, time};
 
+use crate::backend::ArcBackend;
 use crate::config::Configuration;
 use crate::context::Compressor;
+use crate::models::BackendResponse;
 use crate::models::conversation::FindMessage;
 use crate::models::{
     Action, BackendPrompt, Conversation, Event, Message, NoticeMessage, NoticeType, message::Issuer,
 };
-use crate::models::{BackendResponse, Model};
 use crate::storage::ArcStorage;
 use crossterm::{
     event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
-use eyre::Result;
+use eyre::{Context, Result};
 use ratatui::crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode},
@@ -39,8 +40,6 @@ use crate::{
 const MIN_WIDTH: u16 = 80;
 
 pub struct AppInitProps {
-    pub models: Vec<Model>,
-    pub default_model: String,
     pub conversations: HashMap<String, Conversation>,
 }
 
@@ -59,21 +58,23 @@ pub struct App<'a> {
 
     compressor: Arc<Compressor>,
     storage: ArcStorage,
+    backend: ArcBackend,
 
     notice: Notice,
     loading: Loading<'a>,
 }
 
 impl<'a> App<'a> {
-    pub fn new(
+    pub async fn new(
         theme: &'a Theme,
+        backend: ArcBackend,
         action_tx: mpsc::UnboundedSender<Action>,
         event_tx: mpsc::UnboundedSender<Event>,
         event_rx: &'a mut mpsc::UnboundedReceiver<Event>,
         compressor: Arc<Compressor>,
         storage: ArcStorage,
         init_props: AppInitProps,
-    ) -> App<'a> {
+    ) -> Result<App<'a>> {
         let mut conversations = init_props
             .conversations
             .into_iter()
@@ -89,10 +90,11 @@ impl<'a> App<'a> {
 
         conversations.insert(String::new(), Conversation::new_hello());
 
-        App {
+        Ok(App {
             event_tx: event_tx.clone(),
             compressor,
             storage: storage.clone(),
+            backend: backend.clone(),
             edit_screen: EditScreen::new(action_tx.clone(), theme),
             action_tx: action_tx.clone(),
             events: EventsService::new(event_rx),
@@ -107,13 +109,11 @@ impl<'a> App<'a> {
             history_screen: HistoryScreen::new(event_tx.clone(), storage)
                 .with_conversations(conversations)
                 .with_current_conversation(""),
-            models_screen: ModelsScreen::new(
-                init_props.default_model,
-                init_props.models,
-                action_tx.clone(),
-            ),
+            models_screen: ModelsScreen::new(backend, event_tx.clone())
+                .await
+                .wrap_err("initializing models")?,
             notice: Notice::default(),
-        }
+        })
     }
 
     pub async fn run(&mut self) -> Result<()> {

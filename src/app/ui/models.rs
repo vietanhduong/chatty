@@ -1,6 +1,10 @@
 use std::collections::{BTreeMap, HashMap};
 
-use crate::models::{Action, Event, Model};
+use crate::{
+    backend::ArcBackend,
+    config::Configuration,
+    models::{Event, Model, NoticeMessage},
+};
 use eyre::Result;
 use ratatui::{
     Frame,
@@ -19,7 +23,8 @@ use super::{
 };
 
 pub struct ModelsScreen<'a> {
-    action_tx: mpsc::UnboundedSender<Action>,
+    event_tx: mpsc::UnboundedSender<Event>,
+
     showing: bool,
     models: Vec<Model>,
     idx_map: HashMap<usize, String>,
@@ -35,16 +40,29 @@ pub struct ModelsScreen<'a> {
 }
 
 impl<'a> ModelsScreen<'a> {
-    pub fn new(
-        default_model: String,
-        models: Vec<Model>,
-        action_tx: mpsc::UnboundedSender<Action>,
-    ) -> ModelsScreen<'a> {
-        ModelsScreen {
+    pub async fn new(
+        backend: ArcBackend,
+        event_tx: mpsc::UnboundedSender<Event>,
+    ) -> Result<ModelsScreen<'a>> {
+        let models = backend.list_models().await?;
+        let want_model = Configuration::instance()
+            .backend
+            .default_model
+            .as_deref()
+            .unwrap_or_default();
+
+        let default_model = models
+            .iter()
+            .map(|m| m.id())
+            .find(|model| want_model == *model)
+            .unwrap_or_else(|| models[0].id())
+            .to_string();
+
+        Ok(ModelsScreen {
+            event_tx,
             showing: false,
             models,
             current_model: default_model,
-            action_tx,
             search: InputBox::default().with_title(" Search "),
             current_search: String::new(),
             last_known_width: 0,
@@ -52,7 +70,7 @@ impl<'a> ModelsScreen<'a> {
             state: ListState::default(),
             idx_map: HashMap::new(),
             items: vec![],
-        }
+        })
     }
 
     pub fn current_model(&self) -> &str {
@@ -64,6 +82,18 @@ impl<'a> ModelsScreen<'a> {
             return;
         }
         self.current_model = model.to_string();
+
+        let err = self
+            .event_tx
+            .send(Event::Notice(NoticeMessage::info(format!(
+                "Model changed to \"{}\"",
+                model
+            ))));
+
+        if let Err(err) = err {
+            log::error!("Failed to send event: {}", err);
+        }
+
         self.build_items();
         self.set_cursor_to_selected();
     }
@@ -120,25 +150,25 @@ impl<'a> ModelsScreen<'a> {
         self.state.select(Some(self.items.len() - 1));
     }
 
-    fn request_change_model(&mut self) -> Result<bool> {
+    fn request_change_model(&mut self) -> bool {
         let index = self.state.selected().unwrap_or(0);
         if index >= self.models.len() {
-            return Ok(false);
+            return false;
         }
 
         let model = match self.idx_map.get(&index) {
             Some(idx) => idx,
-            None => return Ok(false),
+            None => return false,
         };
 
         if self.current_model == *model {
-            return Ok(false);
+            return false;
         }
 
-        self.action_tx
-            .send(Action::BackendSetModel(model.to_string()))?;
+        let model = model.to_string();
+        self.set_current_model(&model);
 
-        Ok(true)
+        true
     }
 
     fn set_cursor_to_selected(&mut self) {
@@ -220,7 +250,7 @@ impl<'a> ModelsScreen<'a> {
             }
 
             Event::KeyboardEnter => {
-                self.showing = !self.request_change_model()?;
+                self.showing = !self.request_change_model();
             }
 
             Event::KeyboardCharInput(input) => match input.key {

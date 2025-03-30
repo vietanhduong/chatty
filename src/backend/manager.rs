@@ -7,11 +7,9 @@ use crate::models::{ArcEventTx, BackendPrompt, Model};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use std::collections::HashMap;
-use tokio::sync::RwLock;
 
 #[derive(Default)]
 pub struct Manager {
-    current_model: RwLock<Option<String>>,
     connections: HashMap<String, ArcBackend>, /* Alias - Backend */
     models: HashMap<String, String>,          /* Model ID - Alias  */
 }
@@ -25,14 +23,9 @@ impl Manager {
         }
 
         connection
-            .health_check()
+            .list_models()
             .await
-            .wrap_err(format!("health check backend {}", alias))?;
-
-        connection
-            .list_models(false)
-            .await
-            .wrap_err(format!("listing model backend {}", alias))?
+            .wrap_err(format!("listing models backend {}", alias))?
             .into_iter()
             .for_each(|m| {
                 self.models.insert(m.id().to_string(), alias.clone());
@@ -57,61 +50,23 @@ impl Backend for Manager {
         "Manager"
     }
 
-    async fn health_check(&self) -> Result<()> {
-        for connection in self.connections.values() {
-            connection
-                .health_check()
-                .await
-                .wrap_err(format!("health check backend {}", connection.name()))?;
-        }
-        Ok(())
-    }
-
-    async fn list_models(&self, _force: bool) -> Result<Vec<Model>> {
-        let mut models = self
+    async fn list_models(&self) -> Result<Vec<Model>> {
+        Ok(self
             .models
             .iter()
             .map(|(id, alias)| Model::new(id).with_provider(alias))
-            .collect::<Vec<_>>();
-        // TODO(vietanhduong): Update the models and connections when force is true
-        models.sort_by(|a, b| a.id().cmp(b.id()));
-        Ok(models)
-    }
-
-    async fn current_model(&self) -> Option<String> {
-        let model = self.current_model.read().await;
-        model.clone()
-    }
-
-    async fn set_current_model(&self, model: &str) -> Result<()> {
-        match self.models.keys().filter(|k| k.as_str() == model).next() {
-            Some(model) => {
-                let mut lock = self.current_model.write().await;
-                *lock = Some(model.clone());
-                Ok(())
-            }
-            _ => Err(eyre::eyre!("model not found")),
-        }
+            .collect())
     }
 
     async fn get_completion(&self, prompt: BackendPrompt, event_tx: ArcEventTx) -> Result<()> {
-        if self.current_model().await.is_none() {
-            return Err(eyre::eyre!("no default model is set"));
-        }
-
-        let model = match prompt.model() {
-            Some(model) => model.to_string(),
-            None => self.current_model().await.unwrap(),
-        };
-
-        let connection = match self.get_connection(&model) {
+        let connection = match self.get_connection(prompt.model()) {
             Some(connection) => connection,
             None => {
                 return Err(eyre::eyre!("model is not available"));
             }
         };
         connection
-            .get_completion(prompt.with_model(&model), event_tx)
+            .get_completion(prompt, event_tx)
             .await
             .wrap_err(format!("get completion from backend {}", connection.name()))?;
         Ok(())

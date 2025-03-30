@@ -17,7 +17,6 @@ pub use event::{ArcEventTx, Event, EventTx};
 pub enum Action {
     BackendAbort,
     BackendRequest(BackendPrompt),
-    BackendSetModel(String),
 
     CopyMessages(Vec<Message>),
 }
