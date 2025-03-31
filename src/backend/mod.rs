@@ -1,5 +1,6 @@
 pub mod gemini;
 pub mod manager;
+pub mod mcp;
 pub mod openai;
 pub(crate) mod utils;
 
