@@ -2,7 +2,7 @@
 #[path = "binary_transport_test.rs"]
 mod tests;
 
-use std::{pin::Pin, process::Stdio, sync::Arc};
+use std::{collections::HashMap, pin::Pin, process::Stdio, sync::Arc, time::Duration};
 
 use futures::Stream;
 use mcp_rust_sdk::{
@@ -10,45 +10,81 @@ use mcp_rust_sdk::{
     transport::{Message, Transport},
 };
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
     process::Command,
     sync::Mutex,
 };
 
-pub struct BinaryTransport {
-    stdin: Arc<Mutex<tokio::process::ChildStdin>>,
-    stdout: Arc<Mutex<BufReader<tokio::process::ChildStdout>>>,
-    process: Arc<Mutex<tokio::process::Child>>,
+use crate::config::constants::BINARY_TRANSPORT_TIMEOUT_SECS;
+
+pub struct BinaryTransportBuilder {
+    filename: String,
+    args: Vec<String>,
+    env: HashMap<String, String>,
+    timeout: Option<Duration>,
 }
 
-impl BinaryTransport {
-    pub fn new(path: impl Into<String>, args: &[String]) -> Result<Self, Error> {
-        let mut process = Command::new(path.into())
-            .args(args)
+impl BinaryTransportBuilder {
+    pub fn new(filename: impl Into<String>) -> Self {
+        Self {
+            filename: filename.into(),
+            args: Vec::new(),
+            env: HashMap::new(),
+            timeout: None,
+        }
+    }
+
+    pub fn args(mut self, args: Vec<String>) -> Self {
+        self.args = args;
+        self
+    }
+
+    pub fn env(mut self, key: String, value: String) -> Self {
+        self.env.insert(key, value);
+        self
+    }
+
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    pub fn build(self) -> Result<BinaryTransport, Error> {
+        let mut process = Command::new(self.filename)
+            .args(self.args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?;
 
-        let stdin = Arc::new(Mutex::new(
+        let stdin = Arc::new(Mutex::new(Box::new(
             process
                 .stdin
                 .take()
                 .ok_or_else(|| Error::Io("failed to open stdin".to_string()))?,
-        ));
+        ) as Box<dyn AsyncWrite + Send + Unpin>));
 
-        let stdout = Arc::new(Mutex::new(BufReader::new(
+        let stdout = Arc::new(Mutex::new(BufReader::new(Box::new(
             process
                 .stdout
                 .take()
                 .ok_or_else(|| Error::Io("failed to open stdout".to_string()))?,
-        )));
+        )
+            as Box<dyn AsyncRead + Send + Unpin>)));
 
-        Ok(Self {
+        Ok(BinaryTransport {
             stdin,
             stdout,
-            process: Arc::new(Mutex::new(process)),
+            process: Some(Arc::new(Mutex::new(process))),
+            timeout: self.timeout,
         })
     }
+}
+
+pub struct BinaryTransport {
+    stdin: Arc<Mutex<Box<dyn AsyncWrite + Send + Unpin>>>,
+    stdout: Arc<Mutex<BufReader<Box<dyn AsyncRead + Send + Unpin>>>>,
+    process: Option<Arc<Mutex<tokio::process::Child>>>, // Optional to allow for mocking
+    timeout: Option<Duration>,
 }
 
 #[async_trait::async_trait]
@@ -65,33 +101,47 @@ impl Transport for BinaryTransport {
     /// Receive messages from the transport
     fn receive(&self) -> Pin<Box<dyn Stream<Item = Result<Message, Error>> + Send>> {
         let stdout = Arc::clone(&self.stdout);
-        Box::pin(futures::stream::unfold(stdout, |stdout| async move {
-            let mut line = String::new();
-            let read_line = {
-                let mut reader = stdout.lock().await;
-                reader.read_line(&mut line).await
-            };
+        let timeout = self
+            .timeout
+            .clone()
+            .unwrap_or(Duration::from_secs(BINARY_TRANSPORT_TIMEOUT_SECS));
+        Box::pin(futures::stream::unfold(stdout, move |stdout| {
+            let timeout = timeout;
+            async move {
+                let mut line = String::new();
+                let read_line = {
+                    let mut reader = stdout.lock().await;
+                    tokio::time::timeout(timeout, reader.read_line(&mut line)).await
+                };
 
-            match read_line {
-                Ok(0) => None,
-                Ok(_) => {
-                    let message = match serde_json::from_str::<Response>(&line) {
-                        Ok(resp) => Ok(Message::Response(resp)),
-                        Err(e) => Err(Error::Serialization(format!(
-                            "failed to parse response {}: {}",
-                            line, e
-                        ))),
-                    };
-                    Some((message, stdout))
+                if let Err(e) = read_line {
+                    return Some((Err(Error::Io(e.to_string())), stdout));
                 }
-                Err(e) => Some((Err(Error::Io(e.to_string())), stdout)),
+
+                match read_line.unwrap() {
+                    Ok(0) => None,
+                    Ok(_) => {
+                        let message = match serde_json::from_str::<Response>(&line) {
+                            Ok(resp) => Ok(Message::Response(resp)),
+                            Err(e) => Err(Error::Serialization(format!(
+                                "failed to parse response {}: {}",
+                                line, e
+                            ))),
+                        };
+                        Some((message, stdout))
+                    }
+                    Err(e) => Some((Err(Error::Io(e.to_string())), stdout)),
+                }
             }
         }))
     }
 
     /// Close the transport
     async fn close(&self) -> Result<(), Error> {
-        let mut process = self.process.lock().await;
-        Ok(process.start_kill()?)
+        if let Some(process) = &self.process {
+            let mut process = process.lock().await;
+            process.kill().await?;
+        }
+        Ok(())
     }
 }

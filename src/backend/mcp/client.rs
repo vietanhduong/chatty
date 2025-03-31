@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::models::mcp::Tool;
 
-use super::{MCP, binary_transport};
+use super::{MCP, binary_transport::BinaryTransportBuilder};
 use eyre::{Context, Result};
 
 pub struct Client {
@@ -10,9 +10,8 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new_binary(path: impl Into<String>, args: &[String]) -> Result<Self> {
-        let transport = binary_transport::BinaryTransport::new(path, args)
-            .wrap_err("initializing binary transport")?;
+    pub fn new_binary(builder: BinaryTransportBuilder) -> Result<Self> {
+        let transport = builder.build().wrap_err("initializing binary transport")?;
         let client = mcp_rust_sdk::client::Client::new(Arc::new(transport));
         Ok(Self { inner: client })
     }
@@ -42,8 +41,9 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn test_client() {
-        let client = Client::new_binary("hyper-mcp", &[]).unwrap();
+        let client = Client::new_binary(BinaryTransportBuilder::new("hyper-mcp")).unwrap();
         let tools = client.list_tools().await.unwrap();
         assert!(!tools.is_empty());
+        println!("tools: {:?}", tools);
     }
 }
