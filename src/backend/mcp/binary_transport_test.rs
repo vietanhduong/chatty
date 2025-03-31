@@ -8,14 +8,14 @@ use super::*;
 
 #[tokio::test]
 async fn test_request() {
-    let path = "~/projects/hyper-mcp/target/release/hyper-mcp";
+    let path = "hyper-mcp";
     let transport =
         BinaryTransport::new(path, &["-l".to_string(), "/tmp/mcp.log".to_string()]).unwrap();
 
     println!("prcess id: {:?}", transport.process.lock().await.id());
     transport
         .send(Message::Request(Request::new(
-            "tools/list",
+            "tools/listt",
             None,
             RequestId::String("init_request_1".to_string()),
         )))

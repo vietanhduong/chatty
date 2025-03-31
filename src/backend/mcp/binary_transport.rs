@@ -77,7 +77,10 @@ impl Transport for BinaryTransport {
                 Ok(_) => {
                     let message = match serde_json::from_str::<Response>(&line) {
                         Ok(resp) => Ok(Message::Response(resp)),
-                        Err(e) => Err(Error::Serialization(e.to_string())),
+                        Err(e) => Err(Error::Serialization(format!(
+                            "failed to parse response {}: {}",
+                            line, e
+                        ))),
                     };
                     Some((message, stdout))
                 }
