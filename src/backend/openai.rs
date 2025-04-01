@@ -302,12 +302,15 @@ impl OpenAI {
             }
 
             c.delta.tool_calls.iter().for_each(|e| {
-                let tool = call_tools.entry(e.index).or_insert(e.clone());
-                tool.function
-                    .arguments
-                    .as_mut()
-                    .unwrap()
-                    .push_str(&e.function.arguments.as_deref().unwrap_or(""));
+                if let Some(tool) = call_tools.get_mut(&e.index) {
+                    tool.function
+                        .arguments
+                        .as_mut()
+                        .unwrap()
+                        .push_str(&e.function.arguments.as_deref().unwrap_or(""));
+                    return;
+                }
+                call_tools.insert(e.index, e.clone());
             });
 
             let text = match c.delta.content {
