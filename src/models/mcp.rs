@@ -44,7 +44,7 @@ pub struct Tool {
     pub input_schema: ToolInputSchema,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct ToolInputSchema {
     #[serde(rename = "type")]
     pub type_name: String,

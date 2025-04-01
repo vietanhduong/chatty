@@ -48,7 +48,10 @@ async fn test_get_completion() {
         .map(|l| CompletionResponse {
             id: uuid::Uuid::new_v4().to_string(),
             choices: vec![CompletionChoiceResponse {
-                delta: CompletionDeltaResponse { content: Some(l) },
+                delta: CompletionDeltaResponse {
+                    content: Some(l),
+                    ..Default::default()
+                },
                 finish_reason: None,
             }],
             ..Default::default()
@@ -58,7 +61,10 @@ async fn test_get_completion() {
     lines.push(CompletionResponse {
         id: uuid::Uuid::new_v4().to_string(),
         choices: vec![CompletionChoiceResponse {
-            delta: CompletionDeltaResponse { content: None },
+            delta: CompletionDeltaResponse {
+                content: None,
+                ..Default::default()
+            },
             finish_reason: Some("stop".to_string()),
         }],
         ..Default::default()
