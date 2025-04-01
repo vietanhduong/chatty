@@ -183,8 +183,32 @@ impl Conversation {
         return context;
     }
 
+    /// Calculate the total token count of the conversation.
+    /// This function will calculate the token count based on the context (if any)
+    /// and the messages started from the last context.
     pub fn token_count(&self) -> usize {
-        self.messages.iter().map(|msg| msg.token_count()).sum()
+        let last_message_id = self
+            .contexts
+            .last()
+            .map(|ctx| ctx.last_message_id())
+            .unwrap_or_default();
+        if last_message_id.is_empty() {
+            return self.messages.iter().map(|msg| msg.token_count()).sum();
+        }
+
+        let tokens: usize = self.contexts.iter().map(|ctx| ctx.token_count()).sum();
+        let last_message_index = self
+            .messages
+            .iter()
+            .position(|msg| msg.id() == last_message_id)
+            .unwrap_or(self.messages.len() - 1);
+        tokens
+            + self
+                .messages
+                .iter()
+                .skip(last_message_index + 1)
+                .map(|msg| msg.token_count())
+                .sum::<usize>()
     }
 }
 

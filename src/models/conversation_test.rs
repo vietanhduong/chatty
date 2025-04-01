@@ -82,3 +82,60 @@ pub fn test_conversation_last_message_of() {
     assert_eq!(msg.text(), "Ok");
     assert_eq!(msg.issuer_str(), "user");
 }
+
+#[test]
+pub fn test_conversation_token_count() {
+    Configuration::init(Configuration::default()).expect("failed to init default config");
+
+    let mut convo = Conversation::new_hello();
+
+    convo.append_message(
+        Message::new_user("user", "Hello, world!")
+            .with_id("1")
+            .with_token_count(3),
+    );
+    convo.append_message(
+        Message::new_system("system", "Hello, user!")
+            .with_id("2")
+            .with_token_count(3),
+    );
+    convo.append_message(
+        Message::new_user("user", "How are you?")
+            .with_id("3")
+            .with_token_count(3),
+    );
+
+    convo.append_message(
+        Message::new_system("system", "I am fine, thank you!")
+            .with_id("checkpoint")
+            .with_token_count(5),
+    );
+
+    convo.append_message(
+        Message::new_user("user", "What about you?")
+            .with_id("4")
+            .with_token_count(3),
+    );
+    convo.append_message(
+        Message::new_system("system", "I am fine too!")
+            .with_id("5")
+            .with_token_count(4),
+    );
+    convo.append_message(
+        Message::new_user("user", "Ok")
+            .with_id("6")
+            .with_token_count(1),
+    );
+
+    let token_count = convo.token_count();
+    assert_eq!(token_count, 22);
+
+    convo.append_context(
+        Context::new("checkpoint")
+            .with_content("This is a checkpoint")
+            .with_token_count(4),
+    );
+
+    let token_count = convo.token_count();
+    assert_eq!(token_count, 12);
+}
