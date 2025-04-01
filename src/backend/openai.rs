@@ -15,7 +15,7 @@ use eyre::{Context, Result, bail};
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::{fmt::Display, time};
@@ -222,9 +222,6 @@ impl OpenAI {
             tools,
         };
 
-        // let json_str = serde_json::to_string(&completion_req).wrap_err("serializing req")?;
-        // log::debug!("req: {}", json_str);
-
         let mut req = reqwest::Client::new()
             .post(format!("{}/v1/chat/completions", self.endpoint))
             .header("Content-Type", "application/json")
@@ -249,6 +246,7 @@ impl OpenAI {
         if !res.status().is_success() {
             let http_code = res.status().as_u16();
             let resp = res.text().await.wrap_err("parsing error response")?;
+            log::error!("Error response: {}", resp);
             let err = serde_json::from_str::<ErrorResponse>(&resp)
                 .wrap_err(format!("parsing error response: {}", resp))?;
             let mut err = err.error;
@@ -266,12 +264,13 @@ impl OpenAI {
         let mut message_id = override_id.unwrap_or_default();
         let mut usage: Option<BackendUsage> = None;
 
-        let mut call_tools: HashMap<usize, ToolCallResponse> = HashMap::new();
+        let mut call_tools: BTreeMap<usize, ToolCallResponse> = BTreeMap::new();
 
         let mut current_message = MessageRequest {
             role: "assistant".to_string(),
             content: String::new(),
             tool_call_id: None,
+            ..Default::default()
         };
 
         while let Ok(line) = line_readers.next_line().await {
@@ -352,13 +351,15 @@ impl OpenAI {
             return Ok(());
         }
 
+        let call_tools = call_tools.into_values().collect::<Vec<_>>();
         // If there are any tool calls, we need to send them to the MCP
         // for processing
         let tool_call_messages = self
-            .call_tool(&call_tools.into_values().collect::<Vec<_>>())
+            .call_tool(&call_tools)
             .await
             .wrap_err("calling tools")?;
         let mut messages = messages.to_vec();
+        current_message.tool_calls = call_tools;
         messages.push(current_message);
         messages.extend(tool_call_messages);
 
@@ -399,6 +400,7 @@ impl OpenAI {
                 role: "tool".to_string(),
                 content: result,
                 tool_call_id: call.id.clone(),
+                ..Default::default()
             });
         }
         Ok(results)
@@ -435,6 +437,8 @@ struct MessageRequest {
     content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    tool_calls: Vec<ToolCallResponse>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -483,6 +487,8 @@ struct ToolCallResponse {
     index: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<String>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    tool_type: Option<String>,
     function: FunctionResponse,
 }
 
@@ -542,6 +548,7 @@ impl From<&Message> for MessageRequest {
             },
             content: msg.text().to_string(),
             tool_call_id: None,
+            tool_calls: vec![],
         }
     }
 }
