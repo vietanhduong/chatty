@@ -44,9 +44,9 @@ Create a config file in one of these locations:
 ```toml
 [[backend.connections]]
 enabled = true
-alias = "DeepSeek"
+alias = "OpenAI"
 kind = "openai"
-endpoint = "https://api.deepseek.com"
+endpoint = "https://api.openai.com"
 api_key = "<your_api_key>"
 ```
 

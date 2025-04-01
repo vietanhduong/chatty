@@ -62,6 +62,9 @@ pub struct ContextCompression {
     #[serde(default)]
     pub enabled: bool,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compress_model: Option<String>,
+
     #[serde(default = "max_context_length")]
     pub max_tokens: usize,
 
@@ -222,6 +225,7 @@ impl Default for ContextCompression {
     fn default() -> Self {
         Self {
             enabled: false,
+            compress_model: None,
             max_tokens: MAX_CONTEXT_LENGTH,
             max_messages: MAX_CONVO_LENGTH,
             keep_n_messages: KEEP_N_MEESAGES,

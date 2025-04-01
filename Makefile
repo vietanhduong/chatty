@@ -6,6 +6,7 @@ ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 PROFILE ?= release
 
 TEST_FLAGS ?= -j4
+LINT_FLAGS ?= -Dwarnings
 
 PREFIX ?= /usr
 BINDIR ?= $(PREFIX)/bin
@@ -13,7 +14,7 @@ BINDIR ?= $(PREFIX)/bin
 GIT_SHA ?= $(shell git rev-parse HEAD)
 export GIT_SHA
 
-.PHONY: clean test install build
+.PHONY: clean test install build lint all
 
 ifeq ($(PROFILE),dev)
 target_dir := $(ROOT_DIR)/target/debug
@@ -41,3 +42,7 @@ clean:
 	@echo "Clean complete."
 
 all: install
+
+lint:
+	@echo "Running linter with flags: ${LINT_FLAGS}"
+	@cargo clippy -- ${LINT_FLAGS}

@@ -202,13 +202,14 @@ impl Conversation {
             .iter()
             .position(|msg| msg.id() == last_message_id)
             .unwrap_or(self.messages.len() - 1);
-        tokens
-            + self
-                .messages
-                .iter()
-                .skip(last_message_index + 1)
-                .map(|msg| msg.token_count())
-                .sum::<usize>()
+
+        let message_token = self
+            .messages
+            .iter()
+            .skip(last_message_index + 1)
+            .map(|msg| msg.token_count())
+            .sum::<usize>();
+        tokens + message_token
     }
 }
 

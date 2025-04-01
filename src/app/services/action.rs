@@ -239,7 +239,7 @@ impl ActionService {
         let pending_tasks = self.pending_tasks.clone();
         tokio::spawn(async move {
             let _ = event_tx.send(warn_event!(
-                "Compressing conversation... Please do NOT close the app until this process is finished!"
+                format!("Compressing conversation using model \"{}\"... Please do NOT close the app until this process is finished!", model_id)
             ));
 
             let convo = match storage.get_conversation(&conversation_id).await {

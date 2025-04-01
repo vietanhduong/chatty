@@ -597,7 +597,15 @@ impl<'a> App<'a> {
             .should_compress(&self.app_state.current_convo)
         {
             let convo_id = self.app_state.current_convo.id().to_string();
-            let model = self.models_screen.current_model().to_string();
+            let model = Configuration::instance()
+                .context
+                .compression
+                .compress_model
+                .as_deref()
+                .unwrap_or(self.models_screen.current_model())
+                .to_string();
+
+            self.models_screen.current_model().to_string();
             let _ = self
                 .action_tx
                 .send(Action::CompressConversation(convo_id, model));

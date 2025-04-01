@@ -65,16 +65,16 @@ impl Compressor {
         self
     }
 
-    pub fn should_compress(&self, conversation: &Conversation) -> bool {
-        if !self.enabled || conversation.len() < self.keep_n_messages {
+    pub fn should_compress(&self, convo: &Conversation) -> bool {
+        if !self.enabled || convo.len() < self.keep_n_messages {
             return false;
         }
 
-        let total_tokens = conversation.token_count();
+        let total_tokens = convo.token_count();
         // Calculate the offset of the message, we will ignore the last 2
         // messages (1 user and 1 system) in-case user is asking for
         // regeneration response.
-        let offset = match conversation.last_message() {
+        let offset = match convo.last_message() {
             Some(msg) => {
                 if msg.is_system() {
                     2
@@ -83,8 +83,8 @@ impl Compressor {
                 }
             }
             _ => 0,
-        };
-        let message_count = conversation.messages().len() - offset;
+        } as isize;
+        let message_count = (calculate_convo_len(convo) as isize - offset).max(0) as usize;
         total_tokens > self.max_context_length || message_count > self.max_convo_length
     }
 
@@ -191,4 +191,17 @@ fn message_categorize(message: &Message) -> String {
     } else {
         "User".to_string()
     }
+}
+
+fn calculate_convo_len(convo: &Conversation) -> usize {
+    if convo.contexts().is_empty() {
+        return convo.len();
+    }
+    let last_message_id = convo.contexts().last().unwrap().last_message_id();
+    let last_message_index = convo
+        .messages()
+        .iter()
+        .position(|msg| msg.id() == last_message_id)
+        .unwrap_or(convo.len());
+    convo.len() - last_message_index
 }

@@ -30,6 +30,9 @@ folder_path = ""
 
 [context.compression]
 enabled = false
+# Specify the compression model to use. The model must be available in the
+# backend. If not set, the current conversation model will be used.
+compress_model = ""
 # The maximum number of tokens in the context before trigger compression
 max_tokens = 65_536
 # The maximum number of messages in conversation before trigger compression
