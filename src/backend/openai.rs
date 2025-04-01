@@ -5,6 +5,7 @@ mod tests;
 use crate::backend::utils::context_truncation;
 use crate::backend::{ArcBackend, Backend, TITLE_PROMPT};
 use crate::config::user_agent;
+use crate::models::ToolInputSchema;
 use crate::models::{
     ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
     Model,
@@ -20,12 +21,14 @@ use thiserror::Error;
 use tokio::io::AsyncBufReadExt;
 use tokio_util::io::StreamReader;
 
-#[derive(Debug)]
+use super::mcp;
+
 pub struct OpenAI {
     alias: String,
     endpoint: String,
     api_key: Option<String>,
     timeout: Option<time::Duration>,
+    mcp: Option<Arc<dyn mcp::MCP>>,
 
     want_models: Vec<String>,
 
@@ -109,6 +112,7 @@ impl Backend for OpenAI {
             messages: messages.clone(),
             stream: true,
             max_completion_tokens: self.max_output_tokens,
+            tools: vec![],
         };
 
         let mut req = reqwest::Client::new()
@@ -286,6 +290,11 @@ impl OpenAI {
     pub fn want_models(&self) -> &[String] {
         &self.want_models
     }
+
+    pub fn with_mcp(mut self, mcp: Arc<dyn mcp::MCP>) -> Self {
+        self.mcp = Some(mcp);
+        self
+    }
 }
 
 impl Default for OpenAI {
@@ -297,53 +306,70 @@ impl Default for OpenAI {
             api_key: None,
             timeout: None,
             want_models: vec![],
+            mcp: None,
         }
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct ModelResponse {
     id: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct ModelListResponse {
     data: Vec<ModelResponse>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct MessageRequest {
     role: String,
     content: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionRequest {
     model: String,
     messages: Vec<MessageRequest>,
     stream: bool,
     max_completion_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolRequest>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
+struct ToolRequest {
+    #[serde(rename = "type")]
+    tool_type: String,
+    function: FunctionRequest,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
+struct FunctionRequest {
+    name: String,
+    description: String,
+    parameters: Option<ToolInputSchema>,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionDeltaResponse {
     content: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionChoiceResponse {
     delta: CompletionDeltaResponse,
     finish_reason: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionResponse {
     id: String,
     choices: Vec<CompletionChoiceResponse>,
     usage: Option<CompletionUsageResponse>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionUsageResponse {
     prompt_tokens: usize,
     completion_tokens: usize,

@@ -15,7 +15,7 @@ use tokio::{
     sync::Mutex,
 };
 
-use crate::config::constants::BINARY_TRANSPORT_TIMEOUT_SECS;
+use crate::config::{BinaryConfig, constants::BINARY_TRANSPORT_TIMEOUT_SECS};
 
 pub struct BinaryTransportBuilder {
     filename: String,
@@ -143,5 +143,20 @@ impl Transport for BinaryTransport {
             process.kill().await?;
         }
         Ok(())
+    }
+}
+
+impl From<&BinaryConfig> for BinaryTransportBuilder {
+    fn from(config: &BinaryConfig) -> Self {
+        let mut builder = BinaryTransportBuilder::new(&config.filename);
+        builder = builder.args(config.args.clone());
+
+        for (key, value) in &config.env {
+            builder = builder.env(key.clone(), value.clone());
+        }
+        if let Some(timeout) = config.timeout_secs {
+            builder = builder.timeout(Duration::from_secs(timeout as u64));
+        }
+        builder
     }
 }

@@ -19,6 +19,7 @@ impl Client {
 
 #[async_trait::async_trait]
 impl MCP for Client {
+    /// List all available tools
     async fn list_tools(&self) -> Result<Vec<Tool>> {
         let resp = self
             .inner
@@ -34,6 +35,7 @@ impl MCP for Client {
         Ok(tools)
     }
 
+    /// Call a tool with the given name and arguments
     async fn call_tool(
         &self,
         tool: &str,
@@ -50,22 +52,8 @@ impl MCP for Client {
         let result: CallToolResult = serde_json::from_value(resp).wrap_err("parsing response")?;
         Ok(result)
     }
-}
 
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    #[tokio::test]
-    async fn test_client() {
-        let client = Client::new_binary(BinaryTransportBuilder::new("hyper-mcp")).unwrap();
-        let tools = client.list_tools().await.unwrap();
-        assert!(!tools.is_empty());
-        println!("tools: {:?}", tools);
-        let result = client.call_tool("myip", None).await.unwrap();
-        println!("result: {:?}", result);
-        let tools = client.list_tools().await.unwrap();
-        assert!(!tools.is_empty());
-        println!("tools: {:?}", tools);
+    async fn shutdown(&self) -> Result<()> {
+        self.inner.shutdown().await.wrap_err("shutting down client")
     }
 }

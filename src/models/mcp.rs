@@ -1,6 +1,6 @@
 use rpc_router::RpcParams;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 #[derive(Deserialize, Serialize, RpcParams, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -35,7 +35,7 @@ pub struct ResourceContent {
     pub blob: Option<String>, // For binary resources (base64 encoded)
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Tool {
     pub name: String,
@@ -44,7 +44,7 @@ pub struct Tool {
     pub input_schema: ToolInputSchema,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ToolInputSchema {
     #[serde(rename = "type")]
     pub type_name: String,
@@ -52,7 +52,7 @@ pub struct ToolInputSchema {
     pub required: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ToolInputSchemaProperty {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "type")]
@@ -62,4 +62,20 @@ pub struct ToolInputSchemaProperty {
     pub enum_values: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+impl Hash for Tool {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl Eq for Tool {
+    fn assert_receiver_is_total_eq(&self) {}
+}
+
+impl PartialEq for Tool {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
 }

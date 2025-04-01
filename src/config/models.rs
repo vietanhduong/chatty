@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 
@@ -133,6 +135,30 @@ pub struct BackendConfig {
 
     #[serde(default)]
     pub connections: Vec<BackendConnection>,
+
+    #[serde(default)]
+    pub mcp_servers: Vec<MCPConfig>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum MCPConfig {
+    #[serde(rename = "binary")]
+    Binary(BinaryConfig),
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct BinaryConfig {
+    #[serde(default)]
+    pub filename: String,
+
+    #[serde(default)]
+    pub args: Vec<String>,
+
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+
+    #[serde(default)]
+    pub timeout_secs: Option<u16>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -217,6 +243,7 @@ impl Default for BackendConfig {
             default_model: None,
             connections: vec![],
             timeout_secs: None,
+            mcp_servers: vec![],
         }
     }
 }

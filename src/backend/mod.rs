@@ -6,6 +6,7 @@ pub(crate) mod utils;
 
 pub use gemini::Gemini;
 pub use manager::Manager;
+pub use mcp::MCP;
 pub use openai::OpenAI;
 
 #[cfg(test)]
@@ -45,6 +46,20 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
         eyre::bail!("No backend connections configured");
     }
 
+    // Init MCP manager
+    let mcp_manager = mcp::Manager::new()
+        .from(&config.mcp_servers)
+        .await
+        .wrap_err("creating mcp manager")?;
+
+    let avail_tools = mcp_manager.list_tools().await.wrap_err("listing tools")?;
+    let mcp_manager = if !avail_tools.is_empty() {
+        log::debug!("Available tools: {:?}", avail_tools);
+        Some(Arc::new(mcp_manager))
+    } else {
+        None
+    };
+
     let mut manager = manager::Manager::default();
     let default_timeout = config.timeout_secs;
     for connection in connections {
@@ -55,7 +70,12 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
                     connection = connection
                         .with_timeout(Duration::from_secs(default_timeout.unwrap() as u64));
                 }
-                let openai: OpenAI = (&connection).into();
+
+                let mut openai: OpenAI = (&connection).into();
+                if let Some(mcp_manager) = mcp_manager.as_ref() {
+                    openai = openai.with_mcp(mcp_manager.clone());
+                }
+
                 Arc::new(openai)
             }
             BackendKind::Gemini => {
