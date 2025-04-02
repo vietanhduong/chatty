@@ -7,12 +7,8 @@ use tokio::time::{sleep, timeout};
 
 use super::*;
 
-impl BinaryTransport {
-    fn mock(
-        read_data: impl Into<String>,
-        timeout: Option<Duration>,
-        delay: Option<Duration>,
-    ) -> Self {
+impl Binary {
+    fn mock(read_data: impl Into<String>, delay: Option<Duration>) -> Self {
         let mock_stream = MockStream::new(read_data.into().as_bytes())
             .with_delay(delay.unwrap_or(Duration::from_millis(0)));
         let stdout = Arc::new(Mutex::new(BufReader::new(
@@ -25,7 +21,6 @@ impl BinaryTransport {
             stdin,
             stdout,
             process: None,
-            timeout,
         }
     }
 }
@@ -47,7 +42,7 @@ async fn test_normal_case() {
     ))
     .expect("serialize response");
 
-    let transport = BinaryTransport::mock(json_str, None, None);
+    let transport = Binary::mock(json_str, None);
 
     transport
         .send(Message::Request(Request::new(
@@ -87,11 +82,7 @@ async fn test_request_timeout() {
     ))
     .expect("serialize response");
 
-    let transport = BinaryTransport::mock(
-        json_str,
-        Some(Duration::from_millis(500)),
-        Some(Duration::from_secs(2)),
-    );
+    let transport = Binary::mock(json_str, Some(Duration::from_secs(2)));
 
     transport
         .send(Message::Request(Request::new(

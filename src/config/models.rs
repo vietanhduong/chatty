@@ -156,9 +156,6 @@ pub struct BinaryConfig {
 
     #[serde(default)]
     pub env: HashMap<String, String>,
-
-    #[serde(default)]
-    pub timeout_secs: Option<u16>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

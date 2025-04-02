@@ -1,6 +1,6 @@
-mod binary_transport;
 pub mod client;
 pub mod manager;
+mod transport;
 
 pub use manager::Manager;
 

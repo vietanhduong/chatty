@@ -1,64 +1,22 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::models::mcp::{CallToolResult, Tool};
-
-use super::{MCP, binary_transport::BinaryTransportBuilder};
-use eyre::{Context, Result};
-use futures::StreamExt;
-use mcp_rust_sdk::{
-    Request,
-    protocol::RequestId,
-    transport::{Message, Transport},
+use crate::{
+    config::BinaryConfig,
+    models::mcp::{CallToolResult, Tool},
 };
 
+use super::{MCP, transport::Binary};
+use eyre::{Context, Result};
+
 pub struct Client {
-    transport: Arc<dyn Transport>,
-    request_counter: Arc<tokio::sync::RwLock<i64>>,
+    inner: mcp_rust_sdk::client::Client,
 }
 
 impl Client {
-    pub fn new_binary(builder: BinaryTransportBuilder) -> Result<Self> {
-        let transport = builder.build().wrap_err("initializing binary transport")?;
-        Ok(Self {
-            transport: Arc::new(transport),
-            request_counter: Arc::new(tokio::sync::RwLock::new(0)),
-        })
-    }
-
-    /// Send a request to the server and wait for the response.
-    ///
-    /// This method will block until a response is received from the server.
-    /// If the server returns an error, it will be propagated as an `Error`.
-    pub async fn request(
-        &self,
-        method: &str,
-        params: Option<serde_json::Value>,
-    ) -> Result<serde_json::Value> {
-        let mut counter = self.request_counter.write().await;
-        *counter += 1;
-        let id = RequestId::Number(*counter);
-
-        let request = Request::new(method, params, id.clone());
-        self.transport.send(Message::Request(request)).await?;
-
-        let mut stream = self.transport.receive();
-        // Wait for matching response
-        while let Some(resp) = stream.next().await {
-            match resp {
-                Ok(Message::Response(resp)) => {
-                    if resp.id != id {
-                        return Err(eyre::eyre!("response id mismatch"));
-                    }
-                    if resp.error.is_some() {
-                        return Err(eyre::eyre!("server error: {:?}", resp.error));
-                    }
-                    return Ok(resp.result.unwrap_or_default());
-                }
-                Ok(_) => continue,
-                Err(e) => return Err(e.into()),
-            }
-        }
-        eyre::bail!("no response received")
+    pub fn new_binary(config: &BinaryConfig) -> Result<Self> {
+        let transport = Arc::new(Binary::new(config).wrap_err("initializing binary transport")?);
+        let inner = mcp_rust_sdk::client::Client::new(transport.clone());
+        Ok(Self { inner })
     }
 }
 
@@ -67,6 +25,7 @@ impl MCP for Client {
     /// List all available tools
     async fn list_tools(&self) -> Result<Vec<Tool>> {
         let resp = self
+            .inner
             .request("tools/list", None)
             .await
             .wrap_err("requesting tools")?;
@@ -86,6 +45,7 @@ impl MCP for Client {
         args: Option<serde_json::Value>,
     ) -> Result<CallToolResult> {
         let resp = self
+            .inner
             .request(
                 "tools/call",
                 Some(serde_json::json!({ "name": tool, "arguments": args })),
@@ -97,10 +57,7 @@ impl MCP for Client {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        self.transport
-            .close()
-            .await
-            .wrap_err("shutting down client")
+        self.inner.shutdown().await.wrap_err("shutting down client")
     }
 }
 
@@ -109,8 +66,12 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn test_client() {
-        let builder = BinaryTransportBuilder::new("hyper-mcp");
-        let client = Client::new_binary(builder).unwrap();
+        let config = BinaryConfig {
+            filename: "hyper-mcp".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+        };
+        let client = Client::new_binary(&config).unwrap();
         let resp = client.call_tool("myip", None).await.unwrap();
         println!(
             "Response: {:?}",
