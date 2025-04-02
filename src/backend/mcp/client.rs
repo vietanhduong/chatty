@@ -1,7 +1,12 @@
+#[cfg(test)]
+#[path = "client_test.rs"]
+mod tests;
+
 use super::{CallToolResult, Tool};
 use super::{MCP, transport::Binary};
 use crate::config::{BinaryConfig, MCPConfig, WebSocketConfig};
 use eyre::{Context, Result};
+use mcp_rust_sdk::transport::Transport;
 use mcp_rust_sdk::transport::websocket::WebSocketTransport;
 use std::{collections::HashMap, sync::Arc};
 
@@ -20,6 +25,11 @@ impl Client {
         let transport = Arc::new(WebSocketTransport::new(&config.url).await?);
         let inner = mcp_rust_sdk::client::Client::new(transport);
         Ok(Self { inner })
+    }
+
+    pub fn new_with_transport(transport: Arc<dyn Transport>) -> Self {
+        let inner = mcp_rust_sdk::client::Client::new(transport);
+        Self { inner }
     }
 
     pub async fn new(config: &MCPConfig) -> Result<Self> {
@@ -68,26 +78,5 @@ impl MCP for Client {
 
     async fn shutdown(&self) -> Result<()> {
         self.inner.shutdown().await.wrap_err("shutting down client")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[tokio::test]
-    async fn test_client() {
-        let config = BinaryConfig {
-            filename: "hyper-mcp".to_string(),
-            args: vec![],
-            env: HashMap::new(),
-        };
-        let client = Client::new_binary(&config).unwrap();
-        let resp = client.call_tool("myip", None).await.unwrap();
-        println!(
-            "Response: {:?}",
-            serde_json::to_string(&resp.content).unwrap()
-        );
-        let tools = client.list_tools().await.unwrap();
-        println!("Tools: {:?}", tools);
     }
 }

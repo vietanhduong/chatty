@@ -8,7 +8,7 @@ use tokio::time::{sleep, timeout};
 use super::*;
 
 impl Binary {
-    fn mock(read_data: impl Into<String>, delay: Option<Duration>) -> Self {
+    pub fn mock(read_data: impl Into<String>, delay: Option<Duration>) -> Self {
         let mut mock_stream = MockStream::new(read_data.into().as_bytes());
         if let Some(d) = delay {
             mock_stream = mock_stream.with_delay(d);
