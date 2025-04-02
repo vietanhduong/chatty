@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[path = "manager_test.rs"]
+mod tests;
+
 use super::{CallToolResult, Tool};
 use super::{MCP, client::Client};
 use crate::config::MCPConfig;
@@ -18,12 +22,12 @@ impl Manager {
     pub async fn from(mut self, servers: &[MCPConfig]) -> Result<Self> {
         for server in servers {
             let client = Client::new(server).await.wrap_err("creating client")?;
-            self.add_connection(Arc::new(client)).await?;
+            self.add_server(Arc::new(client)).await?;
         }
         Ok(self)
     }
 
-    pub async fn add_connection(&mut self, client: Arc<dyn MCP>) -> Result<()> {
+    pub async fn add_server(&mut self, client: Arc<dyn MCP>) -> Result<()> {
         client
             .list_tools()
             .await
