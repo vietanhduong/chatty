@@ -37,7 +37,7 @@ impl Manager {
                 if let Some((k, _)) = self.tools.get_key_value(&tool) {
                     let k = k.clone();
                     // If the key already exists, we will compare which one has longer
-                    // description and keep the one with longer description
+                    // description and keep the one with longest description
                     if k.description.as_deref().unwrap_or_default().len()
                         > tool.description.as_deref().unwrap_or_default().len()
                     {

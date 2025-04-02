@@ -63,6 +63,8 @@ default_model = ""
 
 ## Backend MCP servers
 ## Support for multiple servers. Only 'binary' and 'websocket' are supported
+## NOTES:
+## - If tool name is conflicted, the longest one will be used.
 #[[backend.mcp_servers]]
 #binary.filename = "" # Path to the binary file
 #binary.args = [] # Arguments to pass to the binary
