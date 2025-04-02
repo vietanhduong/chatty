@@ -158,6 +158,10 @@ impl Storage for Sqlite {
     }
 
     async fn upsert_conversation(&self, conversation: Conversation) -> Result<()> {
+        if conversation.id().is_empty() {
+            bail!("conversation id is empty");
+        }
+
         self.conn
             .call(move |conn| {
                 let tx = conn.transaction()?;

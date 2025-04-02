@@ -2,6 +2,7 @@
 #[path = "openai_test.rs"]
 mod tests;
 
+use crate::backend::mcp::{Tool, ToolInputSchema};
 use crate::backend::utils::context_truncation;
 use crate::backend::{ArcBackend, Backend, TITLE_PROMPT};
 use crate::config::user_agent;
@@ -13,6 +14,8 @@ use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::{fmt::Display, time};
@@ -20,12 +23,14 @@ use thiserror::Error;
 use tokio::io::AsyncBufReadExt;
 use tokio_util::io::StreamReader;
 
-#[derive(Debug)]
+use super::mcp;
+
 pub struct OpenAI {
     alias: String,
     endpoint: String,
     api_key: Option<String>,
     timeout: Option<time::Duration>,
+    mcp: Option<Arc<dyn mcp::MCP>>,
 
     want_models: Vec<String>,
 
@@ -104,115 +109,8 @@ impl Backend for OpenAI {
             .map(|m| MessageRequest::from(&m))
             .collect::<Vec<_>>();
 
-        let completion_req = CompletionRequest {
-            model: prompt.model().to_string(),
-            messages: messages.clone(),
-            stream: true,
-            max_completion_tokens: self.max_output_tokens,
-        };
-
-        let mut req = reqwest::Client::new()
-            .post(format!("{}/v1/chat/completions", self.endpoint))
-            .header("Content-Type", "application/json")
-            .header("User-Agent", user_agent());
-
-        if let Some(timeout) = self.timeout {
-            req = req.timeout(timeout);
-        }
-
-        if let Some(token) = &self.api_key {
-            req = req.bearer_auth(token);
-        }
-
-        log::trace!("Sending completion request: {:?}", completion_req);
-
-        let res = req
-            .json(&completion_req)
-            .send()
-            .await
-            .wrap_err("sending completion request")?;
-
-        if !res.status().is_success() {
-            let http_code = res.status().as_u16();
-            let resp = res.text().await.wrap_err("parsing error response")?;
-            let err = serde_json::from_str::<ErrorResponse>(&resp)
-                .wrap_err(format!("parsing error response: {}", resp))?;
-            let mut err = err.error;
-            err.http_code = http_code;
-            return Err(err.into());
-        }
-
-        let stream = res.bytes_stream().map_err(|e| {
-            let err_msg = e.to_string();
-            return std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg);
-        });
-
-        let mut line_readers = StreamReader::new(stream).lines();
-
-        let mut message_id = String::new();
-        let mut usage: Option<BackendUsage> = None;
-
-        while let Ok(line) = line_readers.next_line().await {
-            if line.is_none() {
-                break;
-            }
-
-            let mut line = line.unwrap().trim().to_string();
-            log::trace!("streaming response: {}", line);
-            if !line.starts_with("data: ") {
-                continue;
-            }
-
-            line = line[6..].to_string();
-            if line == "[DONE]" {
-                break;
-            }
-
-            let data = serde_json::from_str::<CompletionResponse>(&line)
-                .wrap_err(format!("parsing completion response line: {}", line))?;
-
-            let c = match data.choices.get(0) {
-                Some(c) => c,
-                None => continue,
-            };
-
-            if message_id.is_empty() {
-                message_id = data.id;
-            }
-
-            let text = match c.delta.content {
-                Some(ref text) => text.deref().to_string(),
-                None => continue,
-            };
-
-            let msg = BackendResponse {
-                id: message_id.clone(),
-                model: prompt.model().to_string(),
-                text,
-                done: false,
-                init_conversation,
-                usage: None,
-            };
-            event_tx.send(Event::BackendPromptResponse(msg)).await?;
-
-            if let Some(usage_data) = data.usage {
-                usage = Some(BackendUsage {
-                    prompt_tokens: usage_data.prompt_tokens,
-                    completion_tokens: usage_data.completion_tokens,
-                    total_tokens: usage_data.total_tokens,
-                });
-            }
-        }
-
-        let msg = BackendResponse {
-            id: message_id,
-            model: prompt.model().to_string(),
-            text: String::new(),
-            done: true,
-            init_conversation,
-            usage,
-        };
-        event_tx.send(Event::BackendPromptResponse(msg)).await?;
+        self.chat_completion(None, init_conversation, prompt.model(), &messages, event_tx)
+            .await?;
         Ok(())
     }
 }
@@ -286,6 +184,230 @@ impl OpenAI {
     pub fn want_models(&self) -> &[String] {
         &self.want_models
     }
+
+    pub fn with_mcp(mut self, mcp: Arc<dyn mcp::MCP>) -> Self {
+        self.mcp = Some(mcp);
+        self
+    }
+
+    async fn chat_completion(
+        &self,
+        override_id: Option<String>,
+        init_conversation: bool,
+        model: &str,
+        messages: &[MessageRequest],
+        event_tx: ArcEventTx,
+    ) -> Result<()> {
+        let mut tools: Vec<ToolRequest> = vec![];
+        if let Some(mcp) = self.mcp.as_ref() {
+            tools = mcp
+                .list_tools()
+                .await
+                .wrap_err("listing tools")?
+                .into_iter()
+                .map(ToolRequest::from)
+                .collect();
+        }
+
+        let completion_req = CompletionRequest {
+            model: model.to_string(),
+            messages: messages.to_vec(),
+            stream: true,
+            max_completion_tokens: self.max_output_tokens,
+            tool_choice: if !tools.is_empty() {
+                Some("auto".to_string())
+            } else {
+                None
+            },
+            tools,
+        };
+
+        let mut req = reqwest::Client::new()
+            .post(format!("{}/v1/chat/completions", self.endpoint))
+            .header("Content-Type", "application/json")
+            .header("User-Agent", user_agent());
+
+        if let Some(timeout) = self.timeout {
+            req = req.timeout(timeout);
+        }
+
+        if let Some(token) = &self.api_key {
+            req = req.bearer_auth(token);
+        }
+
+        log::trace!("Sending completion request: {:?}", completion_req);
+
+        let res = req
+            .json(&completion_req)
+            .send()
+            .await
+            .wrap_err("sending completion request")?;
+
+        if !res.status().is_success() {
+            let http_code = res.status().as_u16();
+            let resp = res.text().await.wrap_err("parsing error response")?;
+            log::error!("Error response: {}", resp);
+            let err = serde_json::from_str::<ErrorResponse>(&resp)
+                .wrap_err(format!("parsing error response: {}", resp))?;
+            let mut err = err.error;
+            err.http_code = http_code;
+            return Err(err.into());
+        }
+
+        let stream = res.bytes_stream().map_err(|e| {
+            let err_msg = e.to_string();
+            return std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg);
+        });
+
+        let mut line_readers = StreamReader::new(stream).lines();
+
+        let mut message_id = override_id.unwrap_or_default();
+        let mut usage: Option<BackendUsage> = None;
+
+        let mut call_tools: BTreeMap<usize, ToolCallResponse> = BTreeMap::new();
+
+        let mut current_message = MessageRequest {
+            role: "assistant".to_string(),
+            content: String::new(),
+            tool_call_id: None,
+            ..Default::default()
+        };
+
+        while let Ok(line) = line_readers.next_line().await {
+            if line.is_none() {
+                break;
+            }
+
+            let mut line = line.unwrap().trim().to_string();
+            log::trace!("streaming response: {}", line);
+            if !line.starts_with("data: ") {
+                continue;
+            }
+
+            line = line[6..].to_string();
+            if line == "[DONE]" {
+                break;
+            }
+
+            let data = serde_json::from_str::<CompletionResponse>(&line)
+                .wrap_err(format!("parsing completion response line: {}", line))?;
+
+            let c = match data.choices.get(0) {
+                Some(c) => c,
+                None => continue,
+            };
+
+            if message_id.is_empty() {
+                message_id = data.id;
+            }
+
+            c.delta.tool_calls.iter().for_each(|e| {
+                if let Some(tool) = call_tools.get_mut(&e.index) {
+                    tool.function
+                        .arguments
+                        .as_mut()
+                        .unwrap()
+                        .push_str(&e.function.arguments.as_deref().unwrap_or(""));
+                    return;
+                }
+                call_tools.insert(e.index, e.clone());
+            });
+
+            let text = match c.delta.content {
+                Some(ref text) => text.deref().to_string(),
+                None => continue,
+            };
+
+            current_message.content.push_str(&text);
+
+            let msg = BackendResponse {
+                id: message_id.clone(),
+                model: model.to_string(),
+                text,
+                done: false,
+                init_conversation,
+                usage: None,
+            };
+            event_tx.send(Event::BackendPromptResponse(msg)).await?;
+
+            if call_tools.is_empty() {
+                if let Some(usage_data) = data.usage {
+                    usage = Some(BackendUsage {
+                        prompt_tokens: usage_data.prompt_tokens,
+                        completion_tokens: usage_data.completion_tokens,
+                        total_tokens: usage_data.total_tokens,
+                    });
+                }
+            }
+        }
+
+        if call_tools.is_empty() {
+            let msg = BackendResponse {
+                id: message_id,
+                model: model.to_string(),
+                text: String::new(),
+                done: true,
+                init_conversation,
+                usage,
+            };
+            event_tx.send(Event::BackendPromptResponse(msg)).await?;
+            return Ok(());
+        }
+
+        let call_tools = call_tools.into_values().collect::<Vec<_>>();
+        // If there are any tool calls, we need to send them to the MCP
+        // for processing
+        let tool_call_messages = self
+            .call_tool(&call_tools)
+            .await
+            .wrap_err("calling tools")?;
+        let mut messages = messages.to_vec();
+        current_message.tool_calls = call_tools;
+        messages.push(current_message);
+        messages.extend(tool_call_messages);
+
+        Box::pin(self.chat_completion(
+            Some(message_id),
+            init_conversation,
+            model,
+            &messages,
+            event_tx,
+        ))
+        .await?;
+        Ok(())
+    }
+
+    async fn call_tool(&self, calls: &[ToolCallResponse]) -> Result<Vec<MessageRequest>> {
+        if self.mcp.is_none() {
+            bail!("MCP is not set");
+        }
+        let mut results = vec![];
+        for call in calls {
+            let args = match call.function.arguments.as_ref() {
+                Some(args) => Some(
+                    serde_json::from_str::<Value>(args).wrap_err("parsing tool call arguments")?,
+                ),
+                _ => None,
+            };
+            let resp = self
+                .mcp
+                .as_ref()
+                .unwrap()
+                .clone()
+                .call_tool(call.function.name.as_ref().unwrap(), args)
+                .await
+                .wrap_err("calling tool")?;
+            let result =
+                serde_json::to_string(&resp.content).wrap_err("serializing tool result")?;
+            results.push(MessageRequest {
+                role: "tool".to_string(),
+                content: result,
+                tool_call_id: call.id.clone(),
+                ..Default::default()
+            });
+        }
+        Ok(results)
+    }
 }
 
 impl Default for OpenAI {
@@ -297,53 +419,98 @@ impl Default for OpenAI {
             api_key: None,
             timeout: None,
             want_models: vec![],
+            mcp: None,
         }
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct ModelResponse {
     id: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct ModelListResponse {
     data: Vec<ModelResponse>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct MessageRequest {
     role: String,
     content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    tool_calls: Vec<ToolCallResponse>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionRequest {
     model: String,
     messages: Vec<MessageRequest>,
     stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     max_completion_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolRequest>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
+struct ToolRequest {
+    #[serde(rename = "type")]
+    tool_type: String,
+    function: FunctionRequest,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
+struct FunctionRequest {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    parameters: ToolInputSchema,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionDeltaResponse {
     content: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    tool_calls: Vec<ToolCallResponse>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionChoiceResponse {
     delta: CompletionDeltaResponse,
     finish_reason: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
+struct ToolCallResponse {
+    index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    tool_type: Option<String>,
+    function: FunctionResponse,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
+struct FunctionResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    arguments: Option<String>,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionResponse {
     id: String,
     choices: Vec<CompletionChoiceResponse>,
     usage: Option<CompletionUsageResponse>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 struct CompletionUsageResponse {
     prompt_tokens: usize,
     completion_tokens: usize,
@@ -383,6 +550,21 @@ impl From<&Message> for MessageRequest {
                 "user".to_string()
             },
             content: msg.text().to_string(),
+            tool_call_id: None,
+            tool_calls: vec![],
+        }
+    }
+}
+
+impl From<Tool> for ToolRequest {
+    fn from(tool: Tool) -> Self {
+        Self {
+            tool_type: "function".to_string(),
+            function: FunctionRequest {
+                name: tool.name.clone(),
+                description: tool.description.clone(),
+                parameters: tool.input_schema.clone(),
+            },
         }
     }
 }

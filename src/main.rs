@@ -101,6 +101,7 @@ async fn main() -> Result<()> {
         .await
         .wrap_err("getting conversations")?
         .into_iter()
+        .filter(|(id, convo)| id != "" && convo.messages().len() > 0)
         .map(|(id, convo)| {
             let convo = Conversation::default()
                 .with_id(&id)
@@ -110,6 +111,7 @@ async fn main() -> Result<()> {
             (id, convo)
         })
         .collect::<HashMap<_, _>>();
+    verbose!("[+] Fetched {} conversations", conversations.len());
 
     let mut app = App::new(
         theme,

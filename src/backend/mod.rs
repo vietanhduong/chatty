@@ -1,10 +1,12 @@
 pub mod gemini;
 pub mod manager;
+pub mod mcp;
 pub mod openai;
 pub(crate) mod utils;
 
 pub use gemini::Gemini;
 pub use manager::Manager;
+pub use mcp::MCP;
 pub use openai::OpenAI;
 
 #[cfg(test)]
@@ -44,6 +46,23 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
         eyre::bail!("No backend connections configured");
     }
 
+    // Init MCP manager
+    if !config.mcp_servers.is_empty() {
+        verbose!("  [+] Initializing MCP manager");
+    }
+    let mcp_manager = mcp::Manager::new()
+        .from(&config.mcp_servers)
+        .await
+        .wrap_err("creating mcp manager")?;
+
+    let avail_tools = mcp_manager.list_tools().await.wrap_err("listing tools")?;
+    let mcp_manager = if !avail_tools.is_empty() {
+        verbose!("  [+] MCP available {} tools", avail_tools.len(),);
+        Some(Arc::new(mcp_manager))
+    } else {
+        None
+    };
+
     let mut manager = manager::Manager::default();
     let default_timeout = config.timeout_secs;
     for connection in connections {
@@ -54,7 +73,12 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
                     connection = connection
                         .with_timeout(Duration::from_secs(default_timeout.unwrap() as u64));
                 }
-                let openai: OpenAI = (&connection).into();
+
+                let mut openai: OpenAI = (&connection).into();
+                if let Some(mcp_manager) = mcp_manager.as_ref() {
+                    openai = openai.with_mcp(mcp_manager.clone());
+                }
+
                 Arc::new(openai)
             }
             BackendKind::Gemini => {
@@ -63,7 +87,10 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
                     connection = connection
                         .with_timeout(Duration::from_secs(default_timeout.unwrap() as u64));
                 }
-                let gemini: Gemini = (&connection).into();
+                let mut gemini: Gemini = (&connection).into();
+                if let Some(mcp_manager) = mcp_manager.as_ref() {
+                    gemini = gemini.with_mcp(mcp_manager.clone());
+                }
                 Arc::new(gemini)
             }
         };

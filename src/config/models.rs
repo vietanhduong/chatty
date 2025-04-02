@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use eyre::Result;
 use serde::{Deserialize, Serialize};
 
@@ -133,6 +135,33 @@ pub struct BackendConfig {
 
     #[serde(default)]
     pub connections: Vec<BackendConnection>,
+
+    #[serde(default)]
+    pub mcp_servers: Vec<MCPConfig>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum MCPConfig {
+    #[serde(rename = "binary")]
+    Binary(BinaryConfig),
+    #[serde(rename = "websocket")]
+    WebSocket(WebSocketConfig),
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct BinaryConfig {
+    pub filename: String,
+
+    #[serde(default)]
+    pub args: Vec<String>,
+
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct WebSocketConfig {
+    pub url: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -217,6 +246,7 @@ impl Default for BackendConfig {
             default_model: None,
             connections: vec![],
             timeout_secs: None,
+            mcp_servers: vec![],
         }
     }
 }
