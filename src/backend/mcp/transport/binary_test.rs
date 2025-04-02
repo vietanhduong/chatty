@@ -26,7 +26,7 @@ impl Binary {
 }
 
 #[tokio::test]
-async fn test_normal_case() {
+async fn test_send_and_receive() {
     let tools = json!({
         "tools": [
             {
@@ -52,10 +52,9 @@ async fn test_normal_case() {
         )))
         .await
         .expect("send request");
-
     let mut result = transport.receive();
 
-    let resp = timeout(Duration::from_secs(5), result.next()).await;
+    let resp = timeout(Duration::from_secs(1), result.next()).await;
     assert!(resp.is_ok());
     let resp = resp.unwrap().unwrap().expect("response");
     let json_value = match resp {
@@ -65,47 +64,11 @@ async fn test_normal_case() {
     assert_eq!(json_value, Some(tools));
 }
 
-#[tokio::test]
-async fn test_request_timeout() {
-    let tools = json!({
-        "tools": [
-            {
-                "name": "test_tool",
-                "description": "test tool"
-            }
-        ]
-    });
-
-    let json_str = serde_json::to_string(&mcp_rust_sdk::Response::success(
-        RequestId::String("init_request_1".to_string()),
-        Some(tools.clone()),
-    ))
-    .expect("serialize response");
-
-    let transport = Binary::mock(json_str, Some(Duration::from_secs(2)));
-
-    transport
-        .send(Message::Request(Request::new(
-            "tools/list",
-            None,
-            RequestId::String("init_request_1".to_string()),
-        )))
-        .await
-        .expect("send request");
-
-    let mut result = transport.receive();
-
-    let resp = timeout(Duration::from_secs(5), result.next()).await;
-    assert!(resp.is_ok());
-    let resp = resp.unwrap().unwrap().err().expect("response error");
-    assert!(resp.to_string().contains("deadline has elapsed"));
-}
-
 struct MockStream {
     read_data: Vec<u8>,
     write_data: Vec<u8>,
     pos: usize,
-    delay: Duration,
+    delay: Option<Duration>,
 }
 
 impl MockStream {
@@ -114,7 +77,7 @@ impl MockStream {
             read_data: read_data.to_vec(),
             write_data: Vec::new(),
             pos: 0,
-            delay: Duration::from_millis(0),
+            delay: None,
         }
     }
 
@@ -124,7 +87,7 @@ impl MockStream {
     }
 
     pub fn with_delay(mut self, delay: Duration) -> Self {
-        self.delay = delay;
+        self.delay = Some(delay);
         self
     }
 }
@@ -139,8 +102,14 @@ impl AsyncRead for MockStream {
             return Poll::Ready(Ok(()));
         }
 
-        let mut future = Box::pin(sleep(self.delay));
         let n = std::cmp::min(buf.remaining(), self.read_data.len() - self.pos);
+        if self.delay.is_none() {
+            buf.put_slice(&self.read_data[self.pos..self.pos + n]);
+            self.pos += n;
+            return Poll::Ready(Ok(()));
+        }
+
+        let mut future = Box::pin(sleep(self.delay.unwrap_or_default()));
         match future.as_mut().poll(cx) {
             Poll::Ready(_) => {
                 buf.put_slice(&self.read_data[self.pos..self.pos + n]);

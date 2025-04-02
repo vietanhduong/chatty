@@ -144,11 +144,12 @@ pub struct BackendConfig {
 pub enum MCPConfig {
     #[serde(rename = "binary")]
     Binary(BinaryConfig),
+    #[serde(rename = "websocket")]
+    WebSocket(WebSocketConfig),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct BinaryConfig {
-    #[serde(default)]
     pub filename: String,
 
     #[serde(default)]
@@ -156,6 +157,11 @@ pub struct BinaryConfig {
 
     #[serde(default)]
     pub env: HashMap<String, String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct WebSocketConfig {
+    pub url: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

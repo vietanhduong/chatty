@@ -22,11 +22,7 @@ impl Manager {
 
     pub async fn from(mut self, servers: &[MCPConfig]) -> Result<Self> {
         for server in servers {
-            let client = match server {
-                MCPConfig::Binary(binary) => {
-                    Client::new_binary(binary.into()).wrap_err("creating binary transport")?
-                }
-            };
+            let client = Client::new(server).await.wrap_err("creating client")?;
             self.add_connection(Arc::new(client)).await?;
         }
         Ok(self)
@@ -39,6 +35,18 @@ impl Manager {
             .wrap_err("listing tools")?
             .into_iter()
             .for_each(|tool| {
+                if let Some((k, _)) = self.tools.get_key_value(&tool) {
+                    let k = k.clone();
+                    // If the key already exists, we will compare which one has longer
+                    // description and keep the one with longer description
+                    if k.description.as_deref().unwrap_or_default().len()
+                        > tool.description.as_deref().unwrap_or_default().len()
+                    {
+                        return;
+                    }
+                    // Otherwise, we delete the old one and insert the new one
+                    self.tools.remove(&k);
+                }
                 self.tools.insert(tool, client.clone());
             });
         Ok(())
@@ -49,6 +57,7 @@ impl Manager {
 impl MCP for Manager {
     /// List all available tools
     async fn list_tools(&self) -> Result<Vec<Tool>> {
+        // FIXME: Should we apply a TTL cache for this?
         Ok(self.tools.keys().cloned().collect::<Vec<_>>())
     }
 

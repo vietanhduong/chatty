@@ -1,12 +1,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    config::BinaryConfig,
+    config::{BinaryConfig, MCPConfig, WebSocketConfig},
     models::mcp::{CallToolResult, Tool},
 };
 
 use super::{MCP, transport::Binary};
 use eyre::{Context, Result};
+use mcp_rust_sdk::transport::websocket::WebSocketTransport;
 
 pub struct Client {
     inner: mcp_rust_sdk::client::Client,
@@ -15,8 +16,21 @@ pub struct Client {
 impl Client {
     pub fn new_binary(config: &BinaryConfig) -> Result<Self> {
         let transport = Arc::new(Binary::new(config).wrap_err("initializing binary transport")?);
-        let inner = mcp_rust_sdk::client::Client::new(transport.clone());
+        let inner = mcp_rust_sdk::client::Client::new(transport);
         Ok(Self { inner })
+    }
+
+    pub async fn new_websocket(config: &WebSocketConfig) -> Result<Self> {
+        let transport = Arc::new(WebSocketTransport::new(&config.url).await?);
+        let inner = mcp_rust_sdk::client::Client::new(transport);
+        Ok(Self { inner })
+    }
+
+    pub async fn new(config: &MCPConfig) -> Result<Self> {
+        match config {
+            MCPConfig::Binary(binary) => Self::new_binary(binary),
+            MCPConfig::WebSocket(websocket) => Self::new_websocket(websocket).await,
+        }
     }
 }
 
