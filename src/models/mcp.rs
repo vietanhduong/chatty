@@ -1,8 +1,7 @@
-use rpc_router::RpcParams;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, hash::Hash};
 
-#[derive(Deserialize, Serialize, RpcParams, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CallToolResult {
     pub content: Vec<CallToolResultContent>,
