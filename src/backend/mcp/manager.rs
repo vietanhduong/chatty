@@ -1,13 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
-
-use eyre::{Context, Result};
-
-use crate::{
-    config::MCPConfig,
-    models::{CallToolResult, Tool},
-};
-
+use super::{CallToolResult, Tool};
 use super::{MCP, client::Client};
+use crate::config::MCPConfig;
+use eyre::{Context, Result};
+use std::{collections::HashMap, sync::Arc};
 
 pub struct Manager {
     tools: HashMap<Tool, Arc<dyn MCP>>, // Tool name - MCP Client

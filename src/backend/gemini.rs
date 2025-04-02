@@ -2,15 +2,16 @@
 #[path = "gemini_test.rs"]
 mod tests;
 
-use std::{fmt::Display, time};
+use std::{collections::HashMap, fmt::Display, sync::Arc, time};
 
 use crate::{
-    backend::utils::context_truncation,
+    backend::{mcp::Tool, utils::context_truncation},
     config::user_agent,
     models::{
         ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event,
         Message, Model,
     },
+    warn_event,
 };
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
@@ -22,11 +23,14 @@ use tokio_util::io::StreamReader;
 
 use crate::backend::{Backend, TITLE_PROMPT};
 
+use super::mcp::{self, ToolInputSchema};
+
 pub struct Gemini {
     alias: String,
     endpoint: String,
     api_key: Option<String>,
     timeout: Option<time::Duration>,
+    mcp: Option<Arc<dyn mcp::MCP>>,
 
     want_models: Vec<String>,
     max_output_tokens: Option<usize>,
@@ -59,6 +63,245 @@ impl Gemini {
     pub fn with_alias(mut self, alias: &str) -> Self {
         self.alias = alias.to_string();
         self
+    }
+
+    pub fn with_mcp(mut self, mcp: Arc<dyn mcp::MCP>) -> Self {
+        self.mcp = Some(mcp);
+        self
+    }
+
+    pub fn with_max_output_tokens(mut self, max_output_tokens: usize) -> Self {
+        self.max_output_tokens = Some(max_output_tokens);
+        self
+    }
+
+    async fn get_mcp_tools(&self, event_tx: ArcEventTx) -> Vec<ToolRequest> {
+        if let Some(mcp) = &self.mcp {
+            let tools = match mcp.list_tools().await {
+                Ok(tools) => tools,
+                Err(e) => {
+                    let _ = event_tx.send(warn_event!(format!("Unable to list tools: {}", e)));
+                    return vec![];
+                }
+            };
+            return tools
+                .into_iter()
+                .map(|tool| ToolRequest::from(tool))
+                .collect::<Vec<_>>();
+        }
+        vec![]
+    }
+
+    async fn chat_completion(
+        &self,
+        override_id: Option<String>,
+        init_conversation: bool,
+        model: &str,
+        contents: &[Content],
+        event_tx: ArcEventTx,
+    ) -> Result<()> {
+        let tools = self.get_mcp_tools(event_tx.clone()).await;
+        let completion_req = CompletionRequest {
+            contents: contents.to_vec(),
+            generation_config: Some(GenerationConfig {
+                max_output_tokens: self.max_output_tokens,
+            }),
+            tools,
+            tool_config: None,
+        };
+
+        let mut params = vec![];
+        if let Some(key) = &self.api_key {
+            params.push(("key", key));
+        }
+
+        let url = reqwest::Url::parse_with_params(
+            &format!("{}/models/{}:streamGenerateContent", self.endpoint, model),
+            params.as_slice(),
+        )
+        .wrap_err("parsing url")?;
+
+        let mut builder = reqwest::Client::new()
+            .post(url)
+            .header("User-Agent", user_agent());
+
+        if let Some(timeout) = self.timeout {
+            builder = builder.timeout(timeout);
+        }
+
+        log::trace!("Sending completion request: {:?}", completion_req);
+
+        let mut function_calls = vec![];
+
+        let resp = builder
+            .json(&completion_req)
+            .send()
+            .await
+            .wrap_err("sending completion request")?;
+
+        if !resp.status().is_success() {
+            let http_code = resp.status().as_u16();
+            let text = resp.text().await.wrap_err("reading error response")?;
+
+            let err: ErrorResponse = serde_json::from_str(&text)
+                .wrap_err(format!("parsing error response: {}", text))?;
+            let mut err = err.error;
+            err.http_code = http_code;
+            return Err(err.into());
+        }
+
+        let stream = resp.bytes_stream().map_err(|e| {
+            let err_msg = e.to_string();
+            return std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg);
+        });
+
+        let mut lines_reader = StreamReader::new(stream).lines();
+
+        let message_id = override_id.unwrap_or(uuid::Uuid::new_v4().to_string());
+        let mut line_buf: Vec<String> = Vec::new();
+        let mut completion_text = String::new();
+        while let Ok(line) = lines_reader.next_line().await {
+            if line.is_none() {
+                break;
+            }
+
+            let cleaned_line = line.unwrap().trim().to_string();
+            log::trace!("Received line: {}", cleaned_line);
+            // Gemini separte array object by a line with a comma
+            if cleaned_line != "," {
+                line_buf.push(cleaned_line);
+                continue;
+            }
+
+            // Process the line buffer
+            let content = process_line_buffer(&line_buf)?;
+            log::debug!("Parsed content: {:?}", content);
+            line_buf.clear();
+            if content.candidates.is_empty() || content.candidates[0].finish_reason.is_some() {
+                break;
+            }
+
+            let text = match content.candidates[0].content.parts[0] {
+                ContentParts::Text(ref text) => {
+                    completion_text.push_str(&text);
+                    text.to_string()
+                }
+                ContentParts::FunctionCall(ref func_call) => {
+                    function_calls.push(func_call.clone());
+                    String::new()
+                }
+                // TODO(vietanhduong): Handle this properly
+                _ => String::new(),
+            };
+
+            if text.is_empty() {
+                continue;
+            }
+
+            let msg = BackendResponse {
+                id: message_id.clone(),
+                model: model.to_string(),
+                text: text.clone(),
+                done: false,
+                init_conversation,
+                usage: None,
+            };
+            event_tx.send(Event::BackendPromptResponse(msg)).await?;
+        }
+
+        let content = process_line_buffer(&line_buf)?;
+        line_buf.clear();
+
+        let text = match content.candidates[0].content.parts[0] {
+            ContentParts::Text(ref text) => text.clone(),
+            ContentParts::FunctionCall(ref func_call) => {
+                function_calls.push(func_call.clone());
+                String::new()
+            }
+            // TODO(vietanhduong): Handle this properly
+            _ => String::new(),
+        };
+
+        if function_calls.is_empty() {
+            let usage = Some(BackendUsage {
+                prompt_tokens: content.usage_metadata.prompt_token_count,
+                completion_tokens: content.usage_metadata.candidates_token_count,
+                total_tokens: content.usage_metadata.total_token_count,
+            });
+
+            let msg = BackendResponse {
+                id: message_id,
+                model: model.to_string(),
+                text,
+                done: true,
+                init_conversation,
+                usage,
+            };
+            event_tx.send(Event::BackendPromptResponse(msg)).await?;
+            return Ok(());
+        }
+
+        let function_responses = self.call_tool(&function_calls).await?;
+        let mut contents = contents.to_vec();
+        let mut current_content = Content {
+            role: "model".to_string(),
+            parts: vec![],
+        };
+
+        if !text.is_empty() {
+            current_content.parts.push(ContentParts::Text(text));
+        }
+
+        current_content.parts.extend(
+            function_calls
+                .into_iter()
+                .map(|call| ContentParts::FunctionCall(call)),
+        );
+
+        contents.push(current_content);
+        contents.push(Content {
+            role: "user".to_string(),
+            parts: function_responses
+                .into_iter()
+                .map(|call| ContentParts::FunctionResponse(call))
+                .collect(),
+        });
+
+        Box::pin(self.chat_completion(
+            Some(message_id),
+            init_conversation,
+            model,
+            &contents,
+            event_tx,
+        ))
+        .await
+    }
+
+    async fn call_tool(&self, calls: &[FunctionCall]) -> Result<Vec<FunctionResponse>> {
+        if self.mcp.is_none() {
+            bail!("MCP is not set");
+        }
+
+        let mut results = vec![];
+        for call in calls {
+            let resp = self
+                .mcp
+                .as_ref()
+                .unwrap()
+                .clone()
+                .call_tool(&call.name, call.args.clone())
+                .await
+                .wrap_err("calling tool")?;
+            let mut response = HashMap::new();
+            response.insert("result".to_string(), resp.content);
+            let result = serde_json::to_value(&response).wrap_err("serializing tool result")?;
+            results.push(FunctionResponse {
+                id: call.id.clone(),
+                name: call.name.clone(),
+                response: Some(result),
+            });
+        }
+        Ok(results)
     }
 }
 
@@ -150,130 +393,8 @@ impl Backend for Gemini {
             .map(|m| Content::from(&m))
             .collect::<Vec<_>>();
 
-        let completion_req = CompletionRequest {
-            contents,
-            generation_config: Some(GenerationConfig {
-                max_output_tokens: self.max_output_tokens,
-            }),
-        };
-
-        let mut params = vec![];
-        if let Some(key) = &self.api_key {
-            params.push(("key", key));
-        }
-
-        let url = reqwest::Url::parse_with_params(
-            &format!(
-                "{}/models/{}:streamGenerateContent",
-                self.endpoint,
-                prompt.model()
-            ),
-            params.as_slice(),
-        )
-        .wrap_err("parsing url")?;
-
-        let mut builder = reqwest::Client::new()
-            .post(url)
-            .header("User-Agent", user_agent());
-
-        if let Some(timeout) = self.timeout {
-            builder = builder.timeout(timeout);
-        }
-
-        log::trace!("Sending completion request: {:?}", completion_req);
-
-        let resp = builder
-            .json(&completion_req)
-            .send()
-            .await
-            .wrap_err("sending completion request")?;
-
-        if !resp.status().is_success() {
-            let http_code = resp.status().as_u16();
-            let err: ErrorResponse = resp.json().await.wrap_err("parsing error response")?;
-            let mut err = err.error;
-            err.http_code = http_code;
-            return Err(err.into());
-        }
-
-        let stream = resp.bytes_stream().map_err(|e| {
-            let err_msg = e.to_string();
-            return std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg);
-        });
-
-        let mut lines_reader = StreamReader::new(stream).lines();
-
-        let message_id = uuid::Uuid::new_v4().to_string();
-        let mut line_buf: Vec<String> = Vec::new();
-        while let Ok(line) = lines_reader.next_line().await {
-            if line.is_none() {
-                break;
-            }
-
-            let cleaned_line = line.unwrap().trim().to_string();
-            log::trace!("Received line: {}", cleaned_line);
-            // Gemini separte array object by a line with a comma
-            if cleaned_line != "," {
-                line_buf.push(cleaned_line);
-                continue;
-            }
-
-            // Process the line buffer
-            let content = process_line_buffer(&line_buf)?;
-            line_buf.clear();
-            if content.candidates.is_empty() || content.candidates[0].finish_reason.is_some() {
-                break;
-            }
-
-            let text = match content.candidates[0].content.parts[0] {
-                ContentParts::Text(ref text) => text,
-                ContentParts::InlineData(ref blob) => {
-                    log::warn!("Received inline data: {:?}", blob);
-                    continue;
-                }
-            };
-
-            if text.is_empty() {
-                continue;
-            }
-
-            let msg = BackendResponse {
-                id: message_id.clone(),
-                model: prompt.model().to_string(),
-                text: text.clone(),
-                done: false,
-                init_conversation,
-                usage: None,
-            };
-            event_tx.send(Event::BackendPromptResponse(msg)).await?;
-        }
-
-        let content = process_line_buffer(&line_buf)?;
-        line_buf.clear();
-
-        let text = match content.candidates[0].content.parts[0] {
-            ContentParts::Text(ref text) => text.clone(),
-            ContentParts::InlineData(ref blob) => {
-                log::warn!("Received inline data: {:?}", blob);
-                String::new()
-            }
-        };
-
-        let usage = Some(BackendUsage {
-            prompt_tokens: content.usage_metadata.prompt_token_count,
-            completion_tokens: content.usage_metadata.candidates_token_count,
-            total_tokens: content.usage_metadata.total_token_count,
-        });
-
-        let msg = BackendResponse {
-            id: message_id,
-            model: prompt.model().to_string(),
-            text,
-            done: true,
-            init_conversation,
-            usage,
-        };
-        event_tx.send(Event::BackendPromptResponse(msg)).await?;
+        self.chat_completion(None, init_conversation, prompt.model(), &contents, event_tx)
+            .await?;
         Ok(())
     }
 }
@@ -295,6 +416,7 @@ impl Default for Gemini {
             max_output_tokens: None,
             alias: "Gemini".to_string(),
             endpoint: "https://generativelanguage.googleapis.com/v1beta".to_string(),
+            mcp: None,
             api_key: None,
             timeout: None,
 
@@ -324,53 +446,95 @@ impl From<&BackendConnection> for Gemini {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ModelResponse {
     name: String,
     supported_generation_methods: Vec<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct ModelListResponse {
     #[serde(default)]
     models: Vec<ModelResponse>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ContentPartsBlob {
     mime_type: String,
     data: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FunctionCall {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    args: Option<serde_json::Value>,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FunctionResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum ContentParts {
     Text(String),
     InlineData(ContentPartsBlob),
+    FunctionCall(FunctionCall),
+    FunctionResponse(FunctionResponse),
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 struct Content {
     role: String,
     parts: Vec<ContentParts>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CompletionRequest {
     contents: Vec<Content>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     generation_config: Option<GenerationConfig>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<ToolRequest>,
+    tool_config: Option<serde_json::Value>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code_execution: Option<serde_json::Value>,
+    function_declarations: Vec<FunctionDeclerationRequest>,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FunctionDeclerationRequest {
+    name: String,
+    description: Option<String>,
+    parameters: ToolInputSchema,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenerationConfig {
     max_output_tokens: Option<usize>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenerateContentResponse {
     candidates: Vec<GenerateCandidate>,
@@ -378,14 +542,14 @@ struct GenerateContentResponse {
     model_version: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenerateCandidate {
     content: Content,
     finish_reason: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GenerateUsageMetadata {
     prompt_token_count: usize,
@@ -430,4 +594,17 @@ fn format_model(model: &str) -> String {
     let model = model.strip_prefix("model/").unwrap_or(model);
     let model = model.strip_prefix("models/").unwrap_or(model);
     format!("models/{}", model)
+}
+
+impl From<Tool> for ToolRequest {
+    fn from(tool: Tool) -> Self {
+        Self {
+            code_execution: None,
+            function_declarations: vec![FunctionDeclerationRequest {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.input_schema,
+            }],
+        }
+    }
 }

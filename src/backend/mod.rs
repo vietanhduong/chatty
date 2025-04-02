@@ -47,6 +47,9 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     }
 
     // Init MCP manager
+    if !config.mcp_servers.is_empty() {
+        verbose!("  [+] Initializing MCP manager");
+    }
     let mcp_manager = mcp::Manager::new()
         .from(&config.mcp_servers)
         .await
@@ -54,7 +57,7 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
 
     let avail_tools = mcp_manager.list_tools().await.wrap_err("listing tools")?;
     let mcp_manager = if !avail_tools.is_empty() {
-        log::debug!("Available tools: {:?}", avail_tools);
+        verbose!("  [+] MCP available {} tools", avail_tools.len(),);
         Some(Arc::new(mcp_manager))
     } else {
         None
@@ -84,7 +87,10 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
                     connection = connection
                         .with_timeout(Duration::from_secs(default_timeout.unwrap() as u64));
                 }
-                let gemini: Gemini = (&connection).into();
+                let mut gemini: Gemini = (&connection).into();
+                if let Some(mcp_manager) = mcp_manager.as_ref() {
+                    gemini = gemini.with_mcp(mcp_manager.clone());
+                }
                 Arc::new(gemini)
             }
         };

@@ -1,10 +1,12 @@
 pub mod client;
 pub mod manager;
+pub mod models;
 mod transport;
 
+pub use client::Client;
 pub use manager::Manager;
+pub use models::*;
 
-use crate::models::mcp::{CallToolResult, Tool};
 use eyre::Result;
 use serde_json::Value;
 

@@ -1,13 +1,9 @@
-use std::{collections::HashMap, sync::Arc};
-
-use crate::{
-    config::{BinaryConfig, MCPConfig, WebSocketConfig},
-    models::mcp::{CallToolResult, Tool},
-};
-
+use super::{CallToolResult, Tool};
 use super::{MCP, transport::Binary};
+use crate::config::{BinaryConfig, MCPConfig, WebSocketConfig};
 use eyre::{Context, Result};
 use mcp_rust_sdk::transport::websocket::WebSocketTransport;
+use std::{collections::HashMap, sync::Arc};
 
 pub struct Client {
     inner: mcp_rust_sdk::client::Client,
@@ -91,5 +87,7 @@ mod tests {
             "Response: {:?}",
             serde_json::to_string(&resp.content).unwrap()
         );
+        let tools = client.list_tools().await.unwrap();
+        println!("Tools: {:?}", tools);
     }
 }

@@ -2,6 +2,7 @@
 #[path = "openai_test.rs"]
 mod tests;
 
+use crate::backend::mcp::{Tool, ToolInputSchema};
 use crate::backend::utils::context_truncation;
 use crate::backend::{ArcBackend, Backend, TITLE_PROMPT};
 use crate::config::user_agent;
@@ -9,7 +10,6 @@ use crate::models::{
     ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
     Model,
 };
-use crate::models::{Tool, ToolInputSchema};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::TryStreamExt;
