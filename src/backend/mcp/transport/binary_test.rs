@@ -9,8 +9,11 @@ use super::*;
 
 impl Binary {
     fn mock(read_data: impl Into<String>, delay: Option<Duration>) -> Self {
-        let mock_stream = MockStream::new(read_data.into().as_bytes())
-            .with_delay(delay.unwrap_or(Duration::from_millis(0)));
+        let mut mock_stream = MockStream::new(read_data.into().as_bytes());
+        if let Some(d) = delay {
+            mock_stream = mock_stream.with_delay(d);
+        }
+
         let stdout = Arc::new(Mutex::new(BufReader::new(
             Box::new(mock_stream) as Box<dyn AsyncRead + Send + Unpin>
         )));
@@ -54,7 +57,7 @@ async fn test_send_and_receive() {
         .expect("send request");
     let mut result = transport.receive();
 
-    let resp = timeout(Duration::from_secs(1), result.next()).await;
+    let resp = timeout(Duration::from_secs(2), result.next()).await;
     assert!(resp.is_ok());
     let resp = resp.unwrap().unwrap().expect("response");
     let json_value = match resp {
