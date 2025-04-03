@@ -49,7 +49,7 @@ impl<'a> AppState<'a> {
     }
 
     pub fn handle_backend_response(&mut self, resp: &BackendResponse) {
-        if self.current_convo.len() == 0
+        if self.current_convo.is_empty()
             || matches!(self.current_convo.messages().last(), Some(last) if !last.is_system())
         {
             self.current_convo

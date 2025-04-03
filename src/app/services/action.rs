@@ -137,7 +137,7 @@ impl ActionService {
 
     async fn process_delete_message(&mut self, msg_id: &str) {
         self.pending_tasks.fetch_add(1, atomic::Ordering::SeqCst);
-        let result = self.storage.delete_messsage(&msg_id).await;
+        let result = self.storage.delete_messsage(msg_id).await;
         self.pending_tasks.fetch_sub(1, atomic::Ordering::SeqCst);
         if let Err(err) = result {
             let _ = self
@@ -243,10 +243,7 @@ impl ActionService {
             ));
 
             let convo = match storage.get_conversation(&conversation_id).await {
-                Ok(conversation) => match conversation {
-                    Some(conversation) => Some(conversation),
-                    _ => None,
-                },
+                Ok(conversation) => conversation,
                 Err(err) => {
                     log::error!("Failed to get conversation: {}", err);
                     let _ =
@@ -263,10 +260,7 @@ impl ActionService {
             let convo = convo.unwrap();
 
             let context = match compressor.compress(&model_id, &convo).await {
-                Ok(context) => match context {
-                    Some(context) => Some(context),
-                    _ => None,
-                },
+                Ok(context) => context,
                 Err(err) => {
                     log::error!("Failed to compress conversation: {}", err);
                     let _ = event_tx.send(warn_event!(format!(

@@ -273,7 +273,7 @@ impl<'a> ModelsScreen<'a> {
         }
     }
 
-    fn build_items<'b>(&mut self) {
+    fn build_items(&mut self) {
         self.idx_map.clear();
         self.items.clear();
 
@@ -293,7 +293,7 @@ impl<'a> ModelsScreen<'a> {
             .for_each(|m| {
                 let model = m.id().to_string();
                 let alias = m.provider().to_string();
-                models.entry(alias).or_insert_with(Vec::new).push(model);
+                models.entry(alias).or_default().push(model);
             });
 
         for (provider, models) in models {

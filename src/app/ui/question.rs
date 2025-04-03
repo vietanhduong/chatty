@@ -9,6 +9,7 @@ use ratatui_macros::span;
 
 use super::utils;
 
+#[derive(Default)]
 pub struct Question<'a> {
     showing: bool,
     question: Line<'a>,
@@ -16,14 +17,6 @@ pub struct Question<'a> {
 }
 
 impl<'a> Question<'a> {
-    pub fn new() -> Question<'a> {
-        Question {
-            title: None,
-            showing: false,
-            question: Line::default(),
-        }
-    }
-
     pub fn with_title(mut self, title: impl Into<Line<'a>>) -> Question<'a> {
         self.set_title(title);
         self

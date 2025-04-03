@@ -80,14 +80,13 @@ impl Gemini {
             let tools = match mcp.list_tools().await {
                 Ok(tools) => tools,
                 Err(e) => {
-                    let _ = event_tx.send(warn_event!(format!("Unable to list tools: {}", e)));
+                    let _ = event_tx
+                        .send(warn_event!(format!("Unable to list tools: {}", e)))
+                        .await;
                     return vec![];
                 }
             };
-            return tools
-                .into_iter()
-                .map(|tool| ToolRequest::from(tool))
-                .collect::<Vec<_>>();
+            return tools.into_iter().map(ToolRequest::from).collect::<Vec<_>>();
         }
         vec![]
     }
@@ -152,7 +151,7 @@ impl Gemini {
 
         let stream = resp.bytes_stream().map_err(|e| {
             let err_msg = e.to_string();
-            return std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg);
+            std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg)
         });
 
         let mut lines_reader = StreamReader::new(stream).lines();
@@ -183,7 +182,7 @@ impl Gemini {
 
             let text = match content.candidates[0].content.parts[0] {
                 ContentParts::Text(ref text) => {
-                    completion_text.push_str(&text);
+                    completion_text.push_str(text);
                     text.to_string()
                 }
                 ContentParts::FunctionCall(ref func_call) => {
@@ -252,18 +251,16 @@ impl Gemini {
             current_content.parts.push(ContentParts::Text(text));
         }
 
-        current_content.parts.extend(
-            function_calls
-                .into_iter()
-                .map(|call| ContentParts::FunctionCall(call)),
-        );
+        current_content
+            .parts
+            .extend(function_calls.into_iter().map(ContentParts::FunctionCall));
 
         contents.push(current_content);
         contents.push(Content {
             role: "user".to_string(),
             parts: function_responses
                 .into_iter()
-                .map(|call| ContentParts::FunctionResponse(call))
+                .map(ContentParts::FunctionResponse)
                 .collect(),
         });
 
@@ -402,8 +399,8 @@ impl Backend for Gemini {
 fn process_line_buffer(lines: &[String]) -> Result<GenerateContentResponse> {
     let json_raw = lines.join("").trim().to_string();
     let json_raw = json_raw.strip_prefix("[").unwrap_or(&json_raw).trim();
-    let json_raw = json_raw.strip_suffix("]").unwrap_or(&json_raw).trim();
-    let json_raw = json_raw.strip_suffix(",").unwrap_or(&json_raw).trim();
+    let json_raw = json_raw.strip_suffix("]").unwrap_or(json_raw).trim();
+    let json_raw = json_raw.strip_suffix(",").unwrap_or(json_raw).trim();
 
     let resp: GenerateContentResponse =
         serde_json::from_str(json_raw).wrap_err("unmarshalling response")?;
@@ -429,7 +426,10 @@ impl From<&BackendConnection> for Gemini {
     fn from(value: &BackendConnection) -> Self {
         let mut backend = Gemini::default();
 
-        backend.alias = value.alias().unwrap_or("Gemini").to_string();
+        if let Some(alias) = value.alias() {
+            backend.alias = alias.to_string();
+        }
+
         backend.endpoint = value.endpoint().to_string();
 
         if let Some(key) = value.api_key() {

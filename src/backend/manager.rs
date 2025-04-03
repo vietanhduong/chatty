@@ -36,11 +36,7 @@ impl Manager {
     }
 
     pub fn get_connection(&self, model: &str) -> Option<&ArcBackend> {
-        let alias = match self.models.get(model) {
-            Some(alias) => alias,
-            None => return None,
-        };
-        self.connections.get(alias)
+        self.connections.get(self.models.get(model)?)
     }
 }
 

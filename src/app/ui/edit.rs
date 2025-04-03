@@ -167,7 +167,7 @@ impl<'a> EditScreen<'_> {
             message.text(),
             area.width as usize - 5,
             self.theme,
-            |spans| Line::from(spans),
+            Line::from,
         );
 
         let text = Text::from(lines);
@@ -203,7 +203,7 @@ impl<'a> EditScreen<'_> {
                         .map(|msg| msg.msg.clone())
                         .collect();
 
-                    selected_messages.sort_by(|a, b| a.created_at().cmp(&b.created_at()));
+                    selected_messages.sort_by_key(|msg| msg.created_at());
 
                     if !selected_messages.is_empty() {
                         let _ = self.action_tx.send(Action::CopyMessages(selected_messages));
@@ -213,7 +213,7 @@ impl<'a> EditScreen<'_> {
                 Key::Char('k') => self.prev_row(),
                 Key::Char('g') => self.list_state.select(Some(0)),
                 Key::Char('G') => {
-                    if let Some(_) = self.list_state.selected() {
+                    if self.list_state.selected().is_some() {
                         self.list_state.select(Some(self.messages.len() - 1));
                     }
                 }

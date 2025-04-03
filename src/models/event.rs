@@ -67,25 +67,26 @@ pub trait EventTx {
 
 impl Event {
     pub fn is_keyboard_event(&self) -> bool {
-        match self {
-            Event::KeyboardCharInput(_) => true,
-            Event::KeyboardEsc => true,
-            Event::KeyboardEnter => true,
-            Event::KeyboardAltEnter => true,
-            Event::Quit => true,
-            Event::KeyboardCtrlC => true,
-            Event::KeyboardCtrlR => true,
-            Event::KeyboardCtrlN => true,
-            Event::KeyboardCtrlE => true,
-            Event::KeyboardCtrlL => true,
-            Event::KeyboardCtrlH => true,
-            Event::KeyboardF1 => true,
-            Event::UiScrollUp => true,
-            Event::UiScrollDown => true,
-            Event::UiScrollPageUp => true,
-            Event::UiScrollPageDown => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Event::KeyboardCharInput(_)
+                | Event::KeyboardEsc
+                | Event::KeyboardEnter
+                | Event::KeyboardAltEnter
+                | Event::KeyboardCtrlC
+                | Event::KeyboardCtrlR
+                | Event::KeyboardCtrlN
+                | Event::KeyboardCtrlE
+                | Event::KeyboardCtrlL
+                | Event::KeyboardCtrlH
+                | Event::KeyboardF1
+                | Event::Quit
+                | Event::UiScrollUp
+                | Event::UiScrollDown
+                | Event::UiScrollPageUp
+                | Event::UiScrollPageDown
+                | Event::KeyboardPaste(_)
+        )
     }
 }
 

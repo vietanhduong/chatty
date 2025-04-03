@@ -38,7 +38,7 @@ pub fn init_logger(config: &LogConfig) -> Result<()> {
 
     for filter in config.filters.as_deref().unwrap_or_default() {
         let module_level = LevelFilter::from_str(filter.level.as_deref().unwrap_or(raw_level))
-            .unwrap_or(log_level.clone());
+            .unwrap_or(log_level);
         builder.filter(filter.module.as_deref(), module_level);
     }
 

@@ -163,7 +163,7 @@ impl<'a> Bubble<'_> {
     }
 
     fn format_spans(&self, mut spans: Vec<Span<'a>>, max_line_len: usize) -> Line<'a> {
-        let line_str_len: usize = spans.iter().map(|e| return e.content.width()).sum();
+        let line_str_len: usize = spans.iter().map(|e| e.content.width()).sum();
         let fill = utils::repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
         let formatted_line_len = line_str_len + fill.len() + self.padding;
 

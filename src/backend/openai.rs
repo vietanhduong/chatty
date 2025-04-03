@@ -196,14 +196,13 @@ impl OpenAI {
             let tools = match mcp.list_tools().await {
                 Ok(tools) => tools,
                 Err(e) => {
-                    let _ = event_tx.send(warn_event!(format!("Unable to list tools: {}", e)));
+                    let _ = event_tx
+                        .send(warn_event!(format!("Unable to list tools: {}", e)))
+                        .await;
                     return vec![];
                 }
             };
-            return tools
-                .into_iter()
-                .map(|tool| ToolRequest::from(tool))
-                .collect::<Vec<_>>();
+            return tools.into_iter().map(ToolRequest::from).collect::<Vec<_>>();
         }
         vec![]
     }
@@ -265,7 +264,7 @@ impl OpenAI {
 
         let stream = res.bytes_stream().map_err(|e| {
             let err_msg = e.to_string();
-            return std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg);
+            std::io::Error::new(std::io::ErrorKind::Interrupted, err_msg)
         });
 
         let mut line_readers = StreamReader::new(stream).lines();
@@ -301,7 +300,7 @@ impl OpenAI {
             let data = serde_json::from_str::<CompletionResponse>(&line)
                 .wrap_err(format!("parsing completion response line: {}", line))?;
 
-            let c = match data.choices.get(0) {
+            let c = match data.choices.first() {
                 Some(c) => c,
                 None => continue,
             };
@@ -316,7 +315,7 @@ impl OpenAI {
                         .arguments
                         .as_mut()
                         .unwrap()
-                        .push_str(&e.function.arguments.as_deref().unwrap_or(""));
+                        .push_str(e.function.arguments.as_deref().unwrap_or_default());
                     return;
                 }
                 call_tools.insert(e.index, e.clone());
