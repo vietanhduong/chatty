@@ -101,7 +101,7 @@ where
             let lang = line.trim().replace("```", "");
             let syntax = Syntaxes::get(&lang);
             if !in_codeblock {
-                highlight = HighlightLines::new(syntax, &theme);
+                highlight = HighlightLines::new(syntax, theme);
                 in_codeblock = true;
                 spans = vec![Span::from(line.to_owned())];
             } else {
@@ -138,7 +138,7 @@ where
         lines.extend(
             split_to_lines(spans, max_width)
                 .into_iter()
-                .map(|l| format_spans(l))
+                .map(&format_spans)
                 .collect::<Vec<_>>(),
         );
     }

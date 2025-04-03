@@ -137,6 +137,10 @@ impl Conversation {
         self.messages.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.messages.is_empty()
+    }
+
     pub fn messages_mut(&mut self) -> &mut Vec<Message> {
         &mut self.messages
     }
@@ -180,7 +184,7 @@ impl Conversation {
             context.pop();
         }
 
-        return context;
+        context
     }
 
     /// Calculate the total token count of the conversation.
@@ -336,21 +340,15 @@ pub trait FindMessage {
 
 impl FindMessage for Vec<Message> {
     fn last_message_of(&self, issuer: Option<Issuer>) -> Option<&Message> {
-        for msg in self.iter().rev() {
-            if filter_issuer(issuer.as_ref(), msg) {
-                return Some(msg);
-            }
-        }
-        None
+        self.iter()
+            .rev()
+            .find(|&msg| filter_issuer(issuer.as_ref(), msg))
     }
 
     fn last_message_of_mut(&mut self, issuer: Option<Issuer>) -> Option<&mut Message> {
-        for msg in self.iter_mut().rev() {
-            if filter_issuer(issuer.as_ref(), msg) {
-                return Some(msg);
-            }
-        }
-        None
+        self.iter_mut()
+            .rev()
+            .find(|msg| filter_issuer(issuer.as_ref(), msg))
     }
 }
 

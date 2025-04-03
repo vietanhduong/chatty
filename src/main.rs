@@ -24,7 +24,7 @@ use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cmd = Command::new();
+    let cmd = Command::default();
     if cmd.version() {
         cmd.print_version();
         return Ok(());
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
     let (action_tx, action_rx) = mpsc::unbounded_channel::<Action>();
 
-    let mut events = EventService::new();
+    let mut events = EventService::default();
 
     let mut task_set = task::JoinSet::new();
     let token = CancellationToken::new();
@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
         .await
         .wrap_err("getting conversations")?
         .into_iter()
-        .filter(|(id, convo)| id != "" && convo.messages().len() > 0)
+        .filter(|(id, convo)| !id.is_empty() && !convo.messages().is_empty())
         .map(|(id, convo)| {
             let convo = Conversation::default()
                 .with_id(&id)
@@ -129,9 +129,7 @@ async fn main() -> Result<()> {
         log::warn!("Clipboard service is not available: {err}");
     } else {
         let token_clone = token.clone();
-        task_set.spawn(async move {
-            return ClipboardService::start(token_clone).await;
-        });
+        task_set.spawn(async move { ClipboardService::start(token_clone).await });
     }
 
     let coordinator = ShutdownCoordinator {

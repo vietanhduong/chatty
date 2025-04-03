@@ -33,7 +33,7 @@ impl Notice {
     pub fn add_message(&mut self, msg: NoticeMessage) {
         let now = chrono::Utc::now();
         self.notices.push(MessageWrapper {
-            value: msg.into(),
+            value: msg,
             created_at: now,
         });
     }

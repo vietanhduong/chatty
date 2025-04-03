@@ -50,7 +50,7 @@ pub struct GeneralConfig {
     pub bubble_width_percent: usize,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct ContextConfig {
     #[serde(default)]
     pub compression: ContextCompression,
@@ -125,7 +125,7 @@ pub struct ThemeConfig {
     pub folder_path: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct BackendConfig {
     #[serde(default)]
     pub default_model: Option<String>,
@@ -170,7 +170,7 @@ pub enum StorageConfig {
     Sqlite(SqliteStorage),
 }
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct SqliteStorage {
     pub path: Option<String>,
 }
@@ -240,17 +240,6 @@ impl Default for ThemeConfig {
     }
 }
 
-impl Default for BackendConfig {
-    fn default() -> Self {
-        Self {
-            default_model: None,
-            connections: vec![],
-            timeout_secs: None,
-            mcp_servers: vec![],
-        }
-    }
-}
-
 impl Default for ContextCompression {
     fn default() -> Self {
         Self {
@@ -272,27 +261,6 @@ impl Default for TokenTruncation {
     }
 }
 
-impl Default for ContextConfig {
-    fn default() -> Self {
-        Self {
-            compression: ContextCompression::default(),
-            truncation: TokenTruncation::default(),
-        }
-    }
-}
-
-impl Default for StorageConfig {
-    fn default() -> Self {
-        Self::Sqlite(SqliteStorage::default())
-    }
-}
-
-impl Default for SqliteStorage {
-    fn default() -> Self {
-        Self { path: None }
-    }
-}
-
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
@@ -301,5 +269,11 @@ impl Default for GeneralConfig {
             show_usage: None,
             bubble_width_percent: 80,
         }
+    }
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        Self::Sqlite(SqliteStorage::default())
     }
 }

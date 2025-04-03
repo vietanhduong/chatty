@@ -95,7 +95,7 @@ impl<'a> App<'a> {
                 span!("Ctrl+c").green().bold(),
                 span!(" to abort!").gray(),
             ]),
-            help_screen: HelpScreen::new(),
+            help_screen: HelpScreen::default(),
             history_screen: HistoryScreen::new(action_tx)
                 .with_conversations(conversations)
                 .with_current_conversation(""),
@@ -187,17 +187,17 @@ impl<'a> App<'a> {
                 }
 
                 sleep(time::Duration::from_millis(100)).await;
-                return Some(true);
+                Some(true)
             }
 
             Event::BackendAbort => {
                 self.handle_abort();
-                return Some(false);
+                Some(false)
             }
 
             Event::BackendPromptResponse(resp) => {
                 self.handle_response(resp);
-                return Some(false);
+                Some(false)
             }
 
             Event::BackendMessage(msg) => {
@@ -211,7 +211,7 @@ impl<'a> App<'a> {
             }
 
             Event::ConversationDeleted(id) => {
-                self.history_screen.remove_conversation(&id);
+                self.history_screen.remove_conversation(id);
                 if self.app_state.current_convo.id() == id {
                     self.upsert_default_conversation();
                     self.app_state.set_conversation(Conversation::new_hello());
@@ -526,7 +526,7 @@ impl<'a> App<'a> {
     fn handle_response(&mut self, resp: &BackendResponse) {
         let notify = resp.done && resp.init_conversation;
         let done = resp.done;
-        self.app_state.handle_backend_response(&resp);
+        self.app_state.handle_backend_response(resp);
 
         if !done {
             return;
@@ -578,7 +578,7 @@ impl<'a> App<'a> {
 
         // Update the conversation updated_at in the history
         self.history_screen.update_conversation_updated_at(
-            &self.app_state.current_convo.id(),
+            self.app_state.current_convo.id(),
             self.app_state.current_convo.updated_at(),
         );
 
@@ -679,10 +679,10 @@ impl<'a> App<'a> {
                 "Waiting for backend to respond, please wait..."
             ));
         }
-        return self.app_state.waiting_for_backend;
+        self.app_state.waiting_for_backend
     }
 }
 
 fn is_line_width_sufficient(line_width: u16) -> bool {
-    return line_width >= MIN_WIDTH;
+    line_width >= MIN_WIDTH
 }

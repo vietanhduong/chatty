@@ -27,10 +27,6 @@ pub struct Command {
 }
 
 impl Command {
-    pub fn new() -> Command {
-        Self::parse()
-    }
-
     pub fn get_config(&self) -> Result<&Configuration> {
         let config_path = self
             .config
@@ -53,5 +49,11 @@ impl Command {
 
     pub fn print_version(&self) {
         println!("{}", config::version())
+    }
+}
+
+impl Default for Command {
+    fn default() -> Self {
+        Self::parse()
     }
 }

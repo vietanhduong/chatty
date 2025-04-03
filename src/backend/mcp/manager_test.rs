@@ -16,7 +16,7 @@ async fn test_add_server() {
 
     let tmp = Arc::new(MockMCP::new());
 
-    let mut manager = Manager::new();
+    let mut manager = Manager::default();
     manager
         .tools
         .insert(fake_tool("another_tool", "replace"), tmp.clone());

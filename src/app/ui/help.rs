@@ -28,18 +28,7 @@ pub struct HelpScreen<'a> {
     last_know_height: usize,
 }
 
-impl<'a> HelpScreen<'_> {
-    pub fn new() -> HelpScreen<'a> {
-        HelpScreen {
-            showing: false,
-            state: TableState::default().with_selected(0),
-            rows: vec![],
-            last_known_width: 0,
-            last_know_height: 0,
-            keybindings: build_key_bindings(),
-        }
-    }
-
+impl HelpScreen<'_> {
     pub fn showing(&self) -> bool {
         self.showing
     }
@@ -150,7 +139,7 @@ impl<'a> HelpScreen<'_> {
             .keybindings
             .iter()
             .filter(|b| !b.short_description.is_empty())
-            .map(|b| {
+            .flat_map(|b| {
                 let key = b.key().to_string();
                 let desc = b.short_description.clone();
                 vec![
@@ -160,7 +149,6 @@ impl<'a> HelpScreen<'_> {
                     " | ".into(),
                 ]
             })
-            .flatten()
             .collect::<Vec<_>>();
         instructions.pop(); // remove the last " | "
 
@@ -305,5 +293,18 @@ impl Display for Input {
         };
 
         write!(f, "{}{}", modifer, key)
+    }
+}
+
+impl Default for HelpScreen<'_> {
+    fn default() -> Self {
+        Self {
+            showing: false,
+            state: TableState::default().with_selected(0),
+            rows: vec![],
+            last_known_width: 0,
+            last_know_height: 0,
+            keybindings: build_key_bindings(),
+        }
     }
 }

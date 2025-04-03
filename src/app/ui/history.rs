@@ -61,7 +61,7 @@ impl<'a> HistoryScreen<'a> {
             idx_map: HashMap::new(),
             rename: InputBox::default().with_title(" Rename "),
             search: InputBox::default().with_title(" Search "),
-            question: Question::new().with_title(" Delete Conversation "),
+            question: Question::default().with_title(" Delete Conversation "),
 
             current_search: String::new(),
             current_conversation: None,
@@ -240,7 +240,7 @@ impl<'a> HistoryScreen<'a> {
             .for_each(|(_, c)| {
                 let group = categorize_conversation(now, c.updated_at());
 
-                conversations.entry(group).or_insert_with(Vec::new).push(c);
+                conversations.entry(group).or_default().push(c);
             });
 
         for (group, mut conversations) in conversations {
@@ -388,8 +388,8 @@ impl<'a> HistoryScreen<'a> {
     }
 
     async fn handle_question_popup(&mut self, event: &Event) {
-        match event {
-            Event::KeyboardCharInput(input) => match input.key {
+        if let Event::KeyboardCharInput(input) = event {
+            match input.key {
                 Key::Char('y') => {
                     self.on_delete().await;
                     self.question.close();
@@ -398,8 +398,7 @@ impl<'a> HistoryScreen<'a> {
                     self.question.close();
                 }
                 _ => {}
-            },
-            _ => {}
+            }
         }
     }
 

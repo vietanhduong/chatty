@@ -32,7 +32,7 @@ impl<'a> BubbleList<'a> {
     pub fn remove_message(&mut self, id: impl Into<String>) {
         let id = id.into();
         self.cache.retain(|_, entry| entry.message_id != id);
-        self.line_len = self.cache.iter().map(|(_, entry)| entry.lines.len()).sum();
+        self.line_len = self.cache.values().map(|entry| entry.lines.len()).sum();
     }
 
     pub fn remove_message_by_index(&mut self, index: usize) {
@@ -77,6 +77,10 @@ impl<'a> BubbleList<'a> {
 
     pub fn len(&self) -> usize {
         self.line_len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.line_len == 0
     }
 
     pub fn render(&self, rect: Rect, buf: &mut Buffer, scroll_index: u16) {

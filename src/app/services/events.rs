@@ -14,15 +14,6 @@ pub struct EventService {
 }
 
 impl EventService {
-    pub fn new() -> Self {
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<Event>();
-        Self {
-            crossterm_events: EventStream::new(),
-            event_rx,
-            event_tx,
-        }
-    }
-
     fn handle_crossterm(&self, event: CrosstermEvent) -> Option<Event> {
         match event {
             CrosstermEvent::Paste(text) => Some(Event::KeyboardPaste(text)),
@@ -89,6 +80,17 @@ impl EventService {
             if let Some(event) = e {
                 return event;
             }
+        }
+    }
+}
+
+impl Default for EventService {
+    fn default() -> Self {
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<Event>();
+        Self {
+            crossterm_events: EventStream::new(),
+            event_rx,
+            event_tx,
         }
     }
 }

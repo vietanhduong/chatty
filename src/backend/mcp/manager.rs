@@ -8,17 +8,12 @@ use crate::config::MCPConfig;
 use eyre::{Context, Result};
 use std::{collections::HashMap, sync::Arc};
 
+#[derive(Default)]
 pub struct Manager {
     tools: HashMap<Tool, Arc<dyn MCP>>, // Tool name - MCP Client
 }
 
 impl Manager {
-    pub fn new() -> Self {
-        Self {
-            tools: HashMap::new(),
-        }
-    }
-
     pub async fn from(mut self, servers: &[MCPConfig]) -> Result<Self> {
         for server in servers {
             let client = Client::new(server).await.wrap_err("creating client")?;
@@ -69,8 +64,7 @@ impl MCP for Manager {
         let client = self
             .tools
             .iter()
-            .filter(|(k, _)| k.name.as_str() == tool)
-            .next()
+            .find(|(k, _)| k.name.as_str() == tool)
             .ok_or_else(|| eyre::eyre!("tool {} not found", tool))?
             .1
             .clone();

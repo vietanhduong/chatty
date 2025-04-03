@@ -38,8 +38,7 @@ impl Syntaxes {
     }
 
     pub fn translate_colour(synntect_color: syntect::highlighting::Color) -> Option<Color> {
-        match synntect_color {
-            syntect::highlighting::Color { r, g, b, .. } => Some(Color::Rgb(r, g, b)),
-        }
+        let syntect::highlighting::Color { r, g, b, .. } = synntect_color;
+        Some(Color::Rgb(r, g, b))
     }
 }
