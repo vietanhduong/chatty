@@ -10,6 +10,7 @@ use crate::models::{
     ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
     Model,
 };
+use crate::warn_event;
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::TryStreamExt;
@@ -190,6 +191,23 @@ impl OpenAI {
         self
     }
 
+    async fn get_mcp_tools(&self, event_tx: ArcEventTx) -> Vec<ToolRequest> {
+        if let Some(mcp) = &self.mcp {
+            let tools = match mcp.list_tools().await {
+                Ok(tools) => tools,
+                Err(e) => {
+                    let _ = event_tx.send(warn_event!(format!("Unable to list tools: {}", e)));
+                    return vec![];
+                }
+            };
+            return tools
+                .into_iter()
+                .map(|tool| ToolRequest::from(tool))
+                .collect::<Vec<_>>();
+        }
+        vec![]
+    }
+
     async fn chat_completion(
         &self,
         override_id: Option<String>,
@@ -198,16 +216,7 @@ impl OpenAI {
         messages: &[MessageRequest],
         event_tx: ArcEventTx,
     ) -> Result<()> {
-        let mut tools: Vec<ToolRequest> = vec![];
-        if let Some(mcp) = self.mcp.as_ref() {
-            tools = mcp
-                .list_tools()
-                .await
-                .wrap_err("listing tools")?
-                .into_iter()
-                .map(ToolRequest::from)
-                .collect();
-        }
+        let tools = self.get_mcp_tools(event_tx.clone()).await;
 
         let completion_req = CompletionRequest {
             model: model.to_string(),
