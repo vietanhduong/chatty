@@ -17,7 +17,6 @@ multiple model support, and intelligent context compression.
 * **Smart Context Compression**: Automatically manages long conversations (experimental)
 * **Syntax Highlighting**: Beautiful code block colorization
 * **Fast and Efficient**: Written in Rust for optimal performance
-* **Secure**: Local conversation storage with encryption support
 
 ## Quick Start
 
