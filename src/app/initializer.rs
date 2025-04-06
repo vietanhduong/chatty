@@ -69,19 +69,8 @@ pub struct Initializer {
 }
 
 impl Initializer {
-    pub fn new() -> Self {
-        let (task_tx, task_rx) = mpsc::unbounded_channel::<TaskEvent>();
-        SENDER.set(task_tx).unwrap();
-
-        Self {
-            crossterm_events: EventStream::new(),
-            task_rx,
-            messages: vec![],
-        }
-    }
-
     pub fn ready() -> bool {
-        matches!(SENDER.get(), Some(_))
+        SENDER.get().is_some()
     }
 
     pub fn add_notice(msg: NoticeMessage) {
@@ -160,12 +149,9 @@ impl Initializer {
             let event = tokio::select! {
                 event = self.task_rx.recv() =>event,
                 event = self.crossterm_events.next().fuse() => match event {
-                    Some(Ok(input)) => match input {
-                        CrosstermEvent::Key(key_event) => Some(TaskEvent::CrosstermKey(key_event)),
-                        _ => None,
-                    },
+                    Some(Ok(CrosstermEvent::Key(key_event))) => Some(TaskEvent::CrosstermKey(key_event)),
                     Some(Err(_)) => None,
-                    None => None
+                    _ => None
                 },
                 _ = time::sleep(FRAME_DURATION) => Some(TaskEvent::UiTick)
             };
@@ -227,25 +213,23 @@ impl Initializer {
             None => return,
         };
 
-        match task {
-            Event::Task {
-                inner,
-                completed_at,
-                success,
-                ..
-            } => {
-                *completed_at = Some(chrono::Utc::now());
-                if let Some(message) = message {
-                    inner.message = format!("{} {}", inner.message, message);
-                }
-                *success = task_success;
-                log::debug!(
-                    "Completing task: {} (success: {})",
-                    inner.message,
-                    task_success
-                );
+        if let Event::Task {
+            inner,
+            completed_at,
+            success,
+            ..
+        } = task
+        {
+            *completed_at = Some(chrono::Utc::now());
+            if let Some(message) = message {
+                inner.message = format!("{} {}", inner.message, message);
             }
-            _ => {}
+            *success = task_success;
+            log::debug!(
+                "Completing task: {} (success: {})",
+                inner.message,
+                task_success
+            );
         }
     }
 
@@ -264,6 +248,19 @@ impl Initializer {
             paragraph.render(popup_area, f.buffer_mut());
         })?;
         Ok(())
+    }
+}
+
+impl Default for Initializer {
+    fn default() -> Self {
+        let (task_tx, task_rx) = mpsc::unbounded_channel::<TaskEvent>();
+        SENDER.set(task_tx).unwrap();
+
+        Self {
+            crossterm_events: EventStream::new(),
+            task_rx,
+            messages: vec![],
+        }
     }
 }
 

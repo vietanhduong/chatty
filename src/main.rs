@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     }));
 
     let init_handler = task::spawn(async move {
-        let mut init = Initializer::new();
+        let mut init = Initializer::default();
         init.run().await
     });
     // Wait until the initialization screen is ready
