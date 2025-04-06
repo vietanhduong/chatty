@@ -4,6 +4,11 @@ use std::{collections::HashMap, hash::Hash};
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CallToolResult {
+    // The name of provider that generated the result
+    // This is internal field which is not part of the MCP specification
+    #[serde(skip)]
+    pub provider: String,
+
     pub content: Vec<CallToolResultContent>,
     #[serde(default)] // This will default to false if missing
     pub is_error: bool,
@@ -37,6 +42,10 @@ pub struct ResourceContent {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Tool {
+    // This field is not part of the MCP specification
+    #[serde(skip)]
+    pub provider: String,
+
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,

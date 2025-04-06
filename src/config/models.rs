@@ -137,10 +137,19 @@ pub struct BackendConfig {
     pub connections: Vec<BackendConnection>,
 
     #[serde(default)]
-    pub mcp_servers: Vec<McpConfig>,
+    pub mcp: McpConfig,
 
     #[serde(default)]
     pub model_settings: Vec<ModelSetting>,
+}
+
+#[derive(Default, Deserialize, Serialize, Debug, Clone)]
+pub struct McpConfig {
+    #[serde(default)]
+    pub notice_on_call_tool: Option<bool>,
+
+    #[serde(default)]
+    pub servers: Vec<McpServerConfig>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -159,9 +168,10 @@ pub enum McpServer {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct McpConfig {
+pub struct McpServerConfig {
     #[serde(default = "default_option_true")]
     pub enabled: Option<bool>,
+    pub provider: String,
     #[serde(flatten)]
     pub server: McpServer,
 }

@@ -47,11 +47,11 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     }
 
     // Init MCP manager
-    if !config.mcp_servers.is_empty() {
+    if !config.mcp.servers.is_empty() {
         verbose!("  [+] Initializing MCP manager");
     }
     let mcp_manager = mcp::Manager::default()
-        .from(&config.mcp_servers)
+        .from(&config.mcp.servers)
         .await
         .wrap_err("creating mcp manager")?;
 

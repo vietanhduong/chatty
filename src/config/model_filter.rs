@@ -21,14 +21,14 @@ impl ModelFilter {
     pub fn build(&self) -> Result<regex::Regex> {
         match self {
             ModelFilter::Contains(substring) => {
-                let pattern = format!(".*{}.*", regex::escape(&substring));
+                let pattern = format!(".*{}.*", regex::escape(substring));
                 regex::Regex::new(&pattern)
             }
             ModelFilter::Equals(exact) => {
-                let pattern = format!("^{}$", regex::escape(&exact));
+                let pattern = format!("^{}$", regex::escape(exact));
                 regex::Regex::new(&pattern)
             }
-            ModelFilter::Regex(pattern) => regex::Regex::new(&pattern),
+            ModelFilter::Regex(pattern) => regex::Regex::new(pattern),
         }
         .wrap_err("building regex")
     }

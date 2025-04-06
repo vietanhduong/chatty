@@ -11,7 +11,7 @@ pub enum Event {
 
     BackendAbort,
     BackendMessage(crate::models::Message),
-    BackendPromptResponse(crate::models::BackendResponse),
+    ChatCompletionResponse(crate::models::BackendResponse),
 
     SetConversation(Option<Conversation>),
     ConversationDeleted(String),

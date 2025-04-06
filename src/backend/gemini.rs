@@ -219,7 +219,7 @@ impl Gemini {
                 init_conversation,
                 usage: None,
             };
-            event_tx.send(Event::BackendPromptResponse(msg)).await?;
+            event_tx.send(Event::ChatCompletionResponse(msg)).await?;
         }
 
         let content = process_line_buffer(&line_buf)?;
@@ -250,7 +250,7 @@ impl Gemini {
                 init_conversation,
                 usage,
             };
-            event_tx.send(Event::BackendPromptResponse(msg)).await?;
+            event_tx.send(Event::ChatCompletionResponse(msg)).await?;
             return Ok(());
         }
 

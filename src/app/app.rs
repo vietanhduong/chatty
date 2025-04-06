@@ -195,7 +195,7 @@ impl<'a> App<'a> {
                 Some(false)
             }
 
-            Event::BackendPromptResponse(resp) => {
+            Event::ChatCompletionResponse(resp) => {
                 self.handle_response(resp);
                 Some(false)
             }

@@ -68,7 +68,7 @@ The summary should be started with Summary: and end with a period.
                     .collect::<Vec<_>>();
                 for msg in resp {
                     event_tx
-                        .send(Event::BackendPromptResponse(msg))
+                        .send(Event::ChatCompletionResponse(msg))
                         .await
                         .expect("Failed to send event");
                 }

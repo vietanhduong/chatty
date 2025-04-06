@@ -4,7 +4,7 @@ mod tests;
 
 use super::{CallToolResult, Tool};
 use super::{McpClient, client::Client};
-use crate::config::McpConfig;
+use crate::config::McpServerConfig;
 use eyre::{Context, Result};
 use std::{collections::HashMap, sync::Arc};
 
@@ -14,9 +14,9 @@ pub struct Manager {
 }
 
 impl Manager {
-    pub async fn from(mut self, servers: &[McpConfig]) -> Result<Self> {
+    pub async fn from(mut self, servers: &[McpServerConfig]) -> Result<Self> {
         for server in servers.iter().filter(|s| s.enabled.unwrap_or(true)) {
-            let client = Client::new(&server.server)
+            let client = Client::new(&server.provider, &server.server)
                 .await
                 .wrap_err("creating client")?;
             self.add_server(Arc::new(client)).await?;

@@ -65,6 +65,7 @@ async fn test_add_server() {
 
 fn fake_tool(name: &str, desc: &str) -> Tool {
     Tool {
+        provider: "test".to_string(),
         name: name.to_string(),
         description: Some(desc.to_string()),
         input_schema: ToolInputSchema::default(),
