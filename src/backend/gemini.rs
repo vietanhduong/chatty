@@ -6,7 +6,7 @@ use std::{collections::HashMap, fmt::Display, sync::Arc, time};
 
 use crate::{
     backend::{mcp::Tool, utils::context_truncation},
-    config::user_agent,
+    config::{self, ModelSetting, user_agent},
     models::{
         ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event,
         Message, Model,
@@ -30,13 +30,27 @@ pub struct Gemini {
     endpoint: String,
     api_key: Option<String>,
     timeout: Option<time::Duration>,
-    mcp: Option<Arc<dyn mcp::MCP>>,
+    mcp: Option<Arc<dyn mcp::McpClient>>,
 
     want_models: Vec<String>,
     max_output_tokens: Option<usize>,
+
+    model_settings: HashMap<String, ModelSetting>,
 }
 
 impl Gemini {
+    pub async fn init(&mut self) -> Result<()> {
+        let models = self.list_models().await.wrap_err("listing models")?;
+        for settings in &config::instance().backend.model_settings {
+            let re = settings.model.build().wrap_err("building model filter")?;
+            if let Some(model) = models.iter().find(|m| re.is_match(m.id())) {
+                self.model_settings
+                    .insert(model.id().to_string(), settings.clone());
+            }
+        }
+        Ok(())
+    }
+
     pub fn with_endpoint(mut self, endpoint: &str) -> Self {
         self.endpoint = endpoint.to_string();
         self
@@ -65,7 +79,7 @@ impl Gemini {
         self
     }
 
-    pub fn with_mcp(mut self, mcp: Arc<dyn mcp::MCP>) -> Self {
+    pub fn with_mcp(mut self, mcp: Arc<dyn mcp::McpClient>) -> Self {
         self.mcp = Some(mcp);
         self
     }
@@ -417,6 +431,7 @@ impl Default for Gemini {
             api_key: None,
             timeout: None,
 
+            model_settings: HashMap::new(),
             want_models: Vec::new(),
         }
     }

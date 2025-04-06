@@ -2,7 +2,7 @@
 #[path = "bubble_test.rs"]
 mod tests;
 
-use crate::{config::Configuration, models::Message};
+use crate::{config, models::Message};
 use ratatui::{
     style::{Color, Style},
     text::{Line, Span},
@@ -153,7 +153,7 @@ impl<'a> Bubble<'_> {
         }
 
         let max_width_percent =
-            Configuration::instance().general.get_bubble_width_percent() as f32 / 100.0;
+            config::instance().general.get_bubble_width_percent() as f32 / 100.0;
 
         if max_line_len as f32 > max_width_percent * self.max_width as f32 {
             max_line_len = (self.max_width as f32 * max_width_percent).ceil() as usize;

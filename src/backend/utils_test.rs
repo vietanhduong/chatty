@@ -1,3 +1,5 @@
+use crate::config::Configuration;
+
 use super::*;
 
 #[test]
@@ -6,7 +8,7 @@ fn test_context_truncation() {
     config.context.truncation.enabled = true;
     config.context.truncation.max_tokens = 15;
 
-    Configuration::init(config).expect("failed to init default config");
+    crate::config::init(config).expect("failed to init default config");
 
     let mut context = vec![
         Message::new_user("user", "Hello, world!").with_token_count(2),

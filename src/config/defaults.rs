@@ -27,3 +27,7 @@ pub(crate) fn log_file_path() -> String {
 pub(crate) fn bubble_width_percent() -> usize {
     BUBBLE_WIDTH_PERCENT
 }
+
+pub(crate) fn default_option_true() -> Option<bool> {
+    Some(true)
+}

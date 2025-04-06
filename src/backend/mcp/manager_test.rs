@@ -1,9 +1,9 @@
 use super::*;
-use crate::backend::mcp::{MockMCP, ToolInputSchema};
+use crate::backend::mcp::{MockMcpClient, ToolInputSchema};
 
 #[tokio::test]
 async fn test_add_server() {
-    let mut mock_mcp = MockMCP::new();
+    let mut mock_mcp = MockMcpClient::new();
     mock_mcp.expect_list_tools().returning(|| {
         Box::pin(async {
             Ok(vec![
@@ -14,7 +14,7 @@ async fn test_add_server() {
         })
     });
 
-    let tmp = Arc::new(MockMCP::new());
+    let tmp = Arc::new(MockMcpClient::new());
 
     let mut manager = Manager::default();
     manager

@@ -39,8 +39,8 @@ impl Command {
             Configuration::default()
         };
 
-        Configuration::init(config).wrap_err("initializing configuration")?;
-        Ok(Configuration::instance())
+        config::init(config).wrap_err("initializing configuration")?;
+        Ok(config::instance())
     }
 
     pub fn version(&self) -> bool {

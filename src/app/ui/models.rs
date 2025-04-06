@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::{
-    config::Configuration,
+    config::{self},
     info_event,
     models::{Event, Model},
 };
@@ -40,7 +40,7 @@ pub struct ModelsScreen<'a> {
 
 impl<'a> ModelsScreen<'a> {
     pub fn new(models: Vec<Model>, event_tx: mpsc::UnboundedSender<Event>) -> ModelsScreen<'a> {
-        let want_model = Configuration::instance()
+        let want_model = config::instance()
             .backend
             .default_model
             .as_deref()

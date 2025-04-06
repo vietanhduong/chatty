@@ -15,7 +15,7 @@ use serde_json::Value;
 
 #[async_trait::async_trait]
 #[cfg_attr(test, automock)]
-pub trait MCP: Send + Sync + 'static {
+pub trait McpClient: Send + Sync + 'static {
     async fn list_tools(&self) -> Result<Vec<Tool>>;
     async fn call_tool(&self, tool: &str, args: Option<Value>) -> Result<CallToolResult>;
     async fn shutdown(&self) -> Result<()>;

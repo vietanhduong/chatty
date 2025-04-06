@@ -3,8 +3,8 @@
 mod tests;
 
 use super::{CallToolResult, Tool};
-use super::{MCP, transport::Binary};
-use crate::config::{BinaryConfig, MCPConfig, WebSocketConfig};
+use super::{McpClient, transport::Binary};
+use crate::config::{BinaryConfig, McpServer, WebSocketConfig};
 use eyre::{Context, Result};
 use mcp_rust_sdk::transport::Transport;
 use mcp_rust_sdk::transport::websocket::WebSocketTransport;
@@ -32,16 +32,16 @@ impl Client {
         Self { inner }
     }
 
-    pub async fn new(config: &MCPConfig) -> Result<Self> {
+    pub async fn new(config: &McpServer) -> Result<Self> {
         match config {
-            MCPConfig::Binary(binary) => Self::new_binary(binary),
-            MCPConfig::WebSocket(websocket) => Self::new_websocket(websocket).await,
+            McpServer::Binary(binary) => Self::new_binary(binary),
+            McpServer::WebSocket(websocket) => Self::new_websocket(websocket).await,
         }
     }
 }
 
 #[async_trait::async_trait]
-impl MCP for Client {
+impl McpClient for Client {
     /// List all available tools
     async fn list_tools(&self) -> Result<Vec<Tool>> {
         let resp = self

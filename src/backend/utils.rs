@@ -2,14 +2,14 @@
 #[path = "utils_test.rs"]
 mod tests;
 
-use crate::{config::Configuration, models::Message};
+use crate::{config, models::Message};
 
 pub(crate) fn context_truncation(context: &mut Vec<Message>, max_output_tokens: usize) {
-    if !Configuration::instance().context.truncation.enabled || max_output_tokens == 0 {
+    if !config::instance().context.truncation.enabled || max_output_tokens == 0 {
         return;
     }
 
-    let max_tokens = Configuration::instance().context.truncation.max_tokens;
+    let max_tokens = config::instance().context.truncation.max_tokens;
     let mut current_tokens = context.iter().map(|msg| msg.token_count()).sum::<usize>();
     if current_tokens + max_output_tokens <= max_tokens {
         return;

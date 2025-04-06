@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use eyre::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::config::constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
@@ -8,6 +7,7 @@ use crate::models::BackendConnection;
 
 #[allow(unused_imports)]
 use super::CONFIG;
+use super::model_filter::ModelFilter;
 
 use super::constants::{
     HELLO_MESSAGE, LOG_FILE_PATH, MAX_BUBBLE_WIDTH_PERCENT, MIN_BUBBLE_WIDTH_PERCENT,
@@ -137,15 +137,33 @@ pub struct BackendConfig {
     pub connections: Vec<BackendConnection>,
 
     #[serde(default)]
-    pub mcp_servers: Vec<MCPConfig>,
+    pub mcp_servers: Vec<McpConfig>,
+
+    #[serde(default)]
+    pub model_settings: Vec<ModelSetting>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub enum MCPConfig {
+pub struct ModelSetting {
+    pub model: ModelFilter,
+    #[serde(default = "default_option_true")]
+    pub enable_mcp: Option<bool>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub enum McpServer {
     #[serde(rename = "binary")]
     Binary(BinaryConfig),
     #[serde(rename = "websocket")]
     WebSocket(WebSocketConfig),
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct McpConfig {
+    #[serde(default = "default_option_true")]
+    pub enabled: Option<bool>,
+    #[serde(flatten)]
+    pub server: McpServer,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -173,36 +191,6 @@ pub enum StorageConfig {
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub struct SqliteStorage {
     pub path: Option<String>,
-}
-
-impl Configuration {
-    #[cfg(not(test))]
-    pub fn instance() -> &'static Configuration {
-        CONFIG.get().expect("Config not initialized")
-    }
-
-    #[cfg(not(test))]
-    pub fn init(config: Configuration) -> Result<()> {
-        CONFIG
-            .set(config)
-            .map_err(|_| eyre::eyre!("Config already initialized"))?;
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub fn instance() -> &'static Configuration {
-        use super::TEST_CONFIG;
-        TEST_CONFIG.with(|config| *config.borrow())
-    }
-
-    #[cfg(test)]
-    pub fn init(config: Configuration) -> Result<()> {
-        use super::TEST_CONFIG;
-        TEST_CONFIG.with(|test_config| {
-            *test_config.borrow_mut() = Box::leak(Box::new(config));
-        });
-        Ok(())
-    }
 }
 
 impl GeneralConfig {

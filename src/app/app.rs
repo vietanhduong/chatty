@@ -1,7 +1,7 @@
 use std::time::Duration;
 use std::{collections::HashMap, io, sync::Arc, time};
 
-use crate::config::Configuration;
+use crate::config::{self};
 use crate::context::Compressor;
 use crate::models::action::Action;
 use crate::models::conversation::FindMessage;
@@ -553,11 +553,7 @@ impl<'a> App<'a> {
                 msg.set_token_count(usage.completion_tokens);
             }
 
-            if Configuration::instance()
-                .general
-                .show_usage
-                .unwrap_or_default()
-            {
+            if config::instance().general.show_usage.unwrap_or_default() {
                 self.notice.add_message(info_notice!(
                     format!("Usage: {}", usage.to_string()),
                     Duration::from_secs(7)
@@ -598,7 +594,7 @@ impl<'a> App<'a> {
             .should_compress(&self.app_state.current_convo)
         {
             let convo_id = self.app_state.current_convo.id().to_string();
-            let model = Configuration::instance()
+            let model = config::instance()
                 .context
                 .compression
                 .compress_model
