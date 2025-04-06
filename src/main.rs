@@ -57,9 +57,7 @@ async fn main() -> Result<()> {
         eyre::bail!("No backend configured");
     }
 
-    Initializer::add_task("init_backend", "Initializing backend...");
     let backend = new_manager(&config.backend).await?;
-    task_success!("init_backend");
 
     if !config.context.compression.enabled && !config.context.truncation.enabled {
         Initializer::add_notice(warn_notice!(

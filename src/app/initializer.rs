@@ -260,9 +260,12 @@ impl Initializer {
             if self.complete {
                 tasks.push(Line::from(vec![
                     span!("[i] ").fg(NoticeKind::Info.text_color()),
-                    span!("Initialize completed! Press ").white(),
-                    span!("Enter").green().bold(),
-                    span!(" to start!").white(),
+                    span!("Initialize completed! Press ")
+                        .white()
+                        .bold()
+                        .italic(),
+                    span!("Enter").green().bold().italic(),
+                    span!(" to start!").white().italic(),
                 ]));
             }
 
@@ -309,8 +312,9 @@ impl Event {
                         .signed_duration_since(*created_at)
                         .to_std()
                         .unwrap_or_default();
-                    message
-                        .push_str(format!(" completed! (took {}(s))", took.as_secs_f64()).as_str());
+                    message.push_str(
+                        format!(" completed! (took {:.2}s)", took.as_secs_f64()).as_str(),
+                    );
                 } else {
                     spans.push(span!("? ").yellow());
                 }
