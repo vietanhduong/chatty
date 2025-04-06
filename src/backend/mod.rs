@@ -6,7 +6,7 @@ pub(crate) mod utils;
 
 pub use gemini::Gemini;
 pub use manager::Manager;
-pub use mcp::MCP;
+pub use mcp::McpClient;
 pub use openai::OpenAI;
 
 #[cfg(test)]
@@ -47,11 +47,11 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     }
 
     // Init MCP manager
-    if !config.mcp_servers.is_empty() {
+    if !config.mcp.servers.is_empty() {
         verbose!("  [+] Initializing MCP manager");
     }
     let mcp_manager = mcp::Manager::default()
-        .from(&config.mcp_servers)
+        .from(&config.mcp.servers)
         .await
         .wrap_err("creating mcp manager")?;
 
@@ -66,7 +66,7 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     let mut manager = manager::Manager::default();
     let default_timeout = config.timeout_secs;
     for connection in connections {
-        let backend: ArcBackend = match connection.kind() {
+        let backend: Result<ArcBackend> = match connection.kind() {
             BackendKind::OpenAI => {
                 let mut connection = connection.clone();
                 if connection.timeout().is_none() && default_timeout.is_some() {
@@ -79,7 +79,9 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
                     openai = openai.with_mcp(mcp_manager.clone());
                 }
 
-                Arc::new(openai)
+                openai.init().await.wrap_err("initializing OpenAI")?;
+
+                Ok(Arc::new(openai))
             }
             BackendKind::Gemini => {
                 let mut connection = connection.clone();
@@ -91,17 +93,32 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
                 if let Some(mcp_manager) = mcp_manager.as_ref() {
                     gemini = gemini.with_mcp(mcp_manager.clone());
                 }
-                Arc::new(gemini)
+
+                gemini.init().await.wrap_err("initializing Gemini")?;
+                Ok(Arc::new(gemini))
+            }
+        };
+
+        let backend = match backend {
+            Ok(backend) => backend,
+            Err(e) => {
+                log::warn!("  [-] Failed to initialize backend: {}", e);
+                continue;
             }
         };
 
         let name = backend.name().to_string();
-        manager
-            .add_connection(backend)
-            .await
-            .wrap_err(format!("adding connection: {}", name))?;
+        if let Err(err) = manager.add_connection(backend).await {
+            log::warn!("  [-] Failed to add backend connection: {}", err);
+            continue;
+        }
         verbose!("  [+] Added backend: {}", name);
         log::debug!("Added backend connection: {}", name);
     }
+
+    if manager.is_empty() {
+        eyre::bail!("No backend connections available");
+    }
+
     Ok(Arc::new(manager))
 }

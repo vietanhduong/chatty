@@ -150,7 +150,7 @@ The summary should be started with Summary: and end with a period.
         let mut context = ConvoContext::new(last_message_id);
         while let Some(event) = rx.recv().await {
             match event {
-                Event::BackendPromptResponse(msg) => {
+                Event::ChatCompletionResponse(msg) => {
                     context.append_content(msg.text);
                     if msg.done {
                         context = context.with_id(msg.id);

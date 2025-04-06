@@ -1,3 +1,5 @@
+use crate::config::Configuration;
+
 use super::*;
 
 #[test]
@@ -23,7 +25,7 @@ fn test_filter_issuer() {
 
 #[test]
 fn test_conversation_build_context() {
-    Configuration::init(Configuration::default()).expect("failed to init default config");
+    crate::config::init(Configuration::default()).expect("failed to init default config");
 
     let mut convo = Conversation::new_hello();
     let context = convo.build_context();
@@ -85,7 +87,7 @@ pub fn test_conversation_last_message_of() {
 
 #[test]
 pub fn test_conversation_token_count() {
-    Configuration::init(Configuration::default()).expect("failed to init default config");
+    config::init(Configuration::default()).expect("failed to init default config");
 
     let mut convo = Conversation::new_hello();
 

@@ -5,18 +5,18 @@ mod tests;
 use crate::backend::mcp::{Tool, ToolInputSchema};
 use crate::backend::utils::context_truncation;
 use crate::backend::{ArcBackend, Backend, TITLE_PROMPT};
-use crate::config::user_agent;
+use crate::config::{self, ModelSetting, user_agent};
 use crate::models::{
     ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event, Message,
     Model,
 };
-use crate::warn_event;
+use crate::{info_event, warn_event};
 use async_trait::async_trait;
 use eyre::{Context, Result, bail};
 use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;
 use std::sync::Arc;
 use std::{fmt::Display, time};
@@ -31,9 +31,10 @@ pub struct OpenAI {
     endpoint: String,
     api_key: Option<String>,
     timeout: Option<time::Duration>,
-    mcp: Option<Arc<dyn mcp::MCP>>,
+    mcp: Option<Arc<dyn mcp::McpClient>>,
 
     want_models: Vec<String>,
+    model_settings: HashMap<String, ModelSetting>,
 
     max_output_tokens: Option<usize>,
 }
@@ -150,6 +151,18 @@ impl OpenAI {
         Self::default()
     }
 
+    pub async fn init(&mut self) -> Result<()> {
+        let models = self.list_models().await.wrap_err("listing models")?;
+        for settings in &config::instance().backend.model_settings {
+            let re = settings.model.build().wrap_err("building model filter")?;
+            if let Some(model) = models.iter().find(|m| re.is_match(m.id())) {
+                self.model_settings
+                    .insert(model.id().to_string(), settings.clone());
+            }
+        }
+        Ok(())
+    }
+
     pub fn with_want_models(mut self, models: Vec<String>) -> Self {
         self.want_models = models;
         self
@@ -186,12 +199,12 @@ impl OpenAI {
         &self.want_models
     }
 
-    pub fn with_mcp(mut self, mcp: Arc<dyn mcp::MCP>) -> Self {
+    pub fn with_mcp(mut self, mcp: Arc<dyn mcp::McpClient>) -> Self {
         self.mcp = Some(mcp);
         self
     }
 
-    async fn get_mcp_tools(&self, event_tx: ArcEventTx) -> Vec<ToolRequest> {
+    async fn get_mcp_tools(&self, event_tx: ArcEventTx) -> Vec<Tool> {
         if let Some(mcp) = &self.mcp {
             let tools = match mcp.list_tools().await {
                 Ok(tools) => tools,
@@ -202,7 +215,7 @@ impl OpenAI {
                     return vec![];
                 }
             };
-            return tools.into_iter().map(ToolRequest::from).collect::<Vec<_>>();
+            return tools;
         }
         vec![]
     }
@@ -215,7 +228,19 @@ impl OpenAI {
         messages: &[MessageRequest],
         event_tx: ArcEventTx,
     ) -> Result<()> {
-        let tools = self.get_mcp_tools(event_tx.clone()).await;
+        let settings = self.model_settings.get(model);
+
+        let enable_mcp = if let Some(settings) = settings {
+            settings.enable_mcp.unwrap_or(true)
+        } else {
+            true
+        };
+
+        let tools = if enable_mcp {
+            self.get_mcp_tools(event_tx.clone()).await
+        } else {
+            vec![]
+        };
 
         let completion_req = CompletionRequest {
             model: model.to_string(),
@@ -227,7 +252,7 @@ impl OpenAI {
             } else {
                 None
             },
-            tools,
+            tools: tools.iter().map(ToolRequest::from).collect(),
         };
 
         let mut req = reqwest::Client::new()
@@ -328,15 +353,13 @@ impl OpenAI {
 
             current_message.content.push_str(&text);
 
-            let msg = BackendResponse {
-                id: message_id.clone(),
-                model: model.to_string(),
-                text,
-                done: false,
-                init_conversation,
-                usage: None,
-            };
-            event_tx.send(Event::BackendPromptResponse(msg)).await?;
+            event_tx
+                .send(Event::ChatCompletionResponse(
+                    BackendResponse::new(&message_id, model)
+                        .with_text(&text)
+                        .with_init_conversation(init_conversation),
+                ))
+                .await?;
 
             if call_tools.is_empty() {
                 if let Some(usage_data) = data.usage {
@@ -350,23 +373,29 @@ impl OpenAI {
         }
 
         if call_tools.is_empty() {
-            let msg = BackendResponse {
-                id: message_id,
-                model: model.to_string(),
-                text: String::new(),
-                done: true,
-                init_conversation,
-                usage,
-            };
-            event_tx.send(Event::BackendPromptResponse(msg)).await?;
+            let mut msg = BackendResponse::new(&message_id, model)
+                .with_done()
+                .with_init_conversation(init_conversation);
+            if let Some(usage) = usage {
+                msg = msg.with_usage(usage);
+            }
+            event_tx.send(Event::ChatCompletionResponse(msg)).await?;
             return Ok(());
         }
+
+        event_tx
+            .send(Event::ChatCompletionResponse(
+                BackendResponse::new(&message_id, model)
+                    .with_text("\n")
+                    .with_init_conversation(init_conversation),
+            ))
+            .await?;
 
         let call_tools = call_tools.into_values().collect::<Vec<_>>();
         // If there are any tool calls, we need to send them to the MCP
         // for processing
         let tool_call_messages = self
-            .call_tool(&call_tools)
+            .call_tool(&call_tools, &tools, event_tx.clone())
             .await
             .wrap_err("calling tools")?;
         let mut messages = messages.to_vec();
@@ -385,11 +414,23 @@ impl OpenAI {
         Ok(())
     }
 
-    async fn call_tool(&self, calls: &[ToolCallResponse]) -> Result<Vec<MessageRequest>> {
+    async fn call_tool(
+        &self,
+        calls: &[ToolCallResponse],
+        tools: &[Tool],
+        event_tx: ArcEventTx,
+    ) -> Result<Vec<MessageRequest>> {
         if self.mcp.is_none() {
             bail!("MCP is not set");
         }
         let mut results = vec![];
+
+        let notice_on_call = config::instance()
+            .backend
+            .mcp
+            .notice_on_call_tool
+            .unwrap_or_default();
+
         for call in calls {
             let args = match call.function.arguments.as_ref() {
                 Some(args) => Some(
@@ -397,6 +438,29 @@ impl OpenAI {
                 ),
                 _ => None,
             };
+
+            let tool_name = call
+                .function
+                .name
+                .as_ref()
+                .ok_or_else(|| eyre::eyre!("missing tool name"))?;
+            if notice_on_call {
+                let provider = match tools.iter().find(|t| &t.name == tool_name) {
+                    Some(t) => t.provider.clone(),
+                    None => "unknown".to_string(),
+                };
+
+                event_tx
+                    .send(info_event!(format!(
+                        "Calling tool \"{}\" (provider: {})",
+                        tool_name, provider
+                    )))
+                    .await?;
+            }
+
+            // TODO: should we log the full description of the tool?
+            log::debug!("Calling tool {} with args: {:?}", tool_name, args);
+
             let resp = self
                 .mcp
                 .as_ref()
@@ -428,6 +492,7 @@ impl Default for OpenAI {
             timeout: None,
             want_models: vec![],
             mcp: None,
+            model_settings: HashMap::new(),
         }
     }
 }
@@ -564,8 +629,8 @@ impl From<&Message> for MessageRequest {
     }
 }
 
-impl From<Tool> for ToolRequest {
-    fn from(tool: Tool) -> Self {
+impl From<&Tool> for ToolRequest {
+    fn from(tool: &Tool) -> Self {
         Self {
             tool_type: "function".to_string(),
             function: FunctionRequest {

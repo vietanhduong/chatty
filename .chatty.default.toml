@@ -52,6 +52,13 @@ max_tokens = 65_536
 ## then the first model in the list will be used.
 default_model = ""
 
+## Backend model settings
+#[[backend.model_settings]]
+#model.contains = "" # One of the following: "contains", "equals", "regex" must be set
+#model.equals = ""
+#model.regex = ""
+#enable_mcp = true # Default is true
+
 ## At least one backend connection must be enabled
 #[[backend.connections]]
 #enabled = false
@@ -65,7 +72,12 @@ default_model = ""
 ## Support for multiple servers. Only 'binary' and 'websocket' are supported
 ## NOTES:
 ## - If tool name is conflicted, the longest one will be used.
-#[[backend.mcp_servers]]
+#[backend.mcp]
+## If set, chatty will send a notice when ever a tool is called
+#notice_on_call_tool = false
+
+#[[backend.mcp.servers]]
+#enabled = true # Default is true
 #binary.filename = "" # Path to the binary file
 #binary.args = [] # Arguments to pass to the binary
 #binary.env = {} # Environment variables to set for the binary

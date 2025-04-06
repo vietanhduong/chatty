@@ -116,7 +116,7 @@ async fn collect_responses(
     while responses.len() < want_len {
         if let Some(event) = rx.recv().await {
             match event {
-                Event::BackendPromptResponse(msg) => responses.push(msg),
+                Event::ChatCompletionResponse(msg) => responses.push(msg),
                 event => bail!("Unexpected event: {:?}", event),
             }
         }

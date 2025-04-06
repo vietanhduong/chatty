@@ -9,8 +9,10 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_client_request_timeout() {
     // Create a mock transport with 6 second delay
-    let client =
-        Client::new_with_transport(Arc::new(Binary::mock("{}", Some(Duration::from_secs(2)))));
+    let client = Client::new_with_transport(
+        "test",
+        Arc::new(Binary::mock("{}", Some(Duration::from_secs(2)))),
+    );
 
     // Try to send request with 5 second timeout
     let result = tokio::time::timeout(Duration::from_secs(1), client.list_tools()).await;
@@ -46,7 +48,7 @@ async fn test_client_list_tools_success() {
     .expect("serialize response");
 
     let transport = Arc::new(Binary::mock(json_str, None));
-    let client = Client::new_with_transport(transport);
+    let client = Client::new_with_transport("test", transport);
 
     // Try to send notification with 5 second timeout
     let result = tokio::time::timeout(Duration::from_secs(5), client.list_tools()).await;
@@ -74,7 +76,7 @@ async fn test_client_call_tool_success() {
     .expect("serialize response");
 
     let transport = Arc::new(Binary::mock(json_str, None));
-    let client = Client::new_with_transport(transport);
+    let client = Client::new_with_transport("test", transport);
 
     // Try to send notification with 5 second timeout
     let result = tokio::time::timeout(Duration::from_secs(5), client.call_tool("myip", None)).await;

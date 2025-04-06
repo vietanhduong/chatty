@@ -3,26 +3,28 @@
 mod tests;
 
 use super::{CallToolResult, Tool};
-use super::{MCP, client::Client};
-use crate::config::MCPConfig;
+use super::{McpClient, client::Client};
+use crate::config::McpServerConfig;
 use eyre::{Context, Result};
 use std::{collections::HashMap, sync::Arc};
 
 #[derive(Default)]
 pub struct Manager {
-    tools: HashMap<Tool, Arc<dyn MCP>>, // Tool name - MCP Client
+    tools: HashMap<Tool, Arc<dyn McpClient>>, // Tool name - MCP Client
 }
 
 impl Manager {
-    pub async fn from(mut self, servers: &[MCPConfig]) -> Result<Self> {
-        for server in servers {
-            let client = Client::new(server).await.wrap_err("creating client")?;
+    pub async fn from(mut self, servers: &[McpServerConfig]) -> Result<Self> {
+        for server in servers.iter().filter(|s| s.enabled.unwrap_or(true)) {
+            let client = Client::new(&server.provider, &server.server)
+                .await
+                .wrap_err("creating client")?;
             self.add_server(Arc::new(client)).await?;
         }
         Ok(self)
     }
 
-    pub async fn add_server(&mut self, client: Arc<dyn MCP>) -> Result<()> {
+    pub async fn add_server(&mut self, client: Arc<dyn McpClient>) -> Result<()> {
         client
             .list_tools()
             .await
@@ -48,7 +50,7 @@ impl Manager {
 }
 
 #[async_trait::async_trait]
-impl MCP for Manager {
+impl McpClient for Manager {
     /// List all available tools
     async fn list_tools(&self) -> Result<Vec<Tool>> {
         // FIXME: Should we apply a TTL cache for this?

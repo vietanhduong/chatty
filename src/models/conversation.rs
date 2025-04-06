@@ -3,7 +3,8 @@
 mod tests;
 
 use crate::{
-    config::{Configuration, constants::HELLO_MESSAGE},
+    config,
+    config::constants::HELLO_MESSAGE,
     models::{Message, message::Issuer},
 };
 
@@ -22,7 +23,7 @@ impl Conversation {
         let mut conversation = Self::default();
         conversation.messages.push(Message::new_system(
             "system",
-            Configuration::instance()
+            config::instance()
                 .general
                 .hello_message
                 .as_deref()

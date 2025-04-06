@@ -38,6 +38,39 @@ pub struct BackendPrompt {
     no_generate_title: bool,
 }
 
+impl BackendResponse {
+    pub fn new(id: &str, model: &str) -> Self {
+        Self {
+            model: model.into(),
+            id: id.into(),
+            text: String::new(),
+            done: false,
+            init_conversation: false,
+            usage: None,
+        }
+    }
+
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = text.into();
+        self
+    }
+
+    pub fn with_done(mut self) -> Self {
+        self.done = true;
+        self
+    }
+
+    pub fn with_init_conversation(mut self, init: bool) -> Self {
+        self.init_conversation = init;
+        self
+    }
+
+    pub fn with_usage(mut self, usage: BackendUsage) -> Self {
+        self.usage = Some(usage);
+        self
+    }
+}
+
 impl BackendPrompt {
     pub fn new(text: impl Into<String>) -> BackendPrompt {
         BackendPrompt {

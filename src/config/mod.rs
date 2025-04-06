@@ -1,8 +1,10 @@
 pub mod constants;
-pub(crate) mod defaults;
+pub mod defaults;
+pub mod model_filter;
 pub mod models;
 pub mod utils;
 
+use eyre::Result;
 pub use models::*;
 pub use utils::*;
 
@@ -34,10 +36,32 @@ thread_local! {
     static TEST_CONFIG: RefCell<&'static Configuration> = RefCell::new(Box::leak(Box::new(Configuration::default())))
 }
 
+#[cfg(not(test))]
+pub fn instance() -> &'static Configuration {
+    CONFIG.get().expect("Config not initialized")
+}
+
+#[cfg(test)]
+pub fn instance() -> &'static Configuration {
+    TEST_CONFIG.with(|config| *config.borrow())
+}
+
+pub fn init(config: Configuration) -> Result<()> {
+    #[cfg(not(test))]
+    CONFIG
+        .set(config)
+        .map_err(|_| eyre::eyre!("Config already initialized"))?;
+    #[cfg(test)]
+    TEST_CONFIG.with(|test_config| {
+        *test_config.borrow_mut() = Box::leak(Box::new(config));
+    });
+    Ok(())
+}
+
 #[macro_export]
 macro_rules! verbose {
     ($($arg:tt)*) => {
-        if $crate::config::Configuration::instance().general.verbose {
+        if $crate::config::instance().general.verbose {
             eprintln!($($arg)*);
         }
     };

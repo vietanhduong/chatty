@@ -15,6 +15,14 @@ pub struct Manager {
 }
 
 impl Manager {
+    pub fn len(&self) -> usize {
+        self.connections.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.connections.is_empty()
+    }
+
     pub async fn add_connection(&mut self, connection: ArcBackend) -> eyre::Result<()> {
         let alias = connection.name().to_string();
 
