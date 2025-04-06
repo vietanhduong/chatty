@@ -16,6 +16,7 @@ use tokio::{sync::mpsc, time};
 use tui_textarea::Input;
 use tui_textarea::Key;
 
+use crate::config;
 use crate::models::NoticeKind;
 use crate::models::NoticeMessage;
 use crate::{
@@ -66,6 +67,7 @@ pub struct Initializer {
     crossterm_events: EventStream,
     task_rx: mpsc::UnboundedReceiver<TaskEvent>,
     messages: Vec<Event>,
+    complete: bool,
 }
 
 impl Initializer {
@@ -188,13 +190,24 @@ impl Initializer {
                 success,
             } => self.handle_task_complete(&id, suffix_message, success),
             TaskEvent::Complete => {
-                return true;
+                self.complete = true;
+                if config::instance().general.auto_start.unwrap_or_default() {
+                    return true;
+                }
             }
             TaskEvent::CrosstermKey(key) => {
                 let input: Input = key.into();
                 if input.ctrl && (input.key == Key::Char('c') || input.key == Key::Char('q')) {
                     destruct_terminal();
                     std::process::exit(0);
+                }
+
+                if input.ctrl || input.alt || input.shift {
+                    return false;
+                }
+
+                if input.key == Key::Enter && self.complete {
+                    return true;
                 }
             }
             _ => {}
@@ -238,11 +251,20 @@ impl Initializer {
             let area = f.area();
             let popup_area = utils::popup_area(area, 60, 70);
 
-            let tasks = self
+            let mut tasks = self
                 .messages
                 .iter()
                 .map(|t| t.to_line())
                 .collect::<Vec<_>>();
+
+            if self.complete {
+                tasks.push(Line::from(vec![
+                    span!("[i] ").fg(NoticeKind::Info.text_color()),
+                    span!("Initialize completed! Press ").white(),
+                    span!("Enter").green().bold(),
+                    span!(" to start!").white(),
+                ]));
+            }
 
             let paragraph = Paragraph::new(tasks).block(Block::default());
             paragraph.render(popup_area, f.buffer_mut());
@@ -260,6 +282,7 @@ impl Default for Initializer {
             crossterm_events: EventStream::new(),
             task_rx,
             messages: vec![],
+            complete: false,
         }
     }
 }

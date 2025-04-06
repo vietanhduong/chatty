@@ -67,6 +67,13 @@ async fn main() -> Result<()> {
         ));
     }
 
+    Initializer::add_task("listing_models", "Fetching models...");
+    let models = backend.list_models().await.wrap_err("getting models")?;
+    task_success!(
+        "listing_models",
+        format!("Available {} model(s)", models.len())
+    );
+
     if config.context.compression.enabled {
         Initializer::add_notice(info_notice!("Context compression enabled"));
     }
@@ -80,13 +87,6 @@ async fn main() -> Result<()> {
         .await
         .wrap_err("initializing storage")?;
     task_success!("init_storage");
-
-    Initializer::add_task("listing_models", "Fetching models...");
-    let models = backend.list_models().await.wrap_err("getting models")?;
-    task_success!(
-        "listing_models",
-        format!("Available {} model(s)", models.len())
-    );
 
     Initializer::add_task("listing_conversations", "Fetching conversations...");
     let conversations = storage

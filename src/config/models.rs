@@ -48,6 +48,9 @@ pub struct GeneralConfig {
 
     #[serde(default = "bubble_width_percent")]
     pub bubble_width_percent: usize,
+
+    #[serde(default)]
+    pub auto_start: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
@@ -266,6 +269,7 @@ impl Default for GeneralConfig {
             hello_message: Some(HELLO_MESSAGE.to_string()),
             show_usage: None,
             bubble_width_percent: 80,
+            auto_start: None,
         }
     }
 }
