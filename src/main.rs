@@ -3,11 +3,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::time;
 
+use chatty::app::Initializer;
 use chatty::app::app::InitProps;
 use chatty::app::services::action::ActionService;
 use chatty::app::services::{ClipboardService, EventService, ShutdownCoordinator};
 use chatty::backend::new_manager;
-use chatty::config::verbose;
 use chatty::config::{init_logger, init_theme};
 use chatty::context::Compressor;
 use chatty::models::Conversation;
@@ -15,9 +15,10 @@ use chatty::models::action::Action;
 use chatty::models::storage::FilterConversation;
 use chatty::storage::new_storage;
 use chatty::{
-    app::{App, destruct_terminal_for_panic},
+    app::{App, destruct_terminal},
     cli::Command,
 };
+use chatty::{info_notice, task_success, warn_notice};
 use eyre::{Context, Result};
 use tokio::{sync::mpsc, task};
 use tokio_util::sync::CancellationToken;
@@ -31,41 +32,89 @@ async fn main() -> Result<()> {
     }
 
     std::panic::set_hook(Box::new(|panic_info| {
-        destruct_terminal_for_panic();
+        destruct_terminal();
         better_panic::Settings::auto().create_panic_handler()(panic_info);
     }));
 
+    let init_handler = task::spawn(async move {
+        let mut init = Initializer::new();
+        init.run().await
+    });
+    // Wait until the initialization screen is ready
+    while !Initializer::ready() {
+        tokio::time::sleep(time::Duration::from_millis(100)).await;
+    }
+    Initializer::add_task("init_logger", "Initializing logger..");
     let config = cmd.get_config()?;
     init_logger(&config.log)?;
-    verbose!("[+] Logger initialized");
+    task_success!("init_logger");
 
+    Initializer::add_task("init_theme", "Initializing theme...");
     let theme = init_theme(&config.theme)?;
-    verbose!("[+] Theme initialized");
+    task_success!("init_theme");
 
     if config.backend.connections.is_empty() {
         eyre::bail!("No backend configured");
     }
 
-    verbose!("[+] Initializing backend...");
+    Initializer::add_task("init_backend", "Initializing backend...");
     let backend = new_manager(&config.backend).await?;
+    task_success!("init_backend");
 
     if !config.context.compression.enabled && !config.context.truncation.enabled {
-        verbose!("[!] Context compression and truncation are disabled");
+        Initializer::add_notice(warn_notice!(
+            "Context compression and truncation are disabled"
+        ));
     }
 
     if config.context.compression.enabled {
-        verbose!("[+] Context compression enabled");
+        Initializer::add_notice(info_notice!("Context compression enabled"));
     }
 
     if config.context.truncation.enabled {
-        verbose!("[+] Context truncation enabled");
+        Initializer::add_notice(info_notice!("Context truncation enabled"));
     }
 
-    verbose!("[+] Initializing storage...");
+    Initializer::add_task("init_storage", "Initializing storage...");
     let storage = new_storage(&config.storage)
         .await
         .wrap_err("initializing storage")?;
-    verbose!("[+] Storage initialized");
+    task_success!("init_storage");
+
+    Initializer::add_task("listing_models", "Fetching models...");
+    let models = backend.list_models().await.wrap_err("getting models")?;
+    task_success!(
+        "listing_models",
+        format!("Available {} model(s)", models.len())
+    );
+
+    Initializer::add_task("listing_conversations", "Fetching conversations...");
+    let conversations = storage
+        .get_conversations(FilterConversation::default())
+        .await
+        .wrap_err("getting conversations")?
+        .into_iter()
+        .filter(|(id, convo)| !id.is_empty() && !convo.messages().is_empty())
+        .map(|(id, convo)| {
+            let convo = Conversation::default()
+                .with_id(&id)
+                .with_created_at(convo.created_at())
+                .with_updated_at(convo.updated_at())
+                .with_title(convo.title());
+            (id, convo)
+        })
+        .collect::<HashMap<_, _>>();
+    task_success!(
+        "listing_conversations",
+        format!("Total {} conversation(s)", conversations.len())
+    );
+
+    // Mark complete tasks. We assume that all tasks are completed
+    Initializer::complete();
+    if let Err(err) = init_handler.await {
+        eprintln!("Error: {}", err);
+        std::process::exit(1);
+    }
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
     let (action_tx, action_rx) = mpsc::unbounded_channel::<Action>();
@@ -90,28 +139,6 @@ async fn main() -> Result<()> {
     );
 
     task_set.spawn(async move { return action_service.run().await });
-
-    verbose!("[+] Fetching models...");
-    let models = backend.list_models().await.wrap_err("getting models")?;
-    verbose!("[+] Fetched {} models", models.len());
-
-    verbose!("[+] Fetching conversations...");
-    let conversations = storage
-        .get_conversations(FilterConversation::default())
-        .await
-        .wrap_err("getting conversations")?
-        .into_iter()
-        .filter(|(id, convo)| !id.is_empty() && !convo.messages().is_empty())
-        .map(|(id, convo)| {
-            let convo = Conversation::default()
-                .with_id(&id)
-                .with_created_at(convo.created_at())
-                .with_updated_at(convo.updated_at())
-                .with_title(convo.title());
-            (id, convo)
-        })
-        .collect::<HashMap<_, _>>();
-    verbose!("[+] Fetched {} conversations", conversations.len());
 
     let mut app = App::new(
         theme,

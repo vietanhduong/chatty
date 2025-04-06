@@ -57,15 +57,3 @@ pub fn init(config: Configuration) -> Result<()> {
     });
     Ok(())
 }
-
-#[macro_export]
-macro_rules! verbose {
-    ($($arg:tt)*) => {
-        if $crate::config::instance().general.verbose {
-            eprintln!($($arg)*);
-        }
-    };
-    () => {};
-}
-
-pub use verbose;

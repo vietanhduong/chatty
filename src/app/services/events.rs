@@ -1,11 +1,9 @@
-use crate::models::Event;
+use crate::{config::constants::FRAME_DURATION, models::Event};
 use crossterm::event::{Event as CrosstermEvent, EventStream, MouseEventKind};
 use futures::{FutureExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio::time;
 use tui_textarea::{Input, Key};
-
-const FRAME_DURATION: time::Duration = time::Duration::from_millis(1000 / 60);
 
 pub struct EventService {
     crossterm_events: EventStream,

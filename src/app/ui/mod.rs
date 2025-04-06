@@ -11,7 +11,7 @@ pub mod question;
 pub mod scroll;
 pub mod syntaxes;
 pub mod textarea;
-pub(crate) mod utils;
+pub mod utils;
 
 pub use bubble::Bubble;
 pub use bubble_list::BubbleList;

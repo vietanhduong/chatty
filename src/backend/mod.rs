@@ -13,12 +13,14 @@ pub use openai::OpenAI;
 use mockall::{automock, predicate::*};
 
 use crate::{
-    config::{BackendConfig, verbose},
-    models::{ArcEventTx, BackendKind, BackendPrompt, Model},
+    app::Initializer,
+    config::BackendConfig,
+    models::{ArcEventTx, BackendConnection, BackendKind, BackendPrompt, Model},
+    task_failure, task_success, warn_notice,
 };
 use async_trait::async_trait;
 use eyre::{Context, Result};
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 const TITLE_PROMPT: &str = r#"
 
@@ -48,71 +50,55 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
 
     // Init MCP manager
     if !config.mcp.servers.is_empty() {
-        verbose!("  [+] Initializing MCP manager");
+        Initializer::add_task("init_mcp", "Initializing MCP manager...");
     }
     let mcp_manager = mcp::Manager::default()
         .from(&config.mcp.servers)
         .await
         .wrap_err("creating mcp manager")?;
+    task_success!("init_mcp");
 
+    Initializer::add_task("listing_mcp_tool", "Listing MCP Tools...");
     let avail_tools = mcp_manager.list_tools().await.wrap_err("listing tools")?;
-    let mcp_manager = if !avail_tools.is_empty() {
-        verbose!("  [+] MCP available {} tools", avail_tools.len(),);
+    let mcp_manager: Option<Arc<dyn McpClient>> = if !avail_tools.is_empty() {
         Some(Arc::new(mcp_manager))
     } else {
         None
     };
 
+    task_success!(
+        "listing_mcp_tool",
+        format!("Available {} tool(s)", avail_tools.len())
+    );
+
     let mut manager = manager::Manager::default();
-    let default_timeout = config.timeout_secs;
     for connection in connections {
-        let backend: Result<ArcBackend> = match connection.kind() {
-            BackendKind::OpenAI => {
-                let mut connection = connection.clone();
-                if connection.timeout().is_none() && default_timeout.is_some() {
-                    connection = connection
-                        .with_timeout(Duration::from_secs(default_timeout.unwrap() as u64));
-                }
-
-                let mut openai: OpenAI = (&connection).into();
-                if let Some(mcp_manager) = mcp_manager.as_ref() {
-                    openai = openai.with_mcp(mcp_manager.clone());
-                }
-
-                openai.init().await.wrap_err("initializing OpenAI")?;
-
-                Ok(Arc::new(openai))
-            }
-            BackendKind::Gemini => {
-                let mut connection = connection.clone();
-                if connection.timeout().is_none() && default_timeout.is_some() {
-                    connection = connection
-                        .with_timeout(Duration::from_secs(default_timeout.unwrap() as u64));
-                }
-                let mut gemini: Gemini = (&connection).into();
-                if let Some(mcp_manager) = mcp_manager.as_ref() {
-                    gemini = gemini.with_mcp(mcp_manager.clone());
-                }
-
-                gemini.init().await.wrap_err("initializing Gemini")?;
-                Ok(Arc::new(gemini))
-            }
-        };
-
-        let backend = match backend {
+        let backend = match new_backend(connection, mcp_manager.clone()).await {
             Ok(backend) => backend,
             Err(e) => {
-                log::warn!("  [-] Failed to initialize backend: {}", e);
+                Initializer::add_notice(warn_notice!(format!(
+                    "Failed to initialize backend: {}",
+                    e
+                )));
+                log::warn!("Failed to initialize backend: {}", e);
                 continue;
             }
         };
 
+        Initializer::add_task(
+            format!("setup_backend_{}", backend.name()).as_str(),
+            format!("Setting up backend connection {}...", backend.name()).as_str(),
+        );
         let name = backend.name().to_string();
         if let Err(err) = manager.add_connection(backend).await {
-            log::warn!("  [-] Failed to add backend connection: {}", err);
+            task_failure!(
+                format!("setup_backend_{}", name).as_str(),
+                format!("Failed: {}", err)
+            );
+            log::warn!("Failed to add backend connection: {}", err);
             continue;
         }
-        verbose!("  [+] Added backend: {}", name);
+        task_success!(format!("setup_backend_{}", name).as_str());
         log::debug!("Added backend connection: {}", name);
     }
 
@@ -121,4 +107,28 @@ pub async fn new_manager(config: &BackendConfig) -> Result<ArcBackend> {
     }
 
     Ok(Arc::new(manager))
+}
+
+async fn new_backend(
+    conn: &BackendConnection,
+    mcp: Option<Arc<dyn McpClient>>,
+) -> Result<ArcBackend> {
+    match conn.kind() {
+        BackendKind::OpenAI => {
+            let mut openai: OpenAI = conn.into();
+            if let Some(mcp) = mcp {
+                openai = openai.with_mcp(mcp);
+            }
+            openai.init().await.wrap_err("initializing OpenAI")?;
+            Ok(Arc::new(openai))
+        }
+        BackendKind::Gemini => {
+            let mut gemini: Gemini = conn.into();
+            if let Some(mcp) = mcp {
+                gemini = gemini.with_mcp(mcp);
+            }
+            gemini.init().await.wrap_err("initializing Gemini")?;
+            Ok(Arc::new(gemini))
+        }
+    }
 }
