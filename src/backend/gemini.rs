@@ -7,6 +7,7 @@ use std::{collections::HashMap, fmt::Display, sync::Arc, time};
 use crate::{
     backend::{mcp::Tool, utils::context_truncation},
     config::{self, ModelSetting, user_agent},
+    info_event,
     models::{
         ArcEventTx, BackendConnection, BackendPrompt, BackendResponse, BackendUsage, Event,
         Message, Model,
@@ -89,7 +90,7 @@ impl Gemini {
         self
     }
 
-    async fn get_mcp_tools(&self, event_tx: ArcEventTx) -> Vec<ToolRequest> {
+    async fn get_mcp_tools(&self, event_tx: ArcEventTx) -> Vec<Tool> {
         if let Some(mcp) = &self.mcp {
             let tools = match mcp.list_tools().await {
                 Ok(tools) => tools,
@@ -100,7 +101,7 @@ impl Gemini {
                     return vec![];
                 }
             };
-            return tools.into_iter().map(ToolRequest::from).collect::<Vec<_>>();
+            return tools;
         }
         vec![]
     }
@@ -113,13 +114,26 @@ impl Gemini {
         contents: &[Content],
         event_tx: ArcEventTx,
     ) -> Result<()> {
-        let tools = self.get_mcp_tools(event_tx.clone()).await;
+        let settings = self.model_settings.get(model);
+
+        let enable_mcp = if let Some(settings) = settings {
+            settings.enable_mcp.unwrap_or(true)
+        } else {
+            true
+        };
+
+        let tools = if enable_mcp {
+            self.get_mcp_tools(event_tx.clone()).await
+        } else {
+            vec![]
+        };
+
         let completion_req = CompletionRequest {
             contents: contents.to_vec(),
             generation_config: Some(GenerationConfig {
                 max_output_tokens: self.max_output_tokens,
             }),
-            tools,
+            tools: tools.iter().map(ToolRequest::from).collect(),
             tool_config: None,
         };
 
@@ -211,15 +225,24 @@ impl Gemini {
                 continue;
             }
 
-            let msg = BackendResponse {
-                id: message_id.clone(),
-                model: model.to_string(),
-                text: text.clone(),
-                done: false,
-                init_conversation,
-                usage: None,
-            };
-            event_tx.send(Event::ChatCompletionResponse(msg)).await?;
+            // event_tx
+            //     .send(Event::ChatCompletionResponse(BackendResponse {
+            //         id: message_id.clone(),
+            //         model: model.to_string(),
+            //         text: text.clone(),
+            //         done: false,
+            //         init_conversation,
+            //         usage: None,
+            //     }))
+            //     .await?;
+
+            event_tx
+                .send(Event::ChatCompletionResponse(
+                    BackendResponse::new(&message_id, model)
+                        .with_text(&text)
+                        .with_init_conversation(init_conversation),
+                ))
+                .await?;
         }
 
         let content = process_line_buffer(&line_buf)?;
@@ -236,25 +259,35 @@ impl Gemini {
         };
 
         if function_calls.is_empty() {
-            let usage = Some(BackendUsage {
+            let usage = BackendUsage {
                 prompt_tokens: content.usage_metadata.prompt_token_count,
                 completion_tokens: content.usage_metadata.candidates_token_count,
                 total_tokens: content.usage_metadata.total_token_count,
-            });
-
-            let msg = BackendResponse {
-                id: message_id,
-                model: model.to_string(),
-                text,
-                done: true,
-                init_conversation,
-                usage,
             };
-            event_tx.send(Event::ChatCompletionResponse(msg)).await?;
+
+            event_tx
+                .send(Event::ChatCompletionResponse(
+                    BackendResponse::new(&message_id, model)
+                        .with_done()
+                        .with_text(text)
+                        .with_init_conversation(init_conversation)
+                        .with_usage(usage),
+                ))
+                .await?;
             return Ok(());
         }
 
-        let function_responses = self.call_tool(&function_calls).await?;
+        event_tx
+            .send(Event::ChatCompletionResponse(
+                BackendResponse::new(&message_id, model)
+                    .with_init_conversation(init_conversation)
+                    .with_text("\n"),
+            ))
+            .await?;
+
+        let function_responses = self
+            .call_tool(&function_calls, &tools, event_tx.clone())
+            .await?;
         let mut contents = contents.to_vec();
         let mut current_content = Content {
             role: "model".to_string(),
@@ -288,13 +321,42 @@ impl Gemini {
         .await
     }
 
-    async fn call_tool(&self, calls: &[FunctionCall]) -> Result<Vec<FunctionResponse>> {
+    async fn call_tool(
+        &self,
+        calls: &[FunctionCall],
+        tools: &[Tool],
+        event_tx: ArcEventTx,
+    ) -> Result<Vec<FunctionResponse>> {
         if self.mcp.is_none() {
             bail!("MCP is not set");
         }
 
+        let notice_on_call = config::instance()
+            .backend
+            .mcp
+            .notice_on_call_tool
+            .unwrap_or_default();
+
         let mut results = vec![];
         for call in calls {
+            let tool_name = call.name.clone();
+            if notice_on_call {
+                let provider = match tools.iter().find(|t| t.name == tool_name) {
+                    Some(tool) => tool.provider.clone(),
+                    None => "unknown".to_string(),
+                };
+
+                event_tx
+                    .send(info_event!(format!(
+                        "Calling tool \"{}\" (provider: {})",
+                        tool_name, provider
+                    )))
+                    .await?;
+            }
+
+            // TODO: should we log the full description of the tool?
+            log::debug!("Calling tool {} with args: {:?}", tool_name, call.args);
+
             let resp = self
                 .mcp
                 .as_ref()
@@ -611,14 +673,14 @@ fn format_model(model: &str) -> String {
     format!("models/{}", model)
 }
 
-impl From<Tool> for ToolRequest {
-    fn from(tool: Tool) -> Self {
+impl From<&Tool> for ToolRequest {
+    fn from(tool: &Tool) -> Self {
         Self {
             code_execution: None,
             function_declarations: vec![FunctionDeclerationRequest {
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.input_schema,
+                name: tool.name.clone(),
+                description: tool.description.clone(),
+                parameters: tool.input_schema.clone(),
             }],
         }
     }

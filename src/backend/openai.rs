@@ -354,14 +354,11 @@ impl OpenAI {
             current_message.content.push_str(&text);
 
             event_tx
-                .send(Event::ChatCompletionResponse(BackendResponse {
-                    id: message_id.clone(),
-                    model: model.to_string(),
-                    text,
-                    done: false,
-                    init_conversation,
-                    usage: None,
-                }))
+                .send(Event::ChatCompletionResponse(
+                    BackendResponse::new(&message_id, model)
+                        .with_text(&text)
+                        .with_init_conversation(init_conversation),
+                ))
                 .await?;
 
             if call_tools.is_empty() {
@@ -376,28 +373,22 @@ impl OpenAI {
         }
 
         if call_tools.is_empty() {
-            event_tx
-                .send(Event::ChatCompletionResponse(BackendResponse {
-                    id: message_id,
-                    model: model.to_string(),
-                    text: String::new(),
-                    done: true,
-                    init_conversation,
-                    usage,
-                }))
-                .await?;
+            let mut msg = BackendResponse::new(&message_id, model)
+                .with_done()
+                .with_init_conversation(init_conversation);
+            if let Some(usage) = usage {
+                msg = msg.with_usage(usage);
+            }
+            event_tx.send(Event::ChatCompletionResponse(msg)).await?;
             return Ok(());
         }
 
         event_tx
-            .send(Event::ChatCompletionResponse(BackendResponse {
-                id: message_id.clone(),
-                model: model.to_string(),
-                text: "\n".to_string(),
-                done: false,
-                init_conversation,
-                usage,
-            }))
+            .send(Event::ChatCompletionResponse(
+                BackendResponse::new(&message_id, model)
+                    .with_text("\n")
+                    .with_init_conversation(init_conversation),
+            ))
             .await?;
 
         let call_tools = call_tools.into_values().collect::<Vec<_>>();
