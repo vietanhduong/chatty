@@ -5,6 +5,7 @@ pub mod event;
 pub mod message;
 pub mod notice;
 pub mod storage;
+pub mod task;
 
 pub use backend::*;
 pub use conversation::{Context, Conversation};

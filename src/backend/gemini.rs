@@ -202,7 +202,6 @@ impl Gemini {
 
             // Process the line buffer
             let content = process_line_buffer(&line_buf)?;
-            log::debug!("Parsed content: {:?}", content);
             line_buf.clear();
             if content.candidates.is_empty() || content.candidates[0].finish_reason.is_some() {
                 break;

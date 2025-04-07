@@ -1,5 +1,5 @@
 use std::time::Duration;
-use std::{collections::HashMap, io, sync::Arc, time};
+use std::{collections::HashMap, sync::Arc, time};
 
 use crate::config::{self};
 use crate::context::Compressor;
@@ -8,15 +8,7 @@ use crate::models::conversation::FindMessage;
 use crate::models::{BackendPrompt, Conversation, Event, Message, message::Issuer};
 use crate::models::{BackendResponse, Model, UpsertConvoRequest};
 use crate::{info_notice, warn_notice};
-use crossterm::{
-    event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen},
-};
 use eyre::Result;
-use ratatui::crossterm::{
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode},
-};
 use ratatui::{
     Terminal,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
@@ -38,6 +30,7 @@ use crate::{
 };
 
 use super::services::EventService;
+use super::{destruct_terminal, init_terminal};
 
 const MIN_WIDTH: u16 = 80;
 
@@ -106,38 +99,20 @@ impl<'a> App<'a> {
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        let stdout = io::stdout();
-        let mut stdout = stdout.lock();
+        init_terminal()?;
 
-        enable_raw_mode()?;
-        execute!(
-            stdout,
-            EnterAlternateScreen,
-            EnableMouseCapture,
-            EnableBracketedPaste
-        )?;
-
-        let term_backend = CrosstermBackend::new(stdout);
+        let term_backend = CrosstermBackend::new(std::io::stdout());
         let mut terminal = Terminal::new(term_backend)?;
         let result = self.start_loop(&mut terminal).await;
 
         self.cancel_token.cancel();
 
-        disable_raw_mode()?;
-        execute!(
-            terminal.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture,
-            DisableBracketedPaste
-        )?;
-
+        destruct_terminal();
         terminal.show_cursor()?;
         result
     }
 
-    async fn handle_key_event(&mut self) -> bool {
-        let event = self.events.next().await;
-
+    async fn handle_key_event(&mut self, event: Event) -> bool {
         // Handle critical events first
         if let Some(stop) = self.handle_global_event(&event).await {
             return stop;
@@ -389,8 +364,12 @@ impl<'a> App<'a> {
 
     async fn start_loop<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
         loop {
-            self.render(terminal)?;
-            if self.handle_key_event().await {
+            let event = self.events.next().await;
+            if matches!(event, Event::UiTick) {
+                self.render(terminal)?;
+                continue;
+            }
+            if self.handle_key_event(event).await {
                 return Ok(());
             }
         }

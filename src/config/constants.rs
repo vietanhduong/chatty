@@ -1,3 +1,5 @@
+use core::time;
+
 /// Max context tokens before trigger compression
 pub const MAX_CONTEXT_LENGTH: usize = 64 * 1024; // 64k tokens
 
@@ -16,3 +18,5 @@ pub const BUBBLE_WIDTH_PERCENT: usize = 60; // 60% of the screen width
 pub const MAX_BUBBLE_WIDTH_PERCENT: usize = 95; // 80% of the screen width
 
 pub const MIN_BUBBLE_WIDTH_PERCENT: usize = 50; // 20% of the screen width
+
+pub const FRAME_DURATION: time::Duration = time::Duration::from_millis(1000 / 60);

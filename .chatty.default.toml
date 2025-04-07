@@ -3,12 +3,15 @@
 hello_message = "Hello! How can I help you? 😊"
 # Show usage statistics when ever a chat completion completed
 show_usage = false
-# Verbose info in starting up. This different from the log level
+# DEPRECATED!! Verbose info in starting up. This different from the log level
 # and will only print in the beginning to stderr.
 verbose = false
 # The percentage of the screen width to use for the bubble width
 # Can't be more than 95% and less than 50%
 bubble_width_percent = 60
+# If set, the initialize screen will auto close after the inititalization
+# is done.
+auto_start = false
 
 [log]
 # Default log level is "info"
