@@ -1,0 +1,87 @@
+name: Release
+run-name: Release `${{ github.ref }}`
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  RUST_VERSION: 1.86.0
+  BUILD_ARGS: "--release --locked"
+  BIN_NAME: "chatty"
+
+jobs:
+  build:
+    name: Build - ${{ matrix.platform.name }}
+    runs-on: ${{ matrix.platform.os || 'ubuntu-22.04' }}
+    strategy:
+      matrix:
+        platform:
+          # Linux
+          - name: Linux x86_64
+            target: x86_64-unknown-linux-gnu
+          - name: Linux aarch64
+            target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+
+          # Mac OS
+          - name: MacOS x86_64
+            target: x86_64-apple-darwin
+            os: macos-13
+          - name: MacOS aarch64
+            target: aarch64-apple-darwin
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          target: ${{ matrix.platform.target }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 #v2.7.8
+
+      - name: Build
+        shell: bash
+        run: |
+          export CARGO_PKG_NAME="${BIN_NAME}"
+          export CARGO_PKG_VERSION="${GITHUB_REF#refs/tags/v}"
+          export GIT_SHA=$(git rev-parse HEAD)
+
+          cargo build ${{ env.BUILD_ARGS }} --target ${{ matrix.platform.target }}
+
+      - name: Store artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 #v4.6.2
+        with:
+          name: ${{ matrix.platform.target }}-${{ env.BIN_NAME }}
+          path: target/${{ matrix.platform.target }}/release/${{ env.BIN_NAME }}
+          retention-days: 1
+
+  release:
+    name: Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+
+      # Download all artifacts
+      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e #v4.2.1
+        with:
+          path: artifacts
+
+      - name: Prepare release
+        shell: bash
+        run: ./prepare_release.sh
+
+      - name: Release
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda
+        with:
+          token: ${{ secrets.GH_PAT }}
+          prerelease: true
+          files: |
+            dist/*
+            README.md
+            LICENSE

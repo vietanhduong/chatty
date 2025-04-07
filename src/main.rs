@@ -3,22 +3,22 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::time;
 
-use chatty::app::Initializer;
-use chatty::app::app::InitProps;
-use chatty::app::services::action::ActionService;
-use chatty::app::services::{ClipboardService, EventService, ShutdownCoordinator};
-use chatty::backend::new_manager;
-use chatty::config::{init_logger, init_theme};
-use chatty::context::Compressor;
-use chatty::models::Conversation;
-use chatty::models::action::Action;
-use chatty::models::storage::FilterConversation;
-use chatty::storage::new_storage;
-use chatty::{
+use chatty_rs::app::Initializer;
+use chatty_rs::app::app::InitProps;
+use chatty_rs::app::services::action::ActionService;
+use chatty_rs::app::services::{ClipboardService, EventService, ShutdownCoordinator};
+use chatty_rs::backend::new_manager;
+use chatty_rs::config::{init_logger, init_theme};
+use chatty_rs::context::Compressor;
+use chatty_rs::models::Conversation;
+use chatty_rs::models::action::Action;
+use chatty_rs::models::storage::FilterConversation;
+use chatty_rs::storage::new_storage;
+use chatty_rs::{
     app::{App, destruct_terminal},
     cli::Command,
 };
-use chatty::{info_notice, task_success, warn_notice};
+use chatty_rs::{info_notice, task_success, warn_notice};
 use eyre::{Context, Result};
 use tokio::{sync::mpsc, task};
 use tokio_util::sync::CancellationToken;
