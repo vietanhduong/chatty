@@ -24,12 +24,15 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - name: Linux aarch64
             target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
 
           # Mac OS
-          - name: MacOS x86_64
-            target: x86_64-apple-darwin
-          - name: MacOS aarch64
-            target: aarch64-apple-darwin
+          # - name: MacOS x86_64
+          #   target: x86_64-apple-darwin
+          #   os: macos-13
+          # - name: MacOS aarch64
+          #   target: aarch64-apple-darwin
+          #   os: macos-latest
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
@@ -44,7 +47,7 @@ jobs:
         if: contains(matrix.platform.target, 'linux')
         shell: bash
         run: |
-          sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+          sudo apt-get update && sudo apt-get install -y tree
 
       - name: Build
         shell: bash
@@ -54,6 +57,7 @@ jobs:
           export GIT_SHA=$(git rev-parse HEAD)
 
           cargo build ${{ env.BUILD_ARGS }} --target ${{ matrix.platform.target }}
+          tree target/
 
       - name: Store artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 #v4.6.2
@@ -62,36 +66,35 @@ jobs:
           path: target/${{ matrix.platform.target }}/release/${{ env.BIN_NAME }}
           retention-days: 1
 
-  # release:
-  #   name: Release
-  #   needs: [build]
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+  release:
+    name: Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
 
-  #     - uses: dtolnay/rust-toolchain@stable
+      # - name: Publish to crates.io
+      #   env:
+      #     CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+      #   run: cargo publish --token "${CARGO_TOKEN}"
 
-  #     - name: Publish to crates.io
-  #       env:
-  #         CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
-  #       run: cargo publish --token "${CARGO_TOKEN}"
+      # Download all artifacts
+      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e #v4.2.1
+        with:
+          path: artifacts
 
-  #     # Download all artifacts
-  #     - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e #v4.2.1
-  #       with:
-  #         path: artifacts
+      - name: Prepare release
+        shell: bash
+        run: ./prepare_release.sh
 
-  #     - name: Prepare release
-  #       shell: bash
-  #       run: ./prepare_release.sh
+      - run: ls -lah dist
 
-  #     # Goreleaser
-  #     - name: Release
-  #       uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda
-  #       with:
-  #         token: ${{ secrets.GH_PAT }}
-  #         prerelease: true
-  #         files: |
-  #           dist/*
-  #           README.md
-  #           LICENSE
+      # - name: Release
+      #   uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda
+      #   with:
+      #     token: ${{ secrets.GH_PAT }}
+      #     prerelease: true
+      #     files: |
+      #       dist/*
+      #       README.md
+      #       LICENSE
