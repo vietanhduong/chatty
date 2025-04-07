@@ -2,6 +2,7 @@
 name = "chatty"
 version = "0.0.1-alpha1"
 edition = "2024"
+license = "MIT"
 authors = ["Viet-Anh Duong <vietanhs0817@gmail.com>"]
 readme = "README.md"
 repository = "https://github.com/vietanhduong/chatty"
