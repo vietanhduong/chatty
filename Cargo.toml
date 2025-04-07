@@ -1,5 +1,5 @@
 [package]
-name = "chatty"
+name = "chatty-rs"
 version = "0.0.1-alpha1"
 edition = "2024"
 license = "MIT"
