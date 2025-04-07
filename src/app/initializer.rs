@@ -1,3 +1,16 @@
+#[cfg(test)]
+#[path = "initializer_test.rs"]
+mod tests;
+
+#[allow(unused_imports)]
+use crate::config;
+
+use crate::models::NoticeKind;
+use crate::models::NoticeMessage;
+use crate::{
+    config::constants::FRAME_DURATION,
+    models::task::{Task, TaskEvent},
+};
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::EventStream;
 use eyre::Result;
@@ -15,14 +28,6 @@ use ratatui_macros::span;
 use tokio::{sync::mpsc, time};
 use tui_textarea::Input;
 use tui_textarea::Key;
-
-use crate::config;
-use crate::models::NoticeKind;
-use crate::models::NoticeMessage;
-use crate::{
-    config::constants::FRAME_DURATION,
-    models::task::{Task, TaskEvent},
-};
 
 use super::destruct_terminal;
 use super::init_terminal;
@@ -123,14 +128,18 @@ impl Initializer {
         }
     }
 
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(mut self) -> Result<Self> {
         init_terminal()?;
         let term_backend = CrosstermBackend::new(std::io::stdout());
         let mut terminal = Terminal::new(term_backend)?;
         let result = self.start_loop(&mut terminal).await;
         destruct_terminal();
         terminal.show_cursor()?;
-        result
+        if let Err(err) = result {
+            log::error!("Error in initializer loop: {}", err);
+            return Err(err);
+        }
+        Ok(self)
     }
 
     async fn start_loop<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
@@ -189,12 +198,7 @@ impl Initializer {
                 suffix_message,
                 success,
             } => self.handle_task_complete(&id, suffix_message, success),
-            TaskEvent::Complete => {
-                self.complete = true;
-                if config::instance().general.auto_start.unwrap_or_default() {
-                    return true;
-                }
-            }
+            TaskEvent::Complete => return self.handle_complete(),
             TaskEvent::CrosstermKey(key) => {
                 let input: Input = key.into();
                 if input.ctrl && (input.key == Key::Char('c') || input.key == Key::Char('q')) {
@@ -273,6 +277,18 @@ impl Initializer {
             paragraph.render(popup_area, f.buffer_mut());
         })?;
         Ok(())
+    }
+
+    #[cfg(not(test))]
+    fn handle_complete(&mut self) -> bool {
+        self.complete = true;
+        config::instance().general.auto_start.unwrap_or_default()
+    }
+
+    #[cfg(test)]
+    fn handle_complete(&mut self) -> bool {
+        self.complete = true;
+        true
     }
 }
 

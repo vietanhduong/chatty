@@ -36,10 +36,7 @@ async fn main() -> Result<()> {
         better_panic::Settings::auto().create_panic_handler()(panic_info);
     }));
 
-    let init_handler = task::spawn(async move {
-        let mut init = Initializer::default();
-        init.run().await
-    });
+    let init_handler = task::spawn(async move { Initializer::default().run().await });
     // Wait until the initialization screen is ready
     while !Initializer::ready() {
         tokio::time::sleep(time::Duration::from_millis(100)).await;
