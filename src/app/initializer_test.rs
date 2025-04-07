@@ -1,11 +1,28 @@
+use tokio::sync::Mutex;
+
 use crate::{info_notice, task_failure, task_success};
 
 use super::*;
 
+impl Initializer {
+    fn mock(events: Vec<CrosstermEvent>) -> Self {
+        let (task_tx, task_rx) = mpsc::unbounded_channel::<TaskEvent>();
+        SENDER.set(task_tx).unwrap();
+
+        Self {
+            crossterm_events: Box::new(EventMock::new(events)),
+            task_rx,
+            messages: vec![],
+            complete: false,
+        }
+    }
+}
+
 #[tokio::test]
 async fn test_initializer() {
     let handler = tokio::spawn(async move {
-        let mut init = Initializer::default();
+        let mut init = Initializer::mock(vec![]);
+
         loop {
             let event = init.next_event().await;
             if init.handle_event(event) {
@@ -34,4 +51,30 @@ async fn test_initializer() {
         .filter(|m| matches!(m, Event::Task { completed_at, .. } if Some(completed_at).is_some()))
         .count();
     assert_eq!(completed_tasks, 3, "Expected 3 completed tasks");
+}
+
+struct EventMock {
+    events: Mutex<Vec<CrosstermEvent>>,
+}
+
+impl EventMock {
+    fn new(events: Vec<CrosstermEvent>) -> Self {
+        Self {
+            events: Mutex::new(events),
+        }
+    }
+}
+
+impl CrosstermStream for EventMock {
+    fn next(
+        &mut self,
+    ) -> std::pin::Pin<
+        Box<
+            dyn Future<Output = Option<std::result::Result<CrosstermEvent, std::io::Error>>>
+                + Send
+                + '_,
+        >,
+    > {
+        Box::pin(async move { self.events.lock().await.pop().map(|event| Ok(event)) })
+    }
 }

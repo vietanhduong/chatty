@@ -1,8 +1,10 @@
 pub mod action;
 pub mod clipboard;
+pub mod crossterm_stream;
 pub mod events;
 
 pub use clipboard::ClipboardService;
+pub use crossterm_stream::CrosstermStream;
 pub use events::EventService;
 
 use std::sync::{Arc, atomic};

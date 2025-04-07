@@ -14,7 +14,7 @@ use crate::{
 use crossterm::event::Event as CrosstermEvent;
 use crossterm::event::EventStream;
 use eyre::Result;
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use once_cell::sync::OnceCell;
 use ratatui::Terminal;
 use ratatui::prelude::Backend;
@@ -31,6 +31,7 @@ use tui_textarea::Key;
 
 use super::destruct_terminal;
 use super::init_terminal;
+use super::services::CrosstermStream;
 use super::ui::utils;
 
 static SENDER: OnceCell<mpsc::UnboundedSender<TaskEvent>> = OnceCell::new();
@@ -69,7 +70,7 @@ macro_rules! task_failure {
 }
 
 pub struct Initializer {
-    crossterm_events: EventStream,
+    crossterm_events: Box<dyn CrosstermStream>,
     task_rx: mpsc::UnboundedReceiver<TaskEvent>,
     messages: Vec<Event>,
     complete: bool,
@@ -298,7 +299,7 @@ impl Default for Initializer {
         SENDER.set(task_tx).unwrap();
 
         Self {
-            crossterm_events: EventStream::new(),
+            crossterm_events: Box::new(EventStream::new()),
             task_rx,
             messages: vec![],
             complete: false,
