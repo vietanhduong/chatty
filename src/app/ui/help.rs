@@ -179,7 +179,7 @@ fn build_key_bindings() -> Vec<KeyBinding> {
             "Abort Request/[C]lear Chat",
         ),
         KeyBinding::new(Input::new(Key::Char('r')).ctrl(), "[R]egenerate Response"),
-        KeyBinding::new(Input::new(Key::Char('m')).ctrl(), "[L]ist/Select Model"),
+        KeyBinding::new(Input::new(Key::Char('l')).ctrl(), "[L]ist/Select Model"),
         KeyBinding::new(Input::new(Key::Char('e')).ctrl(), "[E]dit Mode"),
         KeyBinding::new(Input::new(Key::Char('n')).ctrl(), "[N]ew Chat"),
         KeyBinding::new(Input::new(Key::Up), "Scroll Up"),
