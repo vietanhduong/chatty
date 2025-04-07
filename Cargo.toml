@@ -1,12 +1,17 @@
 [package]
-name = "chatty"
+name = "chatty-rs"
 version = "0.0.1-alpha1"
 edition = "2024"
+license = "MIT"
 authors = ["Viet-Anh Duong <vietanhs0817@gmail.com>"]
 readme = "README.md"
 repository = "https://github.com/vietanhduong/chatty"
 description = "A terminal-based chat client for OpenAI's GPT models."
-exclude = ["/docs/", "/.github/", "/.gitignore"]
+exclude = ["/docs/", "/.github/", "/.gitignore", "/assets"]
+
+[[bin]]
+name = "chatty"
+path = "src/main.rs"
 
 [profile.dev]
 opt-level = 0
@@ -61,7 +66,11 @@ tokio-rusqlite = { version = "0.6.0", features = ["bundled"] }
 better-panic = "0.3.0"
 regex = "1.11.1"
 mcp_rust_sdk = "0.1.1"
+openssl = { version = "0.10.72", features = ["vendored"] }
 
 [dev-dependencies]
 mockito = "1.7.0"
 mockall = "0.13.1"
+
+[package.metadata.cargo-machete]
+ignored = ["openssl"]
