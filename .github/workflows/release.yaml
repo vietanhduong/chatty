@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - "v*"
-    branches:
-      - feat/release
 
 env:
   RUST_VERSION: 1.86.0
@@ -27,12 +25,12 @@ jobs:
             os: ubuntu-22.04-arm
 
           # Mac OS
-          # - name: MacOS x86_64
-          #   target: x86_64-apple-darwin
-          #   os: macos-13
-          # - name: MacOS aarch64
-          #   target: aarch64-apple-darwin
-          #   os: macos-latest
+          - name: MacOS x86_64
+            target: x86_64-apple-darwin
+            os: macos-13
+          - name: MacOS aarch64
+            target: aarch64-apple-darwin
+            os: macos-latest
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
@@ -43,12 +41,6 @@ jobs:
           components: rustfmt, clippy
           target: ${{ matrix.platform.target }}
 
-      - name: Install dependencies
-        if: contains(matrix.platform.target, 'linux')
-        shell: bash
-        run: |
-          sudo apt-get update && sudo apt-get install -y tree
-
       - name: Build
         shell: bash
         run: |
@@ -57,7 +49,6 @@ jobs:
           export GIT_SHA=$(git rev-parse HEAD)
 
           cargo build ${{ env.BUILD_ARGS }} --target ${{ matrix.platform.target }}
-          tree target/
 
       - name: Store artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 #v4.6.2
@@ -73,10 +64,10 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
 
-      # - name: Publish to crates.io
-      #   env:
-      #     CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
-      #   run: cargo publish --token "${CARGO_TOKEN}"
+      - name: Publish to crates.io
+        env:
+          CARGO_TOKEN: ${{ secrets.CARGO_TOKEN }}
+        run: cargo publish --token "${CARGO_TOKEN}"
 
       # Download all artifacts
       - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e #v4.2.1
@@ -87,14 +78,12 @@ jobs:
         shell: bash
         run: ./prepare_release.sh
 
-      - run: ls -lah dist
-
-      # - name: Release
-      #   uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda
-      #   with:
-      #     token: ${{ secrets.GH_PAT }}
-      #     prerelease: true
-      #     files: |
-      #       dist/*
-      #       README.md
-      #       LICENSE
+      - name: Release
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda
+        with:
+          token: ${{ secrets.GH_PAT }}
+          prerelease: true
+          files: |
+            dist/*
+            README.md
+            LICENSE
