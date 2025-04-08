@@ -208,7 +208,6 @@ impl<'a> App<'a> {
             }
 
             Event::SetConversation(convo) => {
-                log::debug!("Set conversation: {:?}", convo);
                 self.change_conversation(convo.clone().unwrap_or(Conversation::new_hello()), false);
                 Some(false)
             }
@@ -380,7 +379,7 @@ impl<'a> App<'a> {
             return;
         }
 
-        let input_str = &self.input.lines().join("\n");
+        let input_str = &self.input.lines().join("\n").trim().to_string();
         if input_str.is_empty() {
             return;
         }

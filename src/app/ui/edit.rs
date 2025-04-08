@@ -4,7 +4,9 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Text},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding},
+    widgets::{
+        Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, Paragraph, Widget,
+    },
 };
 use ratatui_macros::span;
 use syntect::highlighting::Theme;
@@ -171,10 +173,8 @@ impl<'a> EditScreen<'_> {
         );
 
         let text = Text::from(lines);
-        let list = List::new(text)
-            .block(block)
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        frame.render_widget(list, area);
+        let paragraph = Paragraph::new(text).block(block).alignment(Alignment::Left);
+        paragraph.render(area, frame.buffer_mut());
     }
 
     pub async fn handle_key_event(&mut self, event: &Event) -> bool {
