@@ -21,14 +21,16 @@ multiple model support, and intelligent context compression.
 ## Quick Start
 
 ### Installation
-```bash
-# Download from Git
+```console
+# Download from GitHub https://github.com/vietanhduong/chatty/releases
 # or
-# Build from source
-git clone https://github.com/vietanhduong/chatty && cd chatty
+# Install from Crate.io
+$ cargo install --locked chatty-rs
 
+# Build from source
+$ git clone https://github.com/vietanhduong/chatty && cd chatty
 # The output will be in ./builds/usr/bin/chatty
-make DESTDIR=builds install
+$ make DESTDIR=builds install
 ```
 
 ### Configuration
