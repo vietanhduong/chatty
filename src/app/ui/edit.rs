@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use tui_textarea::Key;
 use unicode_width::UnicodeWidthStr;
 
-use super::utils;
+use super::{Dim, utils};
 
 pub struct EditScreen<'a> {
     action_tx: mpsc::UnboundedSender<Action>,
@@ -86,10 +86,12 @@ impl<'a> EditScreen<'_> {
         [..10].iter().for_each(|_| self.list_state.select_next());
     }
 
-    pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+    pub fn render(&mut self, f: &mut Frame, area: Rect) {
         if !self.showing {
             return;
         }
+
+        f.dim_bg();
 
         let instructions = vec![
             span!(" "),
@@ -113,16 +115,16 @@ impl<'a> EditScreen<'_> {
             .title_bottom(Line::from(instructions))
             .style(Style::default());
 
-        frame.render_widget(Clear, area);
+        f.render_widget(Clear, area);
         let inner = block.inner(area);
-        frame.render_widget(block, area);
+        f.render_widget(block, area);
 
         let layout = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
             .split(inner);
-        self.render_messages_panel(frame, layout[0]);
-        self.render_preview_panel(frame, layout[1]);
+        self.render_messages_panel(f, layout[0]);
+        self.render_preview_panel(f, layout[1]);
     }
 
     fn render_messages_panel(&mut self, frame: &mut Frame, area: Rect) {

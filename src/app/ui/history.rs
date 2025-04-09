@@ -5,7 +5,9 @@ use ratatui::{
     layout::{Alignment, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding},
+    widgets::{
+        Block, BorderType, Borders, Clear, List, ListItem, ListState, Padding, StatefulWidget,
+    },
 };
 use ratatui_macros::span;
 use std::{
@@ -15,7 +17,10 @@ use std::{
 use tokio::sync::mpsc;
 use tui_textarea::Key;
 
-use super::input_box::{self, InputBox};
+use super::{
+    Dim,
+    input_box::{self, InputBox},
+};
 use super::{question::Question, utils};
 
 const NO_CONVERSATIONS: &str = "No conversations found";
@@ -480,6 +485,12 @@ impl<'a> HistoryScreen<'a> {
     }
 
     pub fn render(&mut self, f: &mut Frame, area: Rect) {
+        if !self.showing {
+            return;
+        }
+
+        f.dim_bg();
+
         let instructions: Vec<Span> = vec![
             " ".into(),
             span!("q").green().bold(),
@@ -498,23 +509,14 @@ impl<'a> HistoryScreen<'a> {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(Color::LightBlue))
-            .padding(Padding::new(1, 1, 0, 0))
+            .padding(Padding::symmetric(2, 0))
             .title(Line::from(" Chat History ").bold())
             .title_alignment(Alignment::Center)
-            .title_bottom(Line::from(instructions))
-            .style(Style::default());
-
-        let inner = block.inner(area);
-        if !self.showing {
-            if !self.conversations.is_empty() && self.items.is_empty() {
-                self.last_known_width = (inner.width - 2) as usize;
-                self.update_items();
-            }
-            return;
-        }
+            .title_bottom(Line::from(instructions));
 
         f.render_widget(Clear, area);
 
+        let inner = block.inner(area);
         if self.last_known_width != (inner.width - 2) as usize {
             self.last_known_width = (inner.width - 2) as usize;
             self.update_items();
@@ -523,7 +525,7 @@ impl<'a> HistoryScreen<'a> {
         let list = List::new(self.items.clone())
             .block(block)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        f.render_stateful_widget(list, inner, &mut self.state);
+        list.render(area, f.buffer_mut(), &mut self.state);
 
         let rename_area = input_box::build_area(inner, ((inner.width as f32 * 0.8).ceil()) as u16);
         self.rename.render(f, rename_area);

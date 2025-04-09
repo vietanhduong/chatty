@@ -13,7 +13,7 @@ use ratatui::{
 };
 use tui_textarea::Key;
 
-use super::utils;
+use super::{Dim, utils};
 
 const ROW_HEIGHT: usize = 1;
 
@@ -88,10 +88,12 @@ impl HelpScreen<'_> {
         false
     }
 
-    pub fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::layout::Rect) {
+    pub fn render(&mut self, f: &mut ratatui::Frame, area: ratatui::layout::Rect) {
         if !self.showing {
             return;
         }
+
+        f.dim_bg();
 
         let block = Block::default()
             .borders(Borders::ALL)
@@ -108,7 +110,7 @@ impl HelpScreen<'_> {
                 span!(" to move up/down ").white(),
             ]))
             .style(Style::default());
-        frame.render_widget(Clear, area);
+        f.render_widget(Clear, area);
 
         if self.last_known_width != area.width as usize
             || self.last_know_height != area.height as usize
@@ -131,7 +133,7 @@ impl HelpScreen<'_> {
         .row_highlight_style(selected_row_style)
         .cell_highlight_style(Style::default().bg(Color::White));
 
-        frame.render_stateful_widget(table, area, &mut self.state);
+        f.render_stateful_widget(table, area, &mut self.state);
     }
 
     pub fn render_help_line(&self, frame: &mut ratatui::Frame, area: Rect) {
