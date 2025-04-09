@@ -7,7 +7,7 @@ use ratatui::{
 };
 use ratatui_macros::span;
 
-use super::utils;
+use super::{Dim, utils};
 
 #[derive(Default)]
 pub struct Question<'a> {
@@ -43,6 +43,8 @@ impl<'a> Question<'a> {
         if !self.showing {
             return;
         }
+
+        f.dim_bg();
 
         let max_width = (area.width as f32 * 0.8).ceil() as u16;
         let lines = utils::split_to_lines(self.question.spans.clone(), (max_width - 2) as usize);

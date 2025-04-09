@@ -17,6 +17,7 @@ use tokio::sync::mpsc;
 use tui_textarea::Key;
 
 use super::{
+    Dim,
     input_box::{self, InputBox},
     utils,
 };
@@ -173,6 +174,8 @@ impl<'a> ModelsScreen<'a> {
         if !self.showing {
             return;
         }
+
+        f.dim_bg();
 
         let instructions = vec![
             " ".into(),

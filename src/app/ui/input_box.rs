@@ -8,6 +8,8 @@ use ratatui::{
 };
 use tui_textarea::{CursorMove, TextArea};
 
+use super::Dim;
+
 pub struct InputBox<'a> {
     showing: bool,
     text: String,
@@ -63,6 +65,8 @@ impl<'a> InputBox<'a> {
         if !self.showing {
             return;
         }
+
+        f.dim_bg();
 
         f.render_widget(Clear, area);
         self.input.render(area, f.buffer_mut());

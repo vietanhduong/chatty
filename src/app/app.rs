@@ -289,7 +289,8 @@ impl<'a> App<'a> {
 
     fn render<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
         terminal.draw(|f| {
-            let current_width = f.area().width;
+            let global_area = f.area();
+            let current_width = global_area.width;
             if !is_line_width_sufficient(current_width) {
                 f.render_widget(
                     Paragraph::new(utils::split_to_lines(
@@ -300,7 +301,7 @@ impl<'a> App<'a> {
                         (current_width - 2) as usize,
                     ))
                     .alignment(Alignment::Left),
-                    f.area(),
+                    global_area,
                 );
                 return;
             }
@@ -313,7 +314,7 @@ impl<'a> App<'a> {
                     Constraint::Max(textarea_len),
                     Constraint::Length(1),
                 ])
-                .split(f.area());
+                .split(global_area);
 
             if layout[0].width as usize != self.app_state.last_known_width
                 || layout[0].height as usize != self.app_state.last_known_height
@@ -346,17 +347,17 @@ impl<'a> App<'a> {
             }
 
             self.help_screen
-                .render(f, utils::popup_area(f.area(), 40, 30));
+                .render(f, utils::popup_area(global_area, 40, 30));
 
             self.models_screen
-                .render(f, utils::popup_area(f.area(), 40, 60));
+                .render(f, utils::popup_area(global_area, 40, 60));
 
             self.edit_screen
-                .render(f, utils::popup_area(f.area(), 70, 90));
+                .render(f, utils::popup_area(global_area, 70, 90));
             self.history_screen
-                .render(f, utils::popup_area(f.area(), 70, 90));
+                .render(f, utils::popup_area(global_area, 70, 90));
 
-            self.notice.render(f, utils::notice_area(f.area(), 30));
+            self.notice.render(f, utils::notice_area(global_area, 30));
         })?;
         Ok(())
     }
