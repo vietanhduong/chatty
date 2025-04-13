@@ -12,6 +12,8 @@ bubble_width_percent = 60
 # If set, the initialize screen will auto close after the inititalization
 # is done.
 auto_start = false
+# Enable bubble chat or not. Default is true
+bubble = true
 
 [log]
 # Default log level is "info"
