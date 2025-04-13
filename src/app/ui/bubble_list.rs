@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::models::Message;
 use ratatui::{buffer::Buffer, layout::Rect, text::Line};
@@ -14,7 +14,7 @@ struct CacheEntry<'a> {
 
 pub struct BubbleList<'a> {
     theme: &'a Theme,
-    cache: HashMap<usize, CacheEntry<'a>>,
+    cache: BTreeMap<usize, CacheEntry<'a>>,
     line_width: usize,
     line_len: usize,
 }
@@ -23,7 +23,7 @@ impl<'a> BubbleList<'a> {
     pub fn new(theme: &'a Theme) -> Self {
         Self {
             theme,
-            cache: HashMap::new(),
+            cache: BTreeMap::new(),
             line_len: 0,
             line_width: 0,
         }
@@ -84,8 +84,7 @@ impl<'a> BubbleList<'a> {
     }
 
     pub fn render(&self, rect: Rect, buf: &mut Buffer, scroll_index: u16) {
-        let mut cache_keys: Vec<usize> = self.cache.keys().cloned().collect();
-        cache_keys.sort();
+        let cache_keys: Vec<usize> = self.cache.keys().cloned().collect();
 
         let mut line_index = 0;
         let mut should_break = false;

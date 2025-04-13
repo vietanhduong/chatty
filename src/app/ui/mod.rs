@@ -9,6 +9,7 @@ pub mod models;
 pub mod notice;
 pub mod question;
 pub mod scroll;
+pub mod selections;
 pub mod syntaxes;
 pub mod textarea;
 pub mod utils;

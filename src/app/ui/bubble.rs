@@ -72,26 +72,13 @@ impl<'a> Bubble<'_> {
     }
 
     pub fn as_lines(&mut self, theme: &'a Theme) -> Vec<Line<'a>> {
-        let bubble = config::instance().general.bubble.unwrap_or_default();
-        let max_line_len = if bubble {
-            self.get_max_line_length()
-        } else {
-            self.max_width - 5
-        };
+        let max_line_len = self.get_max_line_length();
 
         let lines = utils::build_message_lines(self.message.text(), max_line_len, theme, |line| {
-            if bubble {
-                self.format_spans(line.spans, max_line_len)
-            } else {
-                let mut new_line = line.clone();
-                new_line
-                    .spans
-                    .insert(0, self.highlighted_span("┃ ".to_string()));
-                new_line
-            }
+            self.format_spans(line.spans, max_line_len)
         });
 
-        if !bubble {
+        if !config::instance().general.bubble.unwrap_or_default() {
             return self.format_inline_message(lines);
         }
 
@@ -156,6 +143,21 @@ impl<'a> Bubble<'_> {
     }
 
     fn get_max_line_length(&self) -> usize {
+        let wrapper_char = if config::instance()
+            .general
+            .show_wrapper_marker
+            .unwrap_or_default()
+        {
+            1
+        } else {
+            0
+        };
+
+        let bubble = config::instance().general.bubble.unwrap_or_default();
+        if !bubble {
+            return self.max_width - 5 - wrapper_char;
+        }
+
         let min_bubble_padding_length =
             ((self.max_width as f32 * self.outer_padding_percentage).ceil()) as usize;
 
@@ -196,10 +198,16 @@ impl<'a> Bubble<'_> {
             max_line_len = (self.max_width as f32 * max_width_percent).ceil() as usize;
         }
 
-        max_line_len
+        max_line_len + wrapper_char
     }
 
     fn format_spans(&self, mut spans: Vec<Span<'a>>, max_line_len: usize) -> Line<'a> {
+        let bubble = config::instance().general.bubble.unwrap_or_default();
+        if !bubble {
+            spans.insert(0, self.highlighted_span("┃ ".to_string()));
+            return Line::from(spans);
+        }
+
         let line_str_len: usize = spans.iter().map(|e| e.content.width()).sum();
         let fill = utils::repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
         let formatted_line_len = line_str_len + fill.len() + self.padding;

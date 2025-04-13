@@ -4,15 +4,19 @@ mod tests;
 
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect},
-    style::Style,
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
 };
+use ratatui_macros::span;
 use syntect::{easy::HighlightLines, highlighting::Theme};
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::ui::syntaxes::{SYNTAX_SET, Syntaxes};
+use crate::{
+    app::ui::syntaxes::{SYNTAX_SET, Syntaxes},
+    config,
+};
 
-pub(crate) fn popup_area(area: Rect, percent_width: u16, percent_height: u16) -> Rect {
+pub fn popup_area(area: Rect, percent_width: u16, percent_height: u16) -> Rect {
     let vertical = Layout::vertical([Constraint::Percentage(percent_height)]).flex(Flex::Center);
     let horizontal = Layout::horizontal([Constraint::Percentage(percent_width)]).flex(Flex::Center);
     let [area] = vertical.areas(area);
@@ -20,19 +24,31 @@ pub(crate) fn popup_area(area: Rect, percent_width: u16, percent_height: u16) ->
     area
 }
 
-pub(crate) fn notice_area(area: Rect, percent_width: u16) -> Rect {
+pub fn notice_area(area: Rect, percent_width: u16) -> Rect {
     let horizontal = Layout::horizontal([Constraint::Percentage(percent_width)]).flex(Flex::End);
     let [area] = horizontal.areas(area);
     area
 }
 
-pub(crate) fn split_to_lines<'a>(text: impl Into<Line<'a>>, max_width: usize) -> Vec<Line<'a>> {
+pub fn split_to_lines<'a>(text: impl Into<Line<'a>>, max_width: usize) -> Vec<Line<'a>> {
     let mut lines = vec![];
     let mut line = vec![];
     let mut line_char_count = 0;
     let spans = split_spans(text);
+
+    let wrapper_char = if config::instance()
+        .general
+        .show_wrapper_marker
+        .unwrap_or_default()
+    {
+        1
+    } else {
+        0
+    };
+
     for word in spans {
-        if line_char_count + word.content.width() > max_width && !line.is_empty() {
+        if line_char_count + word.content.width() + wrapper_char > max_width && !line.is_empty() {
+            line.push(wrapper_span());
             lines.push(Line::from(line));
             line = vec![];
             line_char_count = 0;
@@ -82,7 +98,7 @@ fn split_span_by_space(span: Span) -> Vec<Span> {
         .collect()
 }
 
-pub(crate) fn build_message_lines<'a, 'b, F>(
+pub fn build_message_lines<'a, 'b, F>(
     content: &'b str,
     max_width: usize,
     theme: &'a Theme,
@@ -145,7 +161,7 @@ where
     lines
 }
 
-pub(crate) fn repeat_from_substactions(text: &str, subs: Vec<usize>) -> String {
+pub fn repeat_from_substactions(text: &str, subs: Vec<usize>) -> String {
     let count = subs
         .into_iter()
         .map(|e| i32::try_from(e).unwrap())
@@ -157,4 +173,34 @@ pub(crate) fn repeat_from_substactions(text: &str, subs: Vec<usize>) -> String {
     }
 
     [text].repeat(count.try_into().unwrap()).join("")
+}
+
+pub fn wrapper_span<'a>() -> Span<'a> {
+    if config::instance()
+        .general
+        .show_wrapper_marker
+        .unwrap_or_default()
+    {
+        return span!("↵").dim().italic();
+    }
+    span!("")
+        .fg(Color::Rgb(0, 0, 0))
+        .bg(Color::Rgb(0, 0, 0))
+        .hidden()
+}
+
+pub fn is_wrapper_span(span: &Span) -> bool {
+    let show = config::instance()
+        .general
+        .show_wrapper_marker
+        .unwrap_or_default();
+
+    if show {
+        span.content == "↵" && span.style.add_modifier == Modifier::DIM | Modifier::ITALIC
+    } else {
+        span.content.is_empty()
+            && span.style.fg == Some(Color::Rgb(0, 0, 0))
+            && span.style.bg == Some(Color::Rgb(0, 0, 0))
+            && span.style.add_modifier == Modifier::HIDDEN
+    }
 }
