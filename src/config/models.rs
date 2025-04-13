@@ -51,6 +51,9 @@ pub struct GeneralConfig {
 
     #[serde(default)]
     pub auto_start: Option<bool>,
+
+    #[serde(default = "default_option_true")]
+    pub bubble: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
@@ -270,6 +273,7 @@ impl Default for GeneralConfig {
             show_usage: None,
             bubble_width_percent: 80,
             auto_start: None,
+            bubble: default_option_true(),
         }
     }
 }

@@ -271,7 +271,7 @@ impl<'a> App<'a> {
                 self.input.paste();
             }
 
-            Event::KeyboardAltEnter => {
+            Event::KeyboardNewLine => {
                 if !self.on_waiting_backend(false) {
                     self.input.insert_newline();
                 }

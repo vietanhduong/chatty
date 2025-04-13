@@ -15,6 +15,7 @@ pub mod utils;
 
 pub use bubble::Bubble;
 pub use bubble_list::BubbleList;
+
 pub use edit::EditScreen;
 pub use help::HelpScreen;
 pub use history::HistoryScreen;
