@@ -20,7 +20,7 @@ pub enum Event {
     KeyboardCharInput(Input),
     KeyboardEsc,
     KeyboardEnter,
-    KeyboardAltEnter,
+    KeyboardNewLine,
     KeyboardCtrlC,
     KeyboardCtrlR,
     KeyboardCtrlN,
@@ -72,7 +72,7 @@ impl Event {
             Event::KeyboardCharInput(_)
                 | Event::KeyboardEsc
                 | Event::KeyboardEnter
-                | Event::KeyboardAltEnter
+                | Event::KeyboardNewLine
                 | Event::KeyboardCtrlC
                 | Event::KeyboardCtrlR
                 | Event::KeyboardCtrlN

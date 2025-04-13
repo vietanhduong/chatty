@@ -4,9 +4,10 @@ mod tests;
 
 use crate::{config, models::Message};
 use ratatui::{
-    style::{Color, Style},
+    style::{Color, Style, Stylize},
     text::{Line, Span},
 };
+use ratatui_macros::span;
 use syntect::highlighting::Theme;
 use unicode_width::UnicodeWidthStr;
 
@@ -71,13 +72,49 @@ impl<'a> Bubble<'_> {
     }
 
     pub fn as_lines(&mut self, theme: &'a Theme) -> Vec<Line<'a>> {
-        let max_line_len = self.get_max_line_length();
+        let bubble = config::instance().general.bubble.unwrap_or_default();
+        let max_line_len = if bubble {
+            self.get_max_line_length()
+        } else {
+            self.max_width - 5
+        };
 
         let lines = utils::build_message_lines(self.message.text(), max_line_len, theme, |line| {
-            self.format_spans(line.spans, max_line_len)
+            if bubble {
+                self.format_spans(line.spans, max_line_len)
+            } else {
+                let mut new_line = line.clone();
+                new_line
+                    .spans
+                    .insert(0, self.highlighted_span("┃ ".to_string()));
+                new_line
+            }
         });
 
+        if !bubble {
+            return self.format_inline_message(lines);
+        }
+
         self.wrap_lines_in_bubble(lines, max_line_len)
+    }
+
+    fn format_inline_message(&self, mut lines: Vec<Line<'a>>) -> Vec<Line<'a>> {
+        let time = self
+            .message
+            .created_at()
+            .with_timezone(&chrono::Local)
+            .format("%H:%M %m/%d")
+            .to_string();
+        let padding = self.max_width - time.width() - self.message.issuer_str().width() - 5;
+        let header = vec![
+            self.highlighted_span("┃ ".to_string()),
+            self.highlighted_span(self.message.issuer_str().to_string()),
+            span!(" ".repeat(padding).to_string()),
+            self.highlighted_span(time),
+        ];
+        lines.insert(0, Line::from(header).bold());
+        lines.push("".to_string().into());
+        lines
     }
 
     fn wrap_lines_in_bubble(&self, lines: Vec<Line<'a>>, max_line_len: usize) -> Vec<Line<'a>> {
