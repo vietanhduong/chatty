@@ -12,10 +12,14 @@ pub use initializer::Initializer;
 
 use crossterm::{
     cursor,
-    event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture},
+    event::{
+        DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
+        EnableFocusChange, EnableMouseCapture, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    },
     terminal::{
-        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-        is_raw_mode_enabled,
+        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+        enable_raw_mode, is_raw_mode_enabled,
     },
 };
 use eyre::{Context, Result};
@@ -26,9 +30,11 @@ pub fn destruct_terminal() {
             let _ = disable_raw_mode();
             let _ = crossterm::execute!(
                 io::stdout(),
-                LeaveAlternateScreen,
                 DisableMouseCapture,
-                DisableBracketedPaste
+                PopKeyboardEnhancementFlags,
+                DisableBracketedPaste,
+                DisableFocusChange,
+                LeaveAlternateScreen,
             );
             let _ = crossterm::execute!(io::stdout(), cursor::Show);
         }
@@ -41,8 +47,14 @@ pub fn init_terminal() -> Result<()> {
     crossterm::execute!(
         stdout,
         EnterAlternateScreen,
+        EnableFocusChange,
+        Clear(ClearType::All),
         EnableMouseCapture,
-        EnableBracketedPaste
+        EnableBracketedPaste,
+        PushKeyboardEnhancementFlags(
+            KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+        )
     )?;
     Ok(())
 }
