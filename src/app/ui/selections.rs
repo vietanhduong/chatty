@@ -129,7 +129,6 @@ impl Selection {
         else {
             return line;
         };
-        log::debug!("format_line: start: {}, end: {}", start, end);
 
         let mut ptr = 0;
         let mut ret_line = line.clone();
@@ -141,39 +140,51 @@ impl Selection {
                 ptr += span_width;
                 continue;
             }
-            if ptr + span_width < start || ptr > end {
+
+            // Check if span is completely outside selection
+            if ptr + span_width <= start || ptr >= end {
                 ret_line.spans.push(span);
                 ptr += span_width;
                 continue;
             }
 
+            // If span is completely within selection
             if ptr >= start && ptr + span_width <= end {
                 ret_line.spans.push(span.fg(Color::Black).bg(Color::Blue));
                 ptr += span_width;
                 continue;
             }
 
+            // Handle partial selection
             let content: Vec<char> = span.content.chars().collect();
+
+            // Calculate selection bounds within this span
+            let sel_start = start.saturating_sub(ptr);
+            let sel_end = (end - ptr).min(span_width);
+
+            // Add prefix if needed (unselected text before selection)
             if ptr < start {
-                let prefix_end = start - ptr;
+                let prefix_end = sel_start;
                 let prefix: String = content[..prefix_end].iter().collect();
                 ret_line.spans.push(Span::styled(prefix, span.style));
             }
-            let sel_start = start.saturating_sub(ptr);
-            let sel_end = (end - ptr).min(span_width);
+
+            // Add selected portion
             if sel_end >= sel_start {
-                let seleted: String = content[sel_start..sel_end].iter().collect();
+                let selected: String = content[sel_start..sel_end].iter().collect();
                 ret_line.spans.push(Span::styled(
-                    seleted,
+                    selected,
                     span.style.fg(Color::Black).bg(Color::Blue),
                 ));
             }
+
+            // Add suffix if needed (unselected text after selection)
             if ptr + span_width > end {
-                let suffix_start = end - ptr;
+                let suffix_start = sel_end;
                 let suffix: String = content[suffix_start..].iter().collect();
-                log::debug!("suffix: {}", suffix);
                 ret_line.spans.push(Span::styled(suffix, span.style));
             }
+
             ptr += span_width;
         }
         ret_line
