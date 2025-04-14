@@ -145,7 +145,7 @@ impl<'a> Bubble<'_> {
     fn get_max_line_length(&self) -> usize {
         let wrapper_char = if config::instance()
             .general
-            .show_wrapper_marker
+            .show_wrap_line_marker
             .unwrap_or_default()
         {
             1
