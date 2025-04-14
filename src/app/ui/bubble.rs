@@ -11,7 +11,7 @@ use ratatui_macros::span;
 use syntect::highlighting::Theme;
 use unicode_width::UnicodeWidthStr;
 
-use super::utils;
+use super::{Selectable, utils};
 
 pub const DEFAULT_PADDING: usize = 8;
 pub const DEFAULT_BORDER_ELEMENTS_LEN: usize = 5;
@@ -94,10 +94,11 @@ impl<'a> Bubble<'_> {
             .to_string();
         let padding = self.max_width - time.width() - self.message.issuer_str().width() - 5;
         let header = vec![
-            self.highlighted_span("┃ ".to_string()),
-            self.highlighted_span(self.message.issuer_str().to_string()),
-            span!(" ".repeat(padding).to_string()),
-            self.highlighted_span(time),
+            self.highlighted_span("┃ ".to_string()).unselectable(),
+            self.highlighted_span(self.message.issuer_str().to_string())
+                .unselectable(),
+            span!(" ".repeat(padding).to_string()).unselectable(),
+            self.highlighted_span(time).unselectable(),
         ];
         lines.insert(0, Line::from(header).bold());
         lines.push("".to_string().into());
@@ -130,15 +131,27 @@ impl<'a> Bubble<'_> {
             utils::repeat_from_substactions(" ", vec![self.max_width, max_line_len, self.padding]);
 
         if self.message.is_system() {
-            let mut res = vec![self.highlighted_line(format!("{top_bar}{bar_padding}"))];
+            let mut res = vec![
+                self.highlighted_line(format!("{top_bar}{bar_padding}"))
+                    .unselectable(),
+            ];
             res.extend(lines);
-            res.push(self.highlighted_line(format!("{bottom_bar}{bar_padding}")));
+            res.push(
+                self.highlighted_line(format!("{bottom_bar}{bar_padding}"))
+                    .unselectable(),
+            );
             return res;
         }
 
-        let mut res = vec![self.highlighted_line(format!("{bar_padding}{top_bar}"))];
+        let mut res = vec![
+            self.highlighted_line(format!("{bar_padding}{top_bar}"))
+                .unselectable(),
+        ];
         res.extend(lines);
-        res.push(self.highlighted_line(format!("{bar_padding}{bottom_bar}")));
+        res.push(
+            self.highlighted_line(format!("{bar_padding}{bottom_bar}"))
+                .unselectable(),
+        );
         res
     }
 
@@ -204,7 +217,7 @@ impl<'a> Bubble<'_> {
     fn format_spans(&self, mut spans: Vec<Span<'a>>, max_line_len: usize) -> Line<'a> {
         let bubble = config::instance().general.bubble.unwrap_or_default();
         if !bubble {
-            spans.insert(0, self.highlighted_span("┃ ".to_string()));
+            spans.insert(0, self.highlighted_span("┃ ".to_string()).unselectable());
             return Line::from(spans);
         }
 
@@ -212,20 +225,20 @@ impl<'a> Bubble<'_> {
         let fill = utils::repeat_from_substactions(" ", vec![max_line_len, line_str_len]);
         let formatted_line_len = line_str_len + fill.len() + self.padding;
 
-        let mut wrapped_spans = vec![self.highlighted_span("│ ".to_string())];
+        let mut wrapped_spans = vec![self.highlighted_span("│ ".to_string()).unselectable()];
         wrapped_spans.append(&mut spans);
-        wrapped_spans.push(self.highlighted_span(format!("{fill} │")));
+        wrapped_spans.push(self.highlighted_span(format!("{fill} │")).unselectable());
 
         let outer_padding =
             utils::repeat_from_substactions(" ", vec![self.max_width, formatted_line_len]);
 
         if self.message.is_system() {
             // Left alignment
-            wrapped_spans.push(Span::from(outer_padding));
+            wrapped_spans.push(Span::from(outer_padding).unselectable());
             return Line::from(wrapped_spans);
         }
 
-        let mut line_spans = vec![Span::from(outer_padding)];
+        let mut line_spans = vec![Span::from(outer_padding).unselectable()];
         line_spans.extend(wrapped_spans);
 
         Line::from(line_spans)

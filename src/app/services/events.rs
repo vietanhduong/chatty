@@ -18,6 +18,21 @@ impl EventService {
             CrosstermEvent::Mouse(mouse_event) => match mouse_event.kind {
                 MouseEventKind::ScrollUp => Some(Event::UiScrollUp),
                 MouseEventKind::ScrollDown => Some(Event::UiScrollDown),
+                MouseEventKind::Up(button) => Some(Event::UiMouseUp {
+                    button,
+                    x: mouse_event.column,
+                    y: mouse_event.row,
+                }),
+                MouseEventKind::Down(button) => Some(Event::UiMouseDown {
+                    button,
+                    x: mouse_event.column,
+                    y: mouse_event.row,
+                }),
+                MouseEventKind::Drag(button) => Some(Event::UiMouseDrag {
+                    button,
+                    x: mouse_event.column,
+                    y: mouse_event.row,
+                }),
                 _ => None,
             },
             CrosstermEvent::Key(key_event) => {

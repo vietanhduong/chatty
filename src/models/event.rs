@@ -37,6 +37,21 @@ pub enum Event {
     UiScrollDown,
     UiScrollPageUp,
     UiScrollPageDown,
+    UiMouseDown {
+        button: crossterm::event::MouseButton,
+        x: u16,
+        y: u16,
+    },
+    UiMouseUp {
+        button: crossterm::event::MouseButton,
+        x: u16,
+        y: u16,
+    },
+    UiMouseDrag {
+        button: crossterm::event::MouseButton,
+        x: u16,
+        y: u16,
+    },
 }
 
 #[macro_export]

@@ -1,6 +1,14 @@
 use std::cmp::Ordering;
 
-#[derive(Debug, Clone, Copy)]
+use ratatui::{
+    style::{Color, Stylize},
+    text::{Line, Span},
+};
+use unicode_width::UnicodeWidthStr;
+
+use super::{Content, Selectable};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Index {
     pub row: usize,
     pub col: usize,
@@ -18,6 +26,10 @@ impl Selection {
     }
 
     pub fn set_end(&mut self, row: usize, col: usize) {
+        if self.start.is_none() {
+            self.start = Some(Index { row, col });
+            return;
+        }
         self.end = Some(Index { row, col });
     }
 
@@ -109,5 +121,61 @@ impl Selection {
             return Some((start_col, end_col));
         }
         None
+    }
+
+    #[must_use]
+    pub fn format_line<'a>(&self, line: Line<'a>, row: usize) -> Line<'a> {
+        let Some((start, end)) = self.get_selected_columns_in_row(row, line.content().width())
+        else {
+            return line;
+        };
+        log::debug!("format_line: start: {}, end: {}", start, end);
+
+        let mut ptr = 0;
+        let mut ret_line = line.clone();
+        ret_line.spans = vec![];
+        for span in line.spans.into_iter() {
+            let span_width = span.content.width();
+            if !span.is_selectable() {
+                ret_line.spans.push(span);
+                ptr += span_width;
+                continue;
+            }
+            if ptr + span_width < start || ptr > end {
+                ret_line.spans.push(span);
+                ptr += span_width;
+                continue;
+            }
+
+            if ptr >= start && ptr + span_width <= end {
+                ret_line.spans.push(span.fg(Color::Black).bg(Color::Blue));
+                ptr += span_width;
+                continue;
+            }
+
+            let content: Vec<char> = span.content.chars().collect();
+            if ptr < start {
+                let prefix_end = start - ptr;
+                let prefix: String = content[..prefix_end].iter().collect();
+                ret_line.spans.push(Span::styled(prefix, span.style));
+            }
+            let sel_start = start.saturating_sub(ptr);
+            let sel_end = (end - ptr).min(span_width);
+            if sel_end >= sel_start {
+                let seleted: String = content[sel_start..sel_end].iter().collect();
+                ret_line.spans.push(Span::styled(
+                    seleted,
+                    span.style.fg(Color::Black).bg(Color::Blue),
+                ));
+            }
+            if ptr + span_width > end {
+                let suffix_start = end - ptr;
+                let suffix: String = content[suffix_start..].iter().collect();
+                log::debug!("suffix: {}", suffix);
+                ret_line.spans.push(Span::styled(suffix, span.style));
+            }
+            ptr += span_width;
+        }
+        ret_line
     }
 }

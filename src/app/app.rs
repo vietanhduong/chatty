@@ -8,6 +8,7 @@ use crate::models::conversation::FindMessage;
 use crate::models::{BackendPrompt, Conversation, Event, Message, message::Issuer};
 use crate::models::{BackendResponse, Model, UpsertConvoRequest};
 use crate::{info_notice, warn_notice};
+use crossterm::event::MouseButton;
 use eyre::Result;
 use ratatui::{
     Terminal,
@@ -30,6 +31,7 @@ use crate::{
 };
 
 use super::services::EventService;
+use super::ui::selections::Selection;
 use super::{destruct_terminal, init_terminal};
 
 const MIN_WIDTH: u16 = 80;
@@ -51,6 +53,7 @@ pub struct App<'a> {
     edit_screen: EditScreen<'a>,
     history_screen: HistoryScreen<'a>,
     input: tui_textarea::TextArea<'a>,
+    selection: Selection,
 
     compressor: Arc<Compressor>,
 
@@ -94,6 +97,7 @@ impl<'a> App<'a> {
                 .with_current_conversation(""),
             models_screen: ModelsScreen::new(init_props.models, event_tx.clone()),
             notice: Notice::default(),
+            selection: Selection::default(),
             cancel_token,
         }
     }
@@ -283,6 +287,10 @@ impl<'a> App<'a> {
             Event::UiScrollUp => self.app_state.scroll.up(),
             Event::UiScrollPageDown => self.app_state.scroll.page_down(),
             Event::UiScrollPageUp => self.app_state.scroll.page_up(),
+
+            Event::UiMouseUp { button, x, y } => self.handle_mouse_click(false, button, x, y),
+            Event::UiMouseDown { button, x, y } => self.handle_mouse_click(true, button, x, y),
+            Event::UiMouseDrag { button, x, y } => self.handle_mouse_drag(button, x, y),
             _ => {}
         }
     }
@@ -326,6 +334,7 @@ impl<'a> App<'a> {
                 layout[0],
                 f.buffer_mut(),
                 self.app_state.scroll.position.try_into().unwrap(),
+                &self.selection,
             );
 
             f.render_stateful_widget(
@@ -371,6 +380,41 @@ impl<'a> App<'a> {
             }
             if self.handle_key_event(event).await {
                 return Ok(());
+            }
+        }
+    }
+
+    fn handle_mouse_click(&mut self, down: bool, button: MouseButton, x: u16, y: u16) {
+        if down {
+            self.selection.clear();
+            self.handle_mouse_drag(button, x, y);
+            return;
+        }
+
+        if button != MouseButton::Left {
+            return;
+        }
+        self.handle_mouse_drag(button, x, y);
+        if self.selection.start() == self.selection.end() {
+            self.selection.clear();
+        }
+    }
+
+    fn handle_mouse_drag(&mut self, button: MouseButton, x: u16, y: u16) {
+        if button == MouseButton::Left {
+            let scroll_index: u16 = self.app_state.scroll.position.try_into().unwrap();
+            let Some((row, col)) =
+                self.app_state
+                    .bubble_list
+                    .screen_pos_to_line_pos(x, y, scroll_index)
+            else {
+                return;
+            };
+            if self.selection.start().is_none() {
+                log::debug!("Mouse click at ({}, {})", row, col);
+                self.selection.set_start(row, col);
+            } else {
+                self.selection.set_end(row, col);
             }
         }
     }

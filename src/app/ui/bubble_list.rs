@@ -3,8 +3,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::models::Message;
 use ratatui::{buffer::Buffer, layout::Rect, text::Line};
 use syntect::highlighting::Theme;
+use unicode_width::UnicodeWidthStr;
 
-use super::bubble::Bubble;
+use super::{Content, Selectable, bubble::Bubble, selections::Selection};
 
 struct CacheEntry<'a> {
     message_id: String,
@@ -88,14 +89,52 @@ impl<'a> BubbleList<'a> {
         self.line_len == 0
     }
 
-    pub fn render(&self, rect: Rect, buf: &mut Buffer, scroll_index: u16) {
+    pub fn screen_pos_to_line_pos(
+        &self,
+        x: u16,
+        y: u16,
+        scroll_index: u16,
+    ) -> Option<(usize, usize)> {
+        let actual_y = (y + scroll_index) as usize;
+        if actual_y >= self.lines.len() {
+            return None;
+        }
+        let line = &self.lines[actual_y];
+        if !line.is_selectable() {
+            return None;
+        }
+
+        let x = x as usize;
+        let mut ptr = line.content().width();
+        for span in line.spans.iter().rev() {
+            let span_width = span.content.width();
+            ptr -= span_width;
+            if !span.is_selectable() {
+                continue;
+            }
+            if x >= ptr && x <= ptr + span_width {
+                return Some((actual_y, x));
+            }
+            if x > ptr + span_width {
+                return Some((actual_y, ptr + span_width));
+            }
+        }
+        None
+    }
+
+    pub fn render(&self, rect: Rect, buf: &mut Buffer, scroll_index: u16, sel: &Selection) {
+        let scroll_index = scroll_index as usize;
         let visible_lines = self
             .lines
             .iter()
-            .skip(scroll_index as usize)
+            .skip(scroll_index)
             .take(rect.height as usize);
         for (i, line) in visible_lines.enumerate() {
-            buf.set_line(0, i as u16, line, rect.width);
+            let mut line = line.as_ref().clone();
+            if line.is_selectable() && sel.contains_row(i + scroll_index) {
+                line = sel.format_line(line, i + scroll_index);
+            }
+            buf.set_line(0, i as u16, &line, rect.width);
         }
     }
 

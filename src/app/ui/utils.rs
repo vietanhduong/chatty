@@ -16,6 +16,8 @@ use crate::{
     config,
 };
 
+use super::Selectable;
+
 pub fn popup_area(area: Rect, percent_width: u16, percent_height: u16) -> Rect {
     let vertical = Layout::vertical([Constraint::Percentage(percent_height)]).flex(Flex::Center);
     let horizontal = Layout::horizontal([Constraint::Percentage(percent_width)]).flex(Flex::Center);
@@ -181,12 +183,12 @@ pub fn wrapper_span<'a>() -> Span<'a> {
         .show_wrap_line_marker
         .unwrap_or_default()
     {
-        return span!("↵").dim().italic();
+        return span!("↵").dim().italic().unselectable();
     }
     span!("")
         .fg(Color::Rgb(0, 0, 0))
         .bg(Color::Rgb(0, 0, 0))
-        .hidden()
+        .unselectable()
 }
 
 pub fn is_wrapper_span(span: &Span) -> bool {
@@ -196,11 +198,14 @@ pub fn is_wrapper_span(span: &Span) -> bool {
         .unwrap_or_default();
 
     if show {
-        span.content == "↵" && span.style.add_modifier == Modifier::DIM | Modifier::ITALIC
+        span.content == "↵"
+            && span.style.add_modifier.contains(Modifier::DIM)
+            && span.style.add_modifier.contains(Modifier::ITALIC)
+            && !span.is_selectable()
     } else {
         span.content.is_empty()
             && span.style.fg == Some(Color::Rgb(0, 0, 0))
             && span.style.bg == Some(Color::Rgb(0, 0, 0))
-            && span.style.add_modifier == Modifier::HIDDEN
+            && !span.is_selectable()
     }
 }
