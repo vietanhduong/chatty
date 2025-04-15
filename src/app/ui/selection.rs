@@ -1,9 +1,11 @@
+#[cfg(test)]
+#[path = "selection_test.rs"]
+mod tests;
+
 use std::cmp::Ordering;
 
-use ratatui::{
-    style::{Color, Stylize},
-    text::{Line, Span},
-};
+use ratatui::text::{Line, Span};
+use ratatui_macros::span;
 use unicode_width::UnicodeWidthStr;
 
 use super::{Content, Selectable};
@@ -142,7 +144,7 @@ impl Selection {
             }
 
             // Check if span is completely outside selection
-            if ptr + span_width <= start || ptr >= end {
+            if ptr + span_width < start || ptr > end {
                 ret_line.spans.push(span);
                 ptr += span_width;
                 continue;
@@ -150,7 +152,7 @@ impl Selection {
 
             // If span is completely within selection
             if ptr >= start && ptr + span_width <= end {
-                ret_line.spans.push(span.fg(Color::Black).bg(Color::Blue));
+                ret_line.spans.push(span.highlighted());
                 ptr += span_width;
                 continue;
             }
@@ -160,7 +162,7 @@ impl Selection {
 
             // Calculate selection bounds within this span
             let sel_start = start.saturating_sub(ptr);
-            let sel_end = (end - ptr).min(span_width);
+            let sel_end = (end - ptr + 1).min(span_width);
 
             // Add prefix if needed (unselected text before selection)
             if ptr < start {
@@ -170,12 +172,11 @@ impl Selection {
             }
 
             // Add selected portion
-            if sel_end >= sel_start {
+            if sel_end > sel_start {
                 let selected: String = content[sel_start..sel_end].iter().collect();
-                ret_line.spans.push(Span::styled(
-                    selected,
-                    span.style.fg(Color::Black).bg(Color::Blue),
-                ));
+                ret_line
+                    .spans
+                    .push(Span::styled(selected, span!("").highlighted().style));
             }
 
             // Add suffix if needed (unselected text after selection)

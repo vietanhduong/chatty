@@ -31,7 +31,7 @@ use crate::{
 };
 
 use super::services::EventService;
-use super::ui::selections::Selection;
+use super::ui::selection::Selection;
 use super::{destruct_terminal, init_terminal};
 
 const MIN_WIDTH: u16 = 80;
@@ -411,7 +411,6 @@ impl<'a> App<'a> {
                 return;
             };
             if self.selection.start().is_none() {
-                log::debug!("Mouse click at ({}, {})", row, col);
                 self.selection.set_start(row, col);
             } else {
                 self.selection.set_end(row, col);

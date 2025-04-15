@@ -9,13 +9,14 @@ pub mod models;
 pub mod notice;
 pub mod question;
 pub mod scroll;
-pub mod selections;
+pub mod selection;
 pub mod syntaxes;
 pub mod textarea;
 pub mod utils;
 
 pub use bubble::Bubble;
 pub use bubble_list::BubbleList;
+pub use selection::Selection;
 
 pub use edit::EditScreen;
 pub use help::HelpScreen;
@@ -100,6 +101,7 @@ pub trait Selectable {
     fn is_selectable(&self) -> bool;
     fn selectable(self) -> Self;
     fn unselectable(self) -> Self;
+    fn highlighted(self) -> Self;
 }
 
 impl Selectable for Span<'_> {
@@ -114,6 +116,11 @@ impl Selectable for Span<'_> {
         self.style.add_modifier.insert(Modifier::HIDDEN);
         self
     }
+
+    fn highlighted(mut self) -> Self {
+        self.style = self.style.fg(Color::Black).bg(Color::Cyan);
+        self
+    }
 }
 
 impl Selectable for Line<'_> {
@@ -126,6 +133,10 @@ impl Selectable for Line<'_> {
     }
     fn unselectable(mut self) -> Self {
         self.style.add_modifier.insert(Modifier::HIDDEN);
+        self
+    }
+    fn highlighted(mut self) -> Self {
+        self.style = self.style.fg(Color::Black).bg(Color::Cyan);
         self
     }
 }

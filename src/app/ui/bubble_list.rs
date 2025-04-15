@@ -5,7 +5,7 @@ use ratatui::{buffer::Buffer, layout::Rect, text::Line};
 use syntect::highlighting::Theme;
 use unicode_width::UnicodeWidthStr;
 
-use super::{Content, Selectable, bubble::Bubble, selections::Selection};
+use super::{Content, Selectable, Selection, bubble::Bubble};
 
 struct CacheEntry<'a> {
     message_id: String,
