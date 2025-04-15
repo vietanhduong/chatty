@@ -89,6 +89,10 @@ impl<'a> BubbleList<'a> {
         self.line_len == 0
     }
 
+    pub fn lines(&self) -> &[Arc<Line<'a>>] {
+        &self.lines
+    }
+
     pub fn screen_pos_to_line_pos(
         &self,
         x: u16,

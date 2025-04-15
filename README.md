@@ -18,6 +18,10 @@ multiple model support, and intelligent context compression.
 * **Syntax Highlighting**: Beautiful code block colorization
 * **Fast and Efficient**: Written in Rust for optimal performance
 
+## 💡 Tips
+* Copy most recent message `Ctrl + e >> c`
+* Press `y` to copy selected message.
+
 ## Quick Start
 
 ### Installation

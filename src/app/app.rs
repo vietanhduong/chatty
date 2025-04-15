@@ -33,6 +33,7 @@ use crate::{
 
 use super::services::EventService;
 use super::ui::selection::Selection;
+use super::ui::utils::is_wrapper_span;
 use super::ui::{Content, Selectable};
 use super::{destruct_terminal, init_terminal};
 
@@ -415,27 +416,30 @@ impl<'a> App<'a> {
     }
 
     fn handle_copy_selection(&self, notice: bool) {
-        if self.selection.is_empty() {
+        let Some((start, end)) = self.selection.get_bounds() else {
             return;
-        }
+        };
+        let start_row = start.row;
+        let end_row = end.row;
 
-        let scroll_index = self.app_state.scroll.position;
-        let visible_lines = self
-            .app_state
-            .bubble_list
-            .get_visible_lines(self.app_state.last_known_height, scroll_index);
+        let lines = &self.app_state.bubble_list.lines()[start_row..end_row + 1];
 
         let mut spans = vec![];
-        for (i, line) in visible_lines.iter().enumerate() {
-            if line.is_selectable() && self.selection.contains_row(i + scroll_index) {
+        for (i, line) in lines.iter().enumerate() {
+            if line.is_selectable() && self.selection.contains_row(i + start_row) {
                 let line = self
                     .selection
-                    .format_line(line.as_ref().clone(), i + scroll_index);
-                spans.extend(
-                    line.spans
-                        .into_iter()
-                        .filter(|s| s.is_selectable() && s.is_highlighted()),
-                );
+                    .format_line(line.as_ref().clone(), i + start_row);
+                let mut wrapped = false;
+                spans.extend(line.spans.into_iter().filter(|s| {
+                    if is_wrapper_span(s) {
+                        wrapped = true;
+                    }
+                    s.is_selectable() && s.is_highlighted()
+                }));
+                if !wrapped {
+                    spans.push(span!("\n"));
+                }
             }
         }
         let _ = self.action_tx.send(Action::CopyText {
@@ -457,6 +461,15 @@ impl<'a> App<'a> {
         self.handle_mouse_drag(button, x, y);
         if self.selection.start() == self.selection.end() {
             self.selection.clear();
+        }
+
+        if !self.selection.is_empty()
+            && config::instance()
+                .general
+                .copy_on_select
+                .unwrap_or_default()
+        {
+            self.handle_copy_selection(false);
         }
     }
 

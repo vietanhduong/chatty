@@ -75,6 +75,7 @@ pub trait Content {
 
 impl Content for Vec<Span<'_>> {
     fn content(&self) -> String {
+        // FIXME: what happend if spans contain unselectable text?
         self.iter()
             .map(|s| s.content.to_string())
             .collect::<Vec<String>>()

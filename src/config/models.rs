@@ -57,6 +57,9 @@ pub struct GeneralConfig {
 
     #[serde(default = "default_option_true")]
     pub show_wrap_line_marker: Option<bool>,
+
+    #[serde(default)]
+    pub copy_on_select: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
@@ -278,6 +281,7 @@ impl Default for GeneralConfig {
             auto_start: None,
             bubble: default_option_true(),
             show_wrap_line_marker: default_option_true(),
+            copy_on_select: None,
         }
     }
 }

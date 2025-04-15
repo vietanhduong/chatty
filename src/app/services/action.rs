@@ -231,16 +231,14 @@ impl ActionService {
         }
 
         ClipboardService::set(payload)?;
-        let _ = self
-            .event_tx
-            .send(info_event!("Copied messages to clipboard!"));
+        let _ = self.event_tx.send(info_event!("Copied to clipboard!"));
         Ok(())
     }
 
     async fn copy_text(&self, content: String, notice: bool) -> Result<()> {
         ClipboardService::set(content)?;
         if notice {
-            let _ = self.event_tx.send(info_event!("Copied text to clipboard!"));
+            let _ = self.event_tx.send(info_event!("Copied to clipboard!"));
         }
         Ok(())
     }
