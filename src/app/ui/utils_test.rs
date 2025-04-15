@@ -58,7 +58,7 @@ fn test_is_wrapper_span() {
     assert!(!is_wrapper_span(&span));
 
     let mut cfg = config::Configuration::default();
-    cfg.general.show_wrap_line_marker = Some(false);
+    cfg.general.show_wrapped_indicator = Some(false);
     config::init(cfg).expect("Failed to initialize config");
 
     let span = wrapper_span();

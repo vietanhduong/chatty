@@ -56,7 +56,7 @@ pub struct GeneralConfig {
     pub bubble: Option<bool>,
 
     #[serde(default = "default_option_true")]
-    pub show_wrap_line_marker: Option<bool>,
+    pub show_wrapped_indicator: Option<bool>,
 
     #[serde(default)]
     pub copy_on_select: Option<bool>,
@@ -280,7 +280,7 @@ impl Default for GeneralConfig {
             bubble_width_percent: 80,
             auto_start: None,
             bubble: default_option_true(),
-            show_wrap_line_marker: default_option_true(),
+            show_wrapped_indicator: default_option_true(),
             copy_on_select: None,
         }
     }

@@ -40,7 +40,7 @@ pub fn split_to_lines<'a>(text: impl Into<Line<'a>>, max_width: usize) -> Vec<Li
 
     let wrapper_char = if config::instance()
         .general
-        .show_wrap_line_marker
+        .show_wrapped_indicator
         .unwrap_or_default()
     {
         1
@@ -180,7 +180,7 @@ pub fn repeat_from_substactions(text: &str, subs: Vec<usize>) -> String {
 pub fn wrapper_span<'a>() -> Span<'a> {
     if config::instance()
         .general
-        .show_wrap_line_marker
+        .show_wrapped_indicator
         .unwrap_or_default()
     {
         return span!("↵").dim().italic().unselectable();
@@ -194,7 +194,7 @@ pub fn wrapper_span<'a>() -> Span<'a> {
 pub fn is_wrapper_span(span: &Span) -> bool {
     let show = config::instance()
         .general
-        .show_wrap_line_marker
+        .show_wrapped_indicator
         .unwrap_or_default();
 
     if show {
