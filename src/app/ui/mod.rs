@@ -74,11 +74,18 @@ impl ContainModifier for Style {
 
 pub trait Content {
     fn content(&self) -> String;
+    fn content_raw(&self) -> String;
 }
 
 impl Content for Vec<Span<'_>> {
     fn content(&self) -> String {
         spans_to_text(self)
+    }
+    fn content_raw(&self) -> String {
+        self.iter()
+            .map(|span| span.content.to_string())
+            .collect::<Vec<_>>()
+            .join("")
     }
 }
 
@@ -86,11 +93,20 @@ impl Content for &[Span<'_>] {
     fn content(&self) -> String {
         spans_to_text(self)
     }
+    fn content_raw(&self) -> String {
+        self.iter()
+            .map(|span| span.content.to_string())
+            .collect::<Vec<_>>()
+            .join("")
+    }
 }
 
 impl Content for Line<'_> {
     fn content(&self) -> String {
         self.spans.content()
+    }
+    fn content_raw(&self) -> String {
+        self.spans.content_raw()
     }
 }
 

@@ -127,7 +127,7 @@ impl Selection {
 
     #[must_use]
     pub fn format_line<'a>(&self, line: Line<'a>, row: usize) -> Line<'a> {
-        let Some((start, end)) = self.get_selected_columns_in_row(row, line.content().width())
+        let Some((start, end)) = self.get_selected_columns_in_row(row, line.content_raw().width())
         else {
             return line;
         };

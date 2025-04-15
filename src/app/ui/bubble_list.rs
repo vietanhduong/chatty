@@ -109,7 +109,7 @@ impl<'a> BubbleList<'a> {
         }
 
         let x = x as usize;
-        let mut ptr = line.content().width();
+        let mut ptr = line.content_raw().width();
         for span in line.spans.iter().rev() {
             let span_width = span.content.width();
             ptr -= span_width;
