@@ -13,6 +13,7 @@ pub enum Action {
     CompressConversation(String, String), // Conversation ID, Model ID
 
     CopyMessages(Vec<Message>),
+    CopyText { content: String, notice: bool },
 }
 
 pub struct UpsertConvoRequest {

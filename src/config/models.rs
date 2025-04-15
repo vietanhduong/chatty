@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
+use crate::config::constants::{KEEP_N_MESSAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
 use crate::models::BackendConnection;
 
 #[allow(unused_imports)]
@@ -54,6 +54,12 @@ pub struct GeneralConfig {
 
     #[serde(default = "default_option_true")]
     pub bubble: Option<bool>,
+
+    #[serde(default = "default_option_true")]
+    pub show_wrapped_indicator: Option<bool>,
+
+    #[serde(default)]
+    pub copy_on_select: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
@@ -251,7 +257,7 @@ impl Default for ContextCompression {
             compress_model: None,
             max_tokens: MAX_CONTEXT_LENGTH,
             max_messages: MAX_CONVO_LENGTH,
-            keep_n_messages: KEEP_N_MEESAGES,
+            keep_n_messages: KEEP_N_MESSAGES,
         }
     }
 }
@@ -274,6 +280,8 @@ impl Default for GeneralConfig {
             bubble_width_percent: 80,
             auto_start: None,
             bubble: default_option_true(),
+            show_wrapped_indicator: default_option_true(),
+            copy_on_select: None,
         }
     }
 }

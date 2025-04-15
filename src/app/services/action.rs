@@ -98,6 +98,15 @@ impl ActionService {
                 }
             }
 
+            Action::CopyText { content, notice } => {
+                if let Err(err) = self.copy_text(content, notice).await {
+                    log::error!("Failed to copy text: {}", err);
+                    let _ = self
+                        .event_tx
+                        .send(error_event!(format!("Failed to copy text: {}", err)));
+                }
+            }
+
             Action::DeleteConversation(id) => self.process_delete_convo(&id).await,
             Action::UpsertConversation(req) => self.process_upsert_convo(req).await,
             Action::UpsertMessage(convo_id, message) => {
@@ -222,9 +231,15 @@ impl ActionService {
         }
 
         ClipboardService::set(payload)?;
-        let _ = self
-            .event_tx
-            .send(info_event!("Copied messages to clipboard!"));
+        let _ = self.event_tx.send(info_event!("Copied to clipboard!"));
+        Ok(())
+    }
+
+    async fn copy_text(&self, content: String, notice: bool) -> Result<()> {
+        ClipboardService::set(content)?;
+        if notice {
+            let _ = self.event_tx.send(info_event!("Copied to clipboard!"));
+        }
         Ok(())
     }
 

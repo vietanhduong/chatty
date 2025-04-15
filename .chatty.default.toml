@@ -14,6 +14,11 @@ bubble_width_percent = 60
 auto_start = false
 # Enable bubble chat or not. Default is true
 bubble = true
+# Show wrapper character or not.
+show_wrapped_indicator = true
+# Automatically copy selected text to clipboard
+copy_on_select = false
+
 
 [log]
 # Default log level is "info"
