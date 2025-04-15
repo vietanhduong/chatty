@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
+use crate::config::constants::{KEEP_N_MESSAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
 use crate::models::BackendConnection;
 
 #[allow(unused_imports)]
@@ -257,7 +257,7 @@ impl Default for ContextCompression {
             compress_model: None,
             max_tokens: MAX_CONTEXT_LENGTH,
             max_messages: MAX_CONVO_LENGTH,
-            keep_n_messages: KEEP_N_MEESAGES,
+            keep_n_messages: KEEP_N_MESSAGES,
         }
     }
 }

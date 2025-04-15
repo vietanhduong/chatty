@@ -13,7 +13,7 @@ pub fn max_convo_length() -> usize {
 }
 
 pub fn keep_n_messages() -> usize {
-    KEEP_N_MEESAGES
+    KEEP_N_MESSAGES
 }
 
 pub fn log_level() -> Option<String> {

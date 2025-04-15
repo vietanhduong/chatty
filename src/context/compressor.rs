@@ -4,7 +4,7 @@ mod tests;
 
 use crate::backend::ArcBackend;
 use crate::config::ContextCompression;
-use crate::config::constants::{KEEP_N_MEESAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
+use crate::config::constants::{KEEP_N_MESSAGES, MAX_CONTEXT_LENGTH, MAX_CONVO_LENGTH};
 use crate::models::{
     ArcEventTx, BackendPrompt, Context as ConvoContext, Conversation, Event, Message,
 };
@@ -29,7 +29,7 @@ impl Compressor {
             backend,
             max_context_length: MAX_CONTEXT_LENGTH,
             max_convo_length: MAX_CONVO_LENGTH,
-            keep_n_messages: KEEP_N_MEESAGES,
+            keep_n_messages: KEEP_N_MESSAGES,
         }
     }
 
@@ -37,7 +37,7 @@ impl Compressor {
         self.enabled = cfg.enabled;
         self.max_context_length = cfg.max_tokens;
         self.max_convo_length = cfg.max_messages;
-        self.keep_n_messages = cfg.keep_n_messages.max(KEEP_N_MEESAGES);
+        self.keep_n_messages = cfg.keep_n_messages.max(KEEP_N_MESSAGES);
         self
     }
 
@@ -56,7 +56,7 @@ impl Compressor {
     }
 
     pub fn with_keep_n_messages(mut self, size: usize) -> Self {
-        self.keep_n_messages = size.max(KEEP_N_MEESAGES);
+        self.keep_n_messages = size.max(KEEP_N_MESSAGES);
         self
     }
 
