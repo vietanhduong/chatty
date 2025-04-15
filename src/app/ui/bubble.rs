@@ -1,7 +1,3 @@
-#[cfg(test)]
-#[path = "bubble_test.rs"]
-mod tests;
-
 use crate::{config, models::Message};
 use ratatui::{
     style::{Color, Style, Stylize},

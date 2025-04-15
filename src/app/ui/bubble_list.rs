@@ -127,19 +127,17 @@ impl<'a> BubbleList<'a> {
     }
 
     pub fn get_visible_lines(&self, height: usize, scroll_index: usize) -> Vec<Arc<Line<'a>>> {
-        let scroll_index = scroll_index as usize;
         let visible_lines = self
             .lines
             .iter()
             .skip(scroll_index)
-            .take(height as usize)
+            .take(height)
             .cloned()
             .collect();
         visible_lines
     }
 
     pub fn render(&self, rect: Rect, buf: &mut Buffer, scroll_index: usize, sel: &Selection) {
-        let scroll_index = scroll_index as usize;
         for (i, line) in self
             .get_visible_lines(rect.height as usize, scroll_index)
             .iter()

@@ -24,13 +24,16 @@ pub use history::HistoryScreen;
 pub use loading::Loading;
 pub use models::ModelsScreen;
 pub use notice::Notice;
+
+pub use scroll::Scroll;
+pub use textarea::TextArea;
+
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Block,
 };
-pub use scroll::Scroll;
-pub use textarea::TextArea;
+use utils::spans_to_text;
 
 pub trait Dim {
     fn dim_bg(&mut self);
@@ -75,20 +78,13 @@ pub trait Content {
 
 impl Content for Vec<Span<'_>> {
     fn content(&self) -> String {
-        // FIXME: what happend if spans contain unselectable text?
-        self.iter()
-            .map(|s| s.content.to_string())
-            .collect::<Vec<String>>()
-            .join("")
+        spans_to_text(self)
     }
 }
 
 impl Content for &[Span<'_>] {
     fn content(&self) -> String {
-        self.iter()
-            .map(|s| s.content.to_string())
-            .collect::<Vec<String>>()
-            .join("")
+        spans_to_text(self)
     }
 }
 

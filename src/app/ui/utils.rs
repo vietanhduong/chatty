@@ -209,3 +209,12 @@ pub fn is_wrapper_span(span: &Span) -> bool {
             && !span.is_selectable()
     }
 }
+
+pub(super) fn spans_to_text(spans: &[Span<'_>]) -> String {
+    spans
+        .iter()
+        .filter(|s| s.is_selectable())
+        .map(|s| s.content.to_string())
+        .collect::<Vec<String>>()
+        .join("")
+}
