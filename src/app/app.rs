@@ -22,6 +22,7 @@ use syntect::highlighting::Theme;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
+use tui_textarea::Key;
 
 use crate::{
     app::app_state::AppState,
@@ -32,6 +33,7 @@ use crate::{
 
 use super::services::EventService;
 use super::ui::selection::Selection;
+use super::ui::{Content, Selectable};
 use super::{destruct_terminal, init_terminal};
 
 const MIN_WIDTH: u16 = 80;
@@ -229,8 +231,20 @@ impl<'a> App<'a> {
     async fn handle_input_event(&mut self, event: Event) {
         // Handle input events
         match event {
+            Event::KeyboardEsc => {
+                if !self.selection.is_empty() {
+                    self.selection.clear();
+                }
+            }
+
             Event::KeyboardCharInput(c) => {
+                if !self.selection.is_empty() && matches!(c.key, Key::Char('y')) {
+                    self.handle_copy_selection(true);
+                    return;
+                }
+
                 if !self.app_state.waiting_for_backend {
+                    self.selection.clear();
                     self.input.input(c);
                 }
             }
@@ -248,35 +262,51 @@ impl<'a> App<'a> {
                 }
             }
 
-            Event::KeyboardF1 => self.help_screen.toggle_showing(),
+            Event::KeyboardF1 => {
+                self.selection.clear();
+                self.help_screen.toggle_showing()
+            }
 
-            Event::KeyboardCtrlN => self.handle_new_conversation(),
+            Event::KeyboardCtrlN => {
+                self.selection.clear();
+                self.handle_new_conversation()
+            }
 
             Event::KeyboardCtrlH => {
                 if !self.on_waiting_backend(true) {
+                    self.selection.clear();
                     self.history_screen.toggle_showing();
                 }
             }
 
-            Event::KeyboardCtrlL => self.models_screen.toggle_showing(),
+            Event::KeyboardCtrlL => {
+                self.selection.clear();
+                self.models_screen.toggle_showing()
+            }
 
             Event::KeyboardCtrlE => {
                 if !self.on_waiting_backend(true) {
+                    self.selection.clear();
                     self.edit_screen
                         .set_messages(self.app_state.current_convo.messages());
                     self.edit_screen.toggle_showing();
                 }
             }
 
-            Event::KeyboardCtrlR => self.handle_regenerate_response().await,
+            Event::KeyboardCtrlR => {
+                self.selection.clear();
+                self.handle_regenerate_response().await
+            }
 
             Event::KeyboardPaste(text) => {
+                self.selection.clear();
                 self.input.set_yank_text(text.replace('\r', "\n"));
                 self.input.paste();
             }
 
             Event::KeyboardNewLine => {
                 if !self.on_waiting_backend(false) {
+                    self.selection.clear();
                     self.input.insert_newline();
                 }
             }
@@ -333,7 +363,7 @@ impl<'a> App<'a> {
             self.app_state.bubble_list.render(
                 layout[0],
                 f.buffer_mut(),
-                self.app_state.scroll.position.try_into().unwrap(),
+                self.app_state.scroll.position,
                 &self.selection,
             );
 
@@ -384,6 +414,36 @@ impl<'a> App<'a> {
         }
     }
 
+    fn handle_copy_selection(&self, notice: bool) {
+        if self.selection.is_empty() {
+            return;
+        }
+
+        let scroll_index = self.app_state.scroll.position;
+        let visible_lines = self
+            .app_state
+            .bubble_list
+            .get_visible_lines(self.app_state.last_known_height, scroll_index);
+
+        let mut spans = vec![];
+        for (i, line) in visible_lines.iter().enumerate() {
+            if line.is_selectable() && self.selection.contains_row(i + scroll_index) {
+                let line = self
+                    .selection
+                    .format_line(line.as_ref().clone(), i + scroll_index);
+                spans.extend(
+                    line.spans
+                        .into_iter()
+                        .filter(|s| s.is_selectable() && s.is_highlighted()),
+                );
+            }
+        }
+        let _ = self.action_tx.send(Action::CopyText {
+            content: spans.content(),
+            notice,
+        });
+    }
+
     fn handle_mouse_click(&mut self, down: bool, button: MouseButton, x: u16, y: u16) {
         if down {
             self.selection.clear();
@@ -422,6 +482,7 @@ impl<'a> App<'a> {
         if self.on_waiting_backend(false) {
             return;
         }
+        self.selection.clear();
 
         let input_str = &self.input.lines().join("\n").trim().to_string();
         if input_str.is_empty() {

@@ -102,6 +102,7 @@ pub trait Selectable {
     fn selectable(self) -> Self;
     fn unselectable(self) -> Self;
     fn highlighted(self) -> Self;
+    fn is_highlighted(&self) -> bool;
 }
 
 impl Selectable for Span<'_> {
@@ -121,6 +122,10 @@ impl Selectable for Span<'_> {
         self.style = self.style.fg(Color::Black).bg(Color::Cyan);
         self
     }
+
+    fn is_highlighted(&self) -> bool {
+        matches!(self.style.bg, Some(Color::Cyan)) && matches!(self.style.fg, Some(Color::Black))
+    }
 }
 
 impl Selectable for Line<'_> {
@@ -138,5 +143,9 @@ impl Selectable for Line<'_> {
     fn highlighted(mut self) -> Self {
         self.style = self.style.fg(Color::Black).bg(Color::Cyan);
         self
+    }
+
+    fn is_highlighted(&self) -> bool {
+        matches!(self.style.bg, Some(Color::Cyan)) && matches!(self.style.fg, Some(Color::Black))
     }
 }

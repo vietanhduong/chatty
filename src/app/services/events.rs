@@ -37,7 +37,7 @@ impl EventService {
             },
             CrosstermEvent::Key(key_event) => {
                 let input: Input = key_event.into();
-                if input.key == Key::Enter && (input.shift || input.alt || input.ctrl) {
+                if input.key == Key::Enter && (input.shift || input.alt) {
                     return Some(Event::KeyboardNewLine);
                 }
 

@@ -80,31 +80,6 @@ pub trait EventTx {
     async fn send(&self, event: Event) -> Result<(), mpsc::error::SendError<Event>>;
 }
 
-impl Event {
-    pub fn is_keyboard_event(&self) -> bool {
-        matches!(
-            self,
-            Event::KeyboardCharInput(_)
-                | Event::KeyboardEsc
-                | Event::KeyboardEnter
-                | Event::KeyboardNewLine
-                | Event::KeyboardCtrlC
-                | Event::KeyboardCtrlR
-                | Event::KeyboardCtrlN
-                | Event::KeyboardCtrlE
-                | Event::KeyboardCtrlL
-                | Event::KeyboardCtrlH
-                | Event::KeyboardF1
-                | Event::Quit
-                | Event::UiScrollUp
-                | Event::UiScrollDown
-                | Event::UiScrollPageUp
-                | Event::UiScrollPageDown
-                | Event::KeyboardPaste(_)
-        )
-    }
-}
-
 #[async_trait::async_trait]
 impl EventTx for mpsc::Sender<Event> {
     async fn send(&self, event: Event) -> Result<(), mpsc::error::SendError<Event>> {
